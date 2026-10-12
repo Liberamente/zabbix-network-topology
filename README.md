@@ -4,7 +4,7 @@ Zabbix 7.0 LTS / 7.4 / 8.0 frontend module for interactive network topology visu
 *Zabbix 7.0 LTS / 7.4 / 8.0 Frontend-Modul für interaktive Netzwerk-Topologie-Visualisierungen mit Cytoscape.js und Leaflet.*
 
 ![Status](https://img.shields.io/badge/zabbix-7.0_LTS_%2B_7.4_%2B_8.0-red)
-![Version](https://img.shields.io/badge/version-5.5.18-blue)
+![Version](https://img.shields.io/github/v/release/linuser/zabbix-network-topology?label=version&color=blue)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 
 **[🌐 zabfox.de](https://zabfox.de)** · **[💾 Repository](https://github.com/linuser/zabbix-network-topology)** · **[📋 Changelog](CHANGELOG.md)** · **[📦 Installation](INSTALL.md)** · **[🤝 Contributing](CONTRIBUTING.md)**
