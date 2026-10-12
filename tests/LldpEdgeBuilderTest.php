@@ -870,6 +870,88 @@ $rAl3 = LldpEdgeBuilder::build($hAl3, [
 check('zwei Anspruchsteller: keine Kante', count($rAl3['edges']), 0);
 check('zwei Anspruchsteller: gemeldet',    count($rAl3['quality']['m']['ambiguous'] ?? []), 1);
 
+// ── nt:lldp als MAC — jede Schreibweise muss treffen (Issue #24) ──────────
+//
+// CDP meldet den Nachbarn als Byte-MAC "AA BB CC DD EE FF", das Tag traegt
+// sie als "AA:BB:CC:DD:EE:FF". Bis hierher lief der Alias-Vergleich auf dem
+// Rohtext und verfehlte die normalisierte Form: gleiche Adresse, kein Treffer.
+// MACs erfunden.
+echo "\n  LldpEdgeBuilder — nt:lldp als MAC (#24)\n\n";
+
+$hMac = [
+    'sw' => ['host' => 'lab-sw-01', 'name' => 'lab-sw-01'],
+    'nb' => ['host' => 'lab-nb-01', 'name' => 'lab-nb-01',
+             'nt_aliases' => ['AA:BB:CC:DD:EE:FF']],
+];
+$macNb = static fn (string $v): array => LldpEdgeBuilder::build($hMac, [
+    ['hostid' => 'sw', 'key_' => 'lldpRemSysName[0.1.1]', 'lastvalue' => $v, 'src' => 'lldp'],
+]);
+check('Doppelpunkt-Tag trifft Leerzeichen-MAC', hasEdge($macNb('AA BB CC DD EE FF')['edges'], 'sw', 'nb'), true);
+check('Match-Art ist alias',                    $macNb('AA BB CC DD EE FF')['edges'][0]['match'] ?? null, 'alias');
+check('Doppelpunkt-Tag trifft Bindestrich-MAC', hasEdge($macNb('AA-BB-CC-DD-EE-FF')['edges'], 'sw', 'nb'), true);
+check('Doppelpunkt-Tag trifft nackte MAC',      hasEdge($macNb('AABBCCDDEEFF')['edges'], 'sw', 'nb'), true);
+check('Doppelpunkt-Tag trifft Cisco-MAC',       hasEdge($macNb('aabb.ccdd.eeff')['edges'], 'sw', 'nb'), true);
+check('Doppelpunkt-Tag trifft Doppelpunkt-MAC', hasEdge($macNb('aa:bb:cc:dd:ee:ff')['edges'], 'sw', 'nb'), true);
+
+// Umgekehrt: Tag im Rohformat, Nachbar mit Doppelpunkten.
+$hMacR = ['sw' => ['host' => 'lab-sw-01', 'name' => 'lab-sw-01'],
+          'nb' => ['host' => 'lab-nb-01', 'name' => 'lab-nb-01', 'nt_aliases' => ['AA BB CC DD EE FF']]];
+check('Leerzeichen-Tag trifft Doppelpunkt-MAC', hasEdge(LldpEdgeBuilder::build($hMacR, [
+    ['hostid' => 'sw', 'key_' => 'lldpRemSysName[0.1.1]', 'lastvalue' => 'AA:BB:CC:DD:EE:FF', 'src' => 'lldp'],
+])['edges'], 'sw', 'nb'), true);
+
+// Zwei Hosts beanspruchen dieselbe MAC (verschiedene Schreibweisen): keine
+// Kante, aber im Qualitaets-Tab gemeldet — raten waere schlimmer.
+$hMacA = [
+    'a' => ['host' => 'lab-a', 'name' => 'lab-a', 'nt_aliases' => ['AA:BB:CC:DD:EE:FF']],
+    'b' => ['host' => 'lab-b', 'name' => 'lab-b', 'nt_aliases' => ['aa-bb-cc-dd-ee-ff']],
+    'm' => ['host' => 'lab-melder', 'name' => 'lab-melder'],
+];
+$rMacA = LldpEdgeBuilder::build($hMacA, [
+    ['hostid' => 'm', 'key_' => 'lldpRemSysName[0.1.1]', 'lastvalue' => 'AA BB CC DD EE FF', 'src' => 'lldp'],
+]);
+check('zwei MAC-Anspruchsteller: keine Kante', count($rMacA['edges']), 0);
+check('zwei MAC-Anspruchsteller: gemeldet',    count($rMacA['quality']['m']['ambiguous'] ?? []), 1);
+
+// Broadcast-/Null-MAC taugt nicht als Identitaet — kein Alias-Treffer.
+$hMacB = ['sw' => ['host' => 'lab-sw-01', 'name' => 'lab-sw-01'],
+          'nb' => ['host' => 'lab-nb-01', 'name' => 'lab-nb-01', 'nt_aliases' => ['FF:FF:FF:FF:FF:FF']]];
+check('Broadcast-MAC matcht nicht', hasEdge(LldpEdgeBuilder::build($hMacB, [
+    ['hostid' => 'sw', 'key_' => 'lldpRemSysName[0.1.1]', 'lastvalue' => 'ff ff ff ff ff ff', 'src' => 'lldp'],
+])['edges'], 'sw', 'nb'), false);
+
+// ── Uplink-Ports aus LLDP-Capabilities (fuer die MAC/FDB-Suche) ────────────
+//
+// Ein lokaler Port ist Uplink, wenn sein LLDP-Nachbar Bridge/Router meldet;
+// AP/Telefon/Station sind Zugang. Portname kommt aus derselben ifName-Quelle
+// wie die FDB-Treffer. Hex-Caps nach IEEE: 0x20=Bridge, 0x08=Router,
+// 0x10=WLAN AP. Lokaler Port = Mitte des LLDP-Index (3-teilig) bzw. erster
+// Teil beim CDP-Index (2-teilig). Daten erfunden.
+echo "\n  LldpEdgeBuilder — Uplink-Ports aus LLDP-Caps\n\n";
+
+$ifnCaps = ['sw1' => ['24' => 'Gi1/0/24', '5' => 'Te1/0/5', '7' => 'Gi1/0/7']];
+$up = LldpEdgeBuilder::uplinkPortsByCaps([
+    ['hostid' => 'sw1', 'key_' => 'lldpRemSysCapEnabled[0.24.1]', 'value' => '20 00'], // Bridge
+    ['hostid' => 'sw1', 'key_' => 'lldpRemSysCapEnabled[0.7.1]',  'value' => '10 00'], // WLAN AP
+    ['hostid' => 'sw1', 'key_' => 'lldpRemSysCapEnabled[5.1]',    'value' => '08 00'], // CDP, Router
+], $ifnCaps);
+check('Bridge-Nachbar -> Uplink (ifName)',  $up['ports']['sw1']['Gi1/0/24'] ?? null, true);
+check('Router-Nachbar (CDP-Index) -> Uplink',$up['ports']['sw1']['Te1/0/5'] ?? null, true);
+check('AP-Nachbar -> kein Uplink',          isset($up['ports']['sw1']['Gi1/0/7']), false);
+check('Switch mit Caps -> known',           $up['known']['sw1'] ?? null, true);
+
+// Textform (Value-Map im Template) + fehlender ifName -> Portnummer.
+$up2 = LldpEdgeBuilder::uplinkPortsByCaps(
+    [['hostid' => 'sw9', 'key_' => 'lldpRemSysCapEnabled[0.99.1]', 'value' => 'Bridge']], []);
+check('Textform Bridge -> Uplink',          $up2['ports']['sw9']['99'] ?? null, true);
+
+// Nur AP-Caps: known (LLDP laeuft), aber kein Uplink -> seine Ports sind
+// damit sicher Zugang, nicht bloss „unbekannt".
+$up3 = LldpEdgeBuilder::uplinkPortsByCaps(
+    [['hostid' => 'swA', 'key_' => 'lldpRemSysCapEnabled[0.3.1]', 'value' => 'WLAN Access Point']], []);
+check('nur AP: known',                      $up3['known']['swA'] ?? null, true);
+check('nur AP: keine Uplink-Ports',         isset($up3['ports']['swA']), false);
+
 // ── Portzustand und Portname an der Kante ─────────────────────────────────
 //
 // Zwei Meldungen aus einer Mail: die Kante war rot, obwohl der Port laeuft

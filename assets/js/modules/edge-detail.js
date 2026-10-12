@@ -39,6 +39,7 @@
 import { el, fmt } from './utils.js';
 import { fetchJson } from './http.js';
 import { hideDetail } from './detail-panel.js';
+import { meta as qualiMeta, QUALITY } from './quality.js';
 import { t } from './i18n.js';
 import { utilizationColor, utilizationPct } from './traffic.js';
 import { bundleMembers, trunkData, memberDown } from './parallel-links.js';
@@ -316,9 +317,14 @@ export function showEdgeDetail(panel, ed, asMember) {
             w.appendChild(el('b', '', fmt(pair[2])));
             live.appendChild(w);
         });
+        // Glyph aus quality.js voranstellen, damit measured/estimated hier
+        // dasselbe Zeichen tragen wie die Chips im Knoten-Panel und der Tabelle
+        // (● gemessen / ◐ geschätzt) — eine Aussage, ein Symbol, überall.
         live.appendChild((istTrunk ? d.bundleMeasured : d.perLink)
-            ? pill(t('edge.metric.perlink'),  '#16a34a', t('edge.metric.perlink.tip'))
-            : pill(t('edge.metric.estimate'), '#f59e0b', t('edge.metric.estimate.tip')));
+            ? pill(qualiMeta(QUALITY.MEASURED).glyph + ' ' + t('edge.metric.perlink'),
+                   '#16a34a', t('edge.metric.perlink.tip'))
+            : pill(qualiMeta(QUALITY.ESTIMATED).glyph + ' ' + t('edge.metric.estimate'),
+                   '#f59e0b', t('edge.metric.estimate.tip')));
         panel.appendChild(live);
 
         if (cap > 0) {

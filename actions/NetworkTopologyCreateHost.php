@@ -172,11 +172,27 @@ class NetworkTopologyCreateHost extends NetworkTopologyController {
 
             try {
                 $res = API::Host()->create($gebaut['payload']);
-                $hostid = (string) ($res['hostids'][0] ?? '');
-                $erzeugt[] = ['hostid' => $hostid, 'host' => $gebaut['payload']['host']];
+                // Der Frontend-API-Wrapper WIRFT bei einem Fehler nicht, er gibt
+                // false zurueck und legt die Meldung auf den Stack. Der catch
+                // unten greift dann nicht. Ohne diese Pruefung erschien ein
+                // Fehlschlag (haeufig: Name schon vergeben) als erfolgreich
+                // angelegter Host mit LEERER hostid.
+                if ($res === false || empty($res['hostids'][0])) {
+                    $fehler[] = [
+                        'name'  => mb_substr($name, 0, 128),
+                        'error' => mb_substr(implode('; ',
+                            array_column(get_and_clear_messages(), 'message'))
+                            ?: _('Host creation failed.'), 0, 250),
+                    ];
+                    continue;
+                }
+                $erzeugt[] = [
+                    'hostid' => (string) $res['hostids'][0],
+                    'host'   => $gebaut['payload']['host'],
+                ];
             } catch (\Throwable $e) {
-                // Haeufigster Fall: der Name ist schon vergeben. Die Meldung
-                // von Zabbix ist dafuer brauchbar und wird durchgereicht.
+                // Nicht-API-Throwables (DB/Schema/TypeError) — Meldung von Zabbix
+                // ist hier brauchbar und wird durchgereicht.
                 $fehler[] = [
                     'name'  => mb_substr($name, 0, 128),
                     'error' => mb_substr($e->getMessage(), 0, 250),

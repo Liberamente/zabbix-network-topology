@@ -168,6 +168,24 @@ ghost:
   script:
     - node tools/check-ghost.mjs
 
+# Eine Güte-Aussage (measured/estimated/stale/unknown) gehört einmal in
+# quality.js. Dieses Gate hält sie dort und stellt sicher, dass sie vollständig
+# ist: jeder Zustand hat Glyph/Farbe UND einen i18n-Schlüssel in de+en.
+quality:
+  stage: test
+  image: node:22-alpine
+  script:
+    - node tools/check-quality.mjs
+
+# Prueft nt-assign-guard.js: auf Zabbix 8 (Array.prototype.xor readonly) greift
+# der Guard und Cytoscape laedt wieder, auf 7.x (xor writable) ist er ein echter
+# No-op. Der Fix war vorher nur von Hand nachgestellt.
+assign-guard:
+  stage: test
+  image: node:22-alpine
+  script:
+    - node tools/check-assign-guard.mjs
+
 # Prueft, was im Modul-ZIP landen wuerde. Liest die Ausschlussmuster aus
 # deploy.sh, statt sie zu wiederholen — eine zweite Liste waere eine zweite
 # Stelle, die auseinanderlaeuft. Anlass: nt-uninstall.sh rutschte ins Paket,

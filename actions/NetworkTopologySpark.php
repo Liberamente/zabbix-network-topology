@@ -6,6 +6,7 @@ declare(strict_types = 1);
 namespace Modules\NetworkTopology\Actions;
 
 use API;
+use Modules\NetworkTopology\Topology\ProblemLoader;
 
 /**
  * NetworkTopologySpark
@@ -199,22 +200,24 @@ class NetworkTopologySpark extends NetworkTopologyController {
         // Wir holen den ältesten noch aktiven Problem-Event pro Host
         $since_map = [];   // hostid -> clock
 
-        // selectHosts direkt auf Problem.get spart den separaten Trigger.get-
-        // Roundtrip. recent=true: nur aktuell offene Probleme statt historic
-        // (war false → potentiell tausende alter Events).
+        // recent=true: nur aktuell offene Probleme statt historic (war false →
+        // potentiell tausende alter Events). KEIN selectHosts: der Parameter ist
+        // auf problem.get auf keiner Version gueltig (7.0/7.4/8.0), der Wrapper
+        // liefert dann false. Host-Zuordnung ueber objectid -> Trigger
+        // (ProblemLoader::triggerHostMap).
         $problems = API::Problem()->get([
             'output'       => ['objectid', 'clock'],
             'hostids'      => $hostids,
             'recent'       => true,
-            'selectHosts'  => ['hostid'],
             'preservekeys' => false,
         ]);
+        if (!is_array($problems)) $problems = [];
 
         if ($problems) {
+            $trigger_hosts = ProblemLoader::triggerHostMap($problems);
             foreach ($problems as $prob) {
                 $clock = (int) $prob['clock'];
-                foreach ($prob['hosts'] ?? [] as $th) {
-                    $hid = $th['hostid'];
+                foreach ($trigger_hosts[(string) ($prob['objectid'] ?? '')] ?? [] as $hid) {
                     // Aeltesten Problem-Timestamp merken (= seit wann Probleme bestehen)
                     if (!isset($since_map[$hid]) || $clock < $since_map[$hid]) {
                         $since_map[$hid] = $clock;

@@ -321,6 +321,10 @@ window.NT_CONFIG = <?= json_encode([
     // Eigener Token fuer die schreibende Links-Action.
     'links_csrf' => \CCsrfTokenHelper::get('network.topology.links'),
     'links_url'  => 'zabbix.php?action=network.topology.links',
+    // Dienst-Abhaengigkeiten im Dependencies-Tab verknuepfen/trennen
+    // (API::Service()->update). Eigener Token, nur fuer can_edit-User sichtbar.
+    'service_edit_csrf' => \CCsrfTokenHelper::get('network.topology.service_edit'),
+    'service_edit_url'  => 'zabbix.php?action=network.topology.service_edit',
     // Knotenpositionen, serverseitig seit 5.1. Zwei Ebenen wie bei den Links:
     // shared ist DIE Karte (module.config), personal die eigene Abweichung
     // davon (CProfile). Beim Lesen gewinnt personal pro Knoten.

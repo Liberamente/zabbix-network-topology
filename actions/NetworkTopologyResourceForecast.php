@@ -102,11 +102,26 @@ class NetworkTopologyResourceForecast extends NetworkTopologyController {
             'filter'      => ['value_type' => [ITEM_VALUE_TYPE_FLOAT, ITEM_VALUE_TYPE_UINT64]],
         ]);
 
-        $meta = [];   // itemid => [hostid, metric ('cpu'|'mem')]
+        // Pro CPU-Subtyp eine Rangfolge: Gesamtauslastung schlaegt idle schlaegt
+        // Einzelkerne. Pro Host wird genau EINE Quelle genommen (unten), damit
+        // der Forecast nicht Gesamt, idle und Teilkategorien mittelt (Review #6).
+        static $CPU_PRIO = ['cpu:total' => 3, 'cpu:idle' => 2, 'cpu:core' => 1];
+        $meta = [];           // itemid => [hostid, metric('cpu'|'mem'), subtype|null]
+        $host_cpu_sub = [];   // hid => gewaehlter cpu-subtype (hoechste Prio)
         foreach ($items as $it) {
-            $m = $this->classify($it['key_']);
-            if ($m === null) continue;
-            $meta[(string) $it['itemid']] = [(string) $it['hostid'], $m];
+            $c = $this->classify($it['key_']);
+            if ($c === null) continue;
+            $hid = (string) $it['hostid'];
+            if ($c === 'mem') {
+                $meta[(string) $it['itemid']] = [$hid, 'mem', null];
+                continue;
+            }
+            // cpu:total | cpu:idle | cpu:core
+            $meta[(string) $it['itemid']] = [$hid, 'cpu', $c];
+            if (!isset($host_cpu_sub[$hid])
+                    || ($CPU_PRIO[$c] ?? 0) > ($CPU_PRIO[$host_cpu_sub[$hid]] ?? 0)) {
+                $host_cpu_sub[$hid] = $c;
+            }
         }
         if (!$meta) {
             $this->out(['days' => $days, 'hosts' => (object) []], $_t0, false);
@@ -132,9 +147,19 @@ class NetworkTopologyResourceForecast extends NetworkTopologyController {
             foreach ($rows as $r) {
                 $m = $meta[(string) $r['itemid']] ?? null;
                 if ($m === null) continue;
-                [$hid, $metric] = $m;
+                [$hid, $metric, $subtype] = $m;
+                // CPU: nur die pro Host gewaehlte Quelle; andere Subtypen (idle
+                // neben Gesamt, oder Teilkategorien) wuerden sonst zu Unsinn
+                // vermischt (80 % Auslastung + 20 % idle -> 50 %). Review #6.
+                if ($metric === 'cpu' && $subtype !== ($host_cpu_sub[$hid] ?? null)) {
+                    continue;
+                }
+                $v = (float) $r['value_avg'];
+                if ($metric === 'cpu' && $subtype === 'cpu:idle') {
+                    $v = max(0.0, 100.0 - $v);   // idle -> Auslastung
+                }
                 $clk = (int) $r['clock'];
-                $sum[$hid][$metric][$clk] = ($sum[$hid][$metric][$clk] ?? 0.0) + (float) $r['value_avg'];
+                $sum[$hid][$metric][$clk] = ($sum[$hid][$metric][$clk] ?? 0.0) + $v;
                 $cnt[$hid][$metric][$clk] = ($cnt[$hid][$metric][$clk] ?? 0) + 1;
             }
             unset($rows);
@@ -167,7 +192,8 @@ class NetworkTopologyResourceForecast extends NetworkTopologyController {
     }
 
     /**
-     * Nur %-Items zulassen. Rueckgabe 'cpu' | 'mem' | null.
+     * Nur %-Items zulassen. Rueckgabe 'mem' | 'cpu:total' | 'cpu:idle' |
+     * 'cpu:core' | null — der CPU-Subtyp steuert die Quellenwahl pro Host.
      * vm.memory.size wird nur bei pused (Prozent) akzeptiert — die absolute
      * Byte-Variante (available/total/used) wandert NICHT in den Forecast.
      */
@@ -182,10 +208,18 @@ class NetworkTopologyResourceForecast extends NetworkTopologyController {
         if (strpos($key, 'vm.memory.size') !== false) {
             return null;   // absolute Bytes (available/total/…) — kein %
         }
-        // CPU-%
-        if (strpos($key, 'system.cpu.util') !== false        // util + utilization
-                || strpos($key, 'hrProcessorLoad') !== false) {
-            return 'cpu';
+        // CPU-% — nach Subtyp getrennt, damit der Aufrufer pro Host EINE Quelle
+        // waehlen kann. Teilkategorien (system.cpu.util[,user] etc.) und die
+        // geklammerte Form mit leerem Typ (Default = user/system) sind KEINE
+        // Gesamtauslastung und fliegen raus (Review #6).
+        if (strpos($key, 'hrProcessorLoad') !== false) {
+            return 'cpu:core';
+        }
+        if ($key === 'system.cpu.util' || $key === 'system.cpu.utilization') {
+            return 'cpu:total';
+        }
+        if (preg_match('/^system\.cpu\.util\[/', $key)) {
+            return strpos($key, 'idle') !== false ? 'cpu:idle' : null;
         }
         return null;
     }

@@ -12,6 +12,7 @@
  * class set when they are shown. */
 #nt-root,
 .nt-float {
+    --nt-bg:          #f0f2f5;   /* module/canvas backdrop (behind panels) */
     --nt-surface:     #ffffff;   /* panels, menus, tooltip */
     --nt-surface-2:   #f8fafc;   /* row hover, sub-menus, buttons */
     --nt-surface-3:   #e2e8f0;   /* button hover */
@@ -34,6 +35,7 @@
 }
 #nt-root.nt-dark,
 .nt-float.nt-dark {
+    --nt-bg:          #0d1117;
     --nt-surface:     #161b22;
     --nt-surface-2:   #1c2128;
     --nt-surface-3:   #30363d;
@@ -182,28 +184,31 @@ body.nt-wallboard .nt-footer { display: none; }
 }
 
 /* ── Dark mode ───────────────────────────────────────────── */
+/* Dunkel-Flaechen ueber Token, nicht feste Hex: so folgt der ganze Rahmen dem
+   adaptiven Theme (Zabbix 8 dark-blue = Navy), nicht nur die Panels. Ohne
+   erfolgreiche Messung liefern die Token die alten GitHub-Dunkelwerte. */
 #nt-root.nt-dark {
-    background: #0d1117;
-    border-color: #30363d;
+    background: var(--nt-bg);
+    border-color: var(--nt-line);
 }
 
 #nt-root.nt-dark .nt-topbar {
-    background: #161b22;
-    border-color: #30363d;
+    background: var(--nt-surface);
+    border-color: var(--nt-line);
 }
 
 #nt-root.nt-dark .nt-canvas-wrap {
-    background: linear-gradient(160deg, #0d1117 0%, #0f1923 45%, #0a1628 100%);
+    background: var(--nt-bg);
 }
 
 #nt-root.nt-dark .nt-loading {
-    background: rgba(13,17,23,0.85);
-    color: #8b949e;
+    background: var(--nt-bg);
+    color: var(--nt-muted);
 }
 
 #nt-root.nt-dark .nt-loading > div {
-    border-color: #30363d;
-    border-top-color: #58a6ff;
+    border-color: var(--nt-line);
+    border-top-color: var(--nt-active-text);
 }
 
 #nt-root.nt-dark #nt-detail {
@@ -244,7 +249,7 @@ body.nt-wallboard .nt-footer { display: none; }
 #nt-search-input:focus { border-color: #3b82f6; }
 
 #nt-root.nt-dark #nt-detail::-webkit-scrollbar-thumb {
-    background: #30363d;
+    background: var(--nt-surface-3);
 }
 
 /* .nt-badge ist ersatzlos entfallen: die Klasse wurde nie gesetzt und das
@@ -252,13 +257,13 @@ body.nt-wallboard .nt-footer { display: none; }
    Historie nichts getroffen. An seine Stelle tritt .nt-kpi (siehe unten). */
 
 #nt-root.nt-dark .nt-legend {
-    background: #161b22 !important;
-    border-color: #30363d !important;
-    color: #e6edf3 !important;
+    background: var(--nt-surface) !important;
+    border-color: var(--nt-line) !important;
+    color: var(--nt-text-2) !important;
 }
 
 #nt-root.nt-dark .nt-legend span[style*="color:#475569"] {
-    color: #8b949e !important;
+    color: var(--nt-muted) !important;
 }
 
 /* ── Toolbar-Buttons: einheitliche einzeilige Höhe ─────────

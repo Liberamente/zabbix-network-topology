@@ -131,6 +131,10 @@ final class LldpEdgeBuilder {
         // nicht gibt: ein Geist neben dem Host, den er meint. Eigene Map, damit
         // ein erklaerter Name einen ECHTEN Namen nie verdraengt.
         $alias_map = [];
+        // Aliase, die eine MAC sind, zusaetzlich in kanonischer Form. Ein Tag
+        // nt:lldp traegt die MAC in einer Schreibweise, der Nachbar meldet sie
+        // in einer anderen (Issue #24).
+        $alias_mac_map = [];
         foreach ($hosts as $hid => $h) {
             $name_map[strtolower($h['host'])] = $hid;
             $name_map[strtolower($h['name'])] = $hid;
@@ -138,6 +142,13 @@ final class LldpEdgeBuilder {
                 $alias = strtolower(trim((string) $alias));
                 if ($alias !== '') {
                     $alias_map[$alias][(string) $hid] = $hid;
+                    // Ist der Alias eine MAC, in kanonischer Form gegenlegen —
+                    // sonst matcht "aa:bb:cc:dd:ee:ff" den Nachbarn "aa bb cc dd
+                    // ee ff" nicht, obwohl es dasselbe Geraet ist (Issue #24).
+                    $alias_mac = self::macForm($alias);
+                    if ($alias_mac !== null) {
+                        $alias_mac_map[$alias_mac][(string) $hid] = $hid;
+                    }
                 }
             }
             foreach ($h['interfaces'] ?? [] as $iface) {
@@ -332,6 +343,19 @@ final class LldpEdgeBuilder {
                 // nicht sehen. Ein Host, der zufaellig "02" heisst, waere sonst
                 // ein Kurznamen-Treffer.
                 $ambiguous_candidates = null;
+                // MAC-Alias: der Nachbar meldet eine MAC, und ein nt:lldp-Tag
+                // traegt dieselbe MAC in anderer Schreibweise. Der Rohtext-
+                // Vergleich oben hat sie verfehlt; hier gegen die kanonische
+                // Form, bevor der Namens-Zweig die MAC ganz aussperrt (#24).
+                if (!$rhid && $mac !== null && self::macUsable($mac)) {
+                    $mac_kandidaten = $alias_mac_map[$mac] ?? [];
+                    if (count($mac_kandidaten) === 1) {
+                        $rhid = reset($mac_kandidaten);
+                        $match_kind = 'alias';
+                    } elseif (count($mac_kandidaten) > 1) {
+                        $alias_mehrdeutig = array_values($mac_kandidaten);
+                    }
+                }
                 if ($mac === null) {
                     // 1. Exakter Match gegen cleaned host/visiblename/lowercase
                     if (!$rhid) {
@@ -1607,6 +1631,66 @@ final class LldpEdgeBuilder {
         // Portbeschreibung. Die Geschwisterstellen (Zeile 203, 206,
         // MetricExtractor::capName) machen es laengst richtig.
         return mb_strlen($s) > 24 ? mb_substr($s, 0, 24) : $s;
+    }
+
+    /**
+     * Uplink-Ports je Switch aus LLDP-Capabilities — fuer die MAC/FDB-Suche.
+     *
+     * Ein lokaler Port ist ein Uplink, wenn sein LLDP-Nachbar **Bridge** oder
+     * **Router** meldet (fuehrt weiter ins Netz); AP, Telefon und Station sind
+     * Zugangsgeraete und damit kein Uplink. Das ist verlaesslicher als die
+     * MAC-Zahl-Heuristik (FdbResolver::uplinkPortsByCount), die einen
+     * Hypervisor- oder Downstream-Port nicht vom echten Uplink unterscheiden
+     * kann — genau der Fall, vor dem der Panel-Hinweis warnt.
+     *
+     * Rein und testbar: kein SNMP, kein API-Call. Die lldpRemSysCapEnabled-
+     * Items holt die Action per API und reicht sie als Zeilen herein.
+     *
+     * @param list<array{hostid:string,key_:string,value:string}> $capsRows
+     *        Der Key traegt den LLDP-Index TimeMark.LocalPort.RemIndex (Mitte =
+     *        lokaler Port, == ifIndex auf Aruba/ProCurve) bzw. den CDP-Index
+     *        ifIndex.devIndex; value ist lldpRemSysCapEnabled.
+     * @param array<string, array<string,string>> $ifNamesByHost
+     *        [hostid => [ifIndex => Portname]] — DIESELBE ifName-Quelle wie die
+     *        FDB-Treffer (FdbParser::ifNames), damit die Portnamen zusammenpassen.
+     * @return array{ports: array<string, array<string,bool>>, known: array<string,bool>}
+     *        ports[hid][portname]=true = Uplink; known[hid]=true = hat LLDP-Caps
+     *        (seine uebrigen Ports sind damit sicher Zugang, nicht bloss „unbekannt").
+     */
+    public static function uplinkPortsByCaps(array $capsRows, array $ifNamesByHost): array {
+        $ports = [];
+        $known = [];
+        foreach ($capsRows as $row) {
+            $hid = (string) ($row['hostid'] ?? '');
+            if ($hid === '') {
+                continue;
+            }
+            $known[$hid] = true;
+            // Lokalen Port aus dem Key-Index ziehen — gleiche Regel wie
+            // portContext(): LLDP 3-teilig (Mitte), CDP 2-teilig (erster Teil),
+            // ein nacktes ifIndex-Item direkt.
+            $idx = HostMetadata::ifaceParam((string) ($row['key_'] ?? ''));
+            $portNum = '';
+            if (preg_match('/^\d+\.(\d+)\.\d+$/', $idx, $m)) {
+                $portNum = $m[1];
+            } elseif (preg_match('/^(\d+)\.\d+$/', $idx, $m)) {
+                $portNum = $m[1];
+            } elseif (preg_match('/^\d+$/', $idx)) {
+                $portNum = $idx;
+            }
+            if ($portNum === '') {
+                continue;
+            }
+            $caps = self::decodeCaps((string) ($row['value'] ?? ''));
+            if (!in_array('Bridge', $caps, true) && !in_array('Router', $caps, true)) {
+                continue;   // Zugangsgeraet (AP/Telefon/Station) -> kein Uplink
+            }
+            // ifIndex -> Portname EXAKT wie FdbParser (kein capLabel): der
+            // Uplink-Portname muss zeichengleich zum FDB-Treffer-Portnamen sein.
+            $name = $ifNamesByHost[$hid][$portNum] ?? $portNum;
+            $ports[$hid][$name] = true;
+        }
+        return ['ports' => $ports, 'known' => $known];
     }
 
     /**

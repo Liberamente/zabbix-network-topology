@@ -32,7 +32,7 @@
 
 import { saveSnapshot, loadSnapshot, clearSnapshot, formatSnapshotAge } from './diff-mode.js';
 import { t } from './i18n.js';
-import { seiteIstDunkel } from './utils.js';
+import { seiteIstDunkel, resetAdaptiveTheme, paintAdaptive } from './utils.js';
 
 // Zabbix links its theme as assets/styles/<theme>.css — dark-theme and
 // hc-dark are the dark ones. No more knowledge of the Zabbix page is needed;
@@ -69,7 +69,14 @@ export function initDarkMode() {
     // WCAG aus. Das kennt keine Namen und irrt sich deshalb auch nicht an
     // ihnen. Nur wenn sich nichts messen laesst — durchsichtiger Hintergrund,
     // oder getComputedStyle wirft — bleibt der Dateiname als Rueckfall.
-    if (root) root.classList.toggle('nt-dark', seiteIstDunkel(detectZabbixDark()));
+    if (root) {
+        // Einmal je Voll-Render frisch messen, dann Klasse setzen und die
+        // adaptiven Token (Zabbix' echte Dunkelfarben) auflegen. Floats nutzen
+        // danach den Cache. Ohne Treffer bleibt die statische .nt-dark-Palette.
+        resetAdaptiveTheme();
+        root.classList.toggle('nt-dark', seiteIstDunkel(detectZabbixDark()));
+        paintAdaptive(root);
+    }
 }
 
 // State-Bridge: Hauptmodul setzt _getActiveTab beim init().
@@ -96,6 +103,9 @@ const TAB_DEFS = [
     { id: 'nt-tab-geo',        key: 'tabs.geo',        tab: 'geo'    },
     { id: 'nt-tab-health',     key: 'tabs.health',     tab: 'health' },
     { id: 'nt-tab-stats',      key: 'tabs.stats',      tab: 'stats'  },
+    // Dependencies: Zabbix-Services-Baum als gerichtete Abhaengigkeitskarte.
+    // Holt seine Daten selbst (dataOptional) und braucht keine Graph-Knoten.
+    { id: 'nt-tab-services',   key: 'tabs.services',   tab: 'services',   dataOptional: true },
     { id: 'nt-tab-lldpq',      key: 'tabs.lldpq',      tab: 'lldpq',      dataOptional: true },
     // Compliance zeigt Security-Posture pro Host ("Agent ohne TLS",
     // SNMP-Versionen) — nur fuer Admins.

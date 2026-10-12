@@ -14,8 +14,9 @@
 //
 // Sortierung: Klick auf Spalten-Header. Default: Status-DESC (kritischste oben).
 
-import { esc, fmt, aggregateValues, isDark, hostEditUrl } from './utils.js';
+import { esc, fmt, aggregateValues, isDark, hostEditUrl, paintAdaptive } from './utils.js';
 import { SEV_COL, SEV_LBL, grpColor, statusLabel, statusColor } from './severity.js';
+import { meta as qualiMeta, QUALITY } from './quality.js';
 import { t } from './i18n.js';
 import { fetchItemsPivot, buildPivotToolbar, renderPivotTable } from './items-pivot.js';
 import { parseQuery, matchQuery, nodeToQueryFields } from './query.js';
@@ -504,13 +505,23 @@ function buildBaseUrl() {
     return i > 0 ? p.substring(0, i + 1) : '/';
 }
 
+// Fehlender Wert in einer Zelle: ein gedaempftes "\u2014" mit Hover-Titel
+// "nicht erfasst" (quality.js), NICHT die gemessene 0. In einer Tabelle mit
+// tausenden Zeilen waere ein voller Chip Clutter \u2014 der Strich bleibt das
+// Tabellen-Idiom, aber in der Unknown-Farbe und mit erklaerendem Titel, damit
+// "nicht erfasst" nicht wie ein gesunder Nullwert aussieht.
+function fehltZelle() {
+    return '<span style="color:' + qualiMeta(QUALITY.UNKNOWN).cssVar
+        + '" title="' + esc(t('quality.unknown')) + '">\u2014</span>';
+}
+
 function fmtPct(v) {
-    if (v === null || v === undefined || isNaN(v)) return '\u2014';
+    if (v === null || v === undefined || isNaN(v)) return fehltZelle();
     return Math.round(v) + '%';
 }
 
 function fmtMs(v) {
-    if (v === null || v === undefined || isNaN(v) || v < 0) return '\u2014';
+    if (v === null || v === undefined || isNaN(v) || v < 0) return fehltZelle();
     return v.toFixed(1) + ' ms';
 }
 
@@ -1091,8 +1102,11 @@ export function rowHtml(n, baseUrl, theme) {
     // fmtBps formatiert kompakt (Kbps/Mbps/Gbps).
     const tIn  = (n.traffic && n.traffic.in  != null) ? n.traffic.in  : null;
     const tOut = (n.traffic && n.traffic.out != null) ? n.traffic.out : null;
-    const trafIn  = (tIn  != null && tIn  > 0) ? fmtBps(tIn)  : '\u2014';
-    const trafOut = (tOut != null && tOut > 0) ? fmtBps(tOut) : '\u2014';
+    // null = kein Traffic-Item (nicht erfasst) -> Unknown-Strich; eine gemessene
+    // 0 bleibt eine gemessene 0 (fmtBps), nicht "\u2014" (sonst sieht ein stiller
+    // Link wie ein ungemessener aus \u2014 dieselbe Luecke wie im Detail-Panel).
+    const trafIn  = (tIn  != null) ? fmtBps(tIn)  : fehltZelle();
+    const trafOut = (tOut != null) ? fmtBps(tOut) : fehltZelle();
 
     // Action-Buttons im Stil des Detail-Panels — klein und farbneutral.
     // data-no-detail verhindert dass der Row-Click das Detail-Panel öffnet.
@@ -1441,6 +1455,7 @@ export function renderTable(wrap, nodes, edges) {
     // dunkel auf dunkel stand, waehrend die Tabelle daneben stimmte.
     detailPanel.className = 'nt-float';
     detailPanel.classList.toggle('nt-dark', isDark());
+    paintAdaptive(detailPanel);
     detailPanel.style.cssText = 'position:fixed;top:170px;right:20px;width:300px;'
         + 'background:' + theme.surface + ';border:1px solid ' + theme.border
         + ';border-radius:10px;padding:14px;color:' + theme.text + ';'

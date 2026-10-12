@@ -25,7 +25,7 @@ import {
     loadPositions, savePositions, loadPinned, loadNotes, loadLinks, addLink,
     loadLayout, loadTapholdMs
 } from './storage.js';
-import { aggregateByGroup, aggregateEndpoints } from './aggregation.js';
+import { aggregateByGroup, aggregateEndpoints, aggregateHostingChildren } from './aggregation.js';
 import { applyHighlight, resetHighlight, getActiveHighlightId } from './highlight.js';
 import { isPathActive, clearPathState } from './path-highlight.js';
 import { clearSimulation, isSimActive, recomputeSimulation } from './whatif.js';
@@ -254,6 +254,12 @@ export function render(wrap, nodes, edges, dataUrl) {
             const geb = aggregateEndpoints(nodes, edges, loadBundleOpen());
             nodes = geb.nodes;
             edges = geb.edges;
+            // Gleiche Taste, zweite Ebene: viele Blatt-Gaeste (VMs/Pods) je
+            // Traeger einklappen. Derselbe Aufklappzustand (loadBundleOpen) und
+            // dieselbe _isEndpointBundle-Maschinerie wie bei den Endgeraeten.
+            const gst = aggregateHostingChildren(nodes, edges, loadBundleOpen());
+            nodes = gst.nodes;
+            edges = gst.edges;
         }
     }
 
@@ -586,6 +592,18 @@ export function render(wrap, nodes, edges, dataUrl) {
         const pos = oe ? { x: oe.clientX, y: oe.clientY } : e.renderedPosition;
         showCtx(pos.x, pos.y, e.target.data());
     });
+
+    // Das native Browser-Kontextmenü auf der Karte unterdrücken. Das
+    // oe.preventDefault() oben reicht NICHT: Cytoscapes cxttap-originalEvent
+    // ist der mouseup/pointerup, nicht das contextmenu-DOM-Event — der Browser
+    // öffnet sein Menü trotzdem und legt es ÜBER unseres (ein Melder sah beide
+    // gleichzeitig, seit 5.3.x). Das contextmenu-Event am Canvas-Container
+    // abfangen; der Guard verhindert ein zweites Binding bei Re-Renders.
+    const cyBox = cy.container();
+    if (cyBox && !cyBox._ntNoNativeMenu) {
+        cyBox._ntNoNativeMenu = true;
+        cyBox.addEventListener('contextmenu', function(ev) { ev.preventDefault(); });
+    }
 
     // Mobile: Long-Press = selbe Aktion wie Rechtsklick. Cytoscape's taphold-
     // Event feuert auf Touch-Geräten wenn der Finger länger als

@@ -94,11 +94,18 @@ class NetworkTopologyItemHistory extends NetworkTopologyController {
         $timeFrom = $now - self::TIME_WINDOW;
         $out      = [];
 
-        // Chunks à 50 Items mit proportionalem Limit (120 Samples/Item = 1h
-        // bei 30s-Intervall). Ein globales Limit ueber ALLE itemids liess
-        // chatty Items (1s-Intervall) das Budget fressen — Sparklines zeigten
-        // dann nur die ersten Minuten der Stunde und andere Items gingen
-        // komplett leer aus.
+        // Chunks à 50 Items mit proportionalem Limit (120 Samples/Item = 1h bei
+        // 30s-Intervall). Ein globales Limit ueber ALLE itemids liess chatty
+        // Items (1s-Intervall) das Budget fressen — deshalb pro Chunk.
+        //
+        // DESC, nicht ASC (Review #9): das Limit greift pro Chunk, und bei ASC
+        // bekam ein schnelles Item (1s) die 120 AELTESTEN Werte — also die
+        // ersten zwei Minuten der Stunde, der Rest fehlte. Bei >=30s-Intervall
+        // decken 120 Werte die ganze Stunde, Richtung egal. Bei schnelleren
+        // Items zeigen wir mit DESC den AKTUELLEN Ausschnitt (die letzten
+        // Minuten) statt den aeltesten — das ist der relevante Teil. Fuer die
+        // Sparkline (alt -> neu, links -> rechts) danach wieder in Zeitordnung
+        // drehen.
         foreach ($by_type as $vt => $ids) {
             if (!$ids) continue;
             foreach (array_chunk($ids, 50) as $chunk) {
@@ -109,7 +116,7 @@ class NetworkTopologyItemHistory extends NetworkTopologyController {
                     'time_from' => $timeFrom,
                     'time_till' => $now,
                     'sortfield' => 'clock',
-                    'sortorder' => 'ASC',
+                    'sortorder' => 'DESC',
                     'limit'     => count($chunk) * 120,
                 ]);
                 $tmp = [];
@@ -118,7 +125,8 @@ class NetworkTopologyItemHistory extends NetworkTopologyController {
                         ? (float) $h['value'] : (int) $h['value'];
                 }
                 foreach ($tmp as $iid => $arr) {
-                    $out[(string) $iid] = $this->sample($arr, self::SAMPLE_N);
+                    // DESC gefetcht -> fuer die Sparkline wieder alt -> neu.
+                    $out[(string) $iid] = $this->sample(array_reverse($arr), self::SAMPLE_N);
                 }
             }
         }

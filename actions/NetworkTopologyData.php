@@ -403,6 +403,10 @@ class NetworkTopologyData extends NetworkTopologyController {
             'selectParentTemplates' => ['name'],
             'selectInventory'       => ['location_lat', 'location_lon', 'location'],
             'selectTags'            => ['tag', 'value'],
+            // Fuer das {$NT_PARENT}-Macro (Traeger-Beziehung als Macro statt Tag,
+            // damit sie per Template/LLD massenhaft setzbar ist — eine VM je
+            // Host braucht so keinen einzelnen nt:parent-Tag).
+            'selectMacros'          => ['macro', 'value'],
             // Seit Zabbix 7.0 verfuegbar — spart einen zweiten HostGroup.get
             // Roundtrip plus N×M-Loop fuers Hostid→Groups-Mapping.
             'selectHostGroups'      => ['name'],
@@ -967,6 +971,61 @@ class NetworkTopologyData extends NetworkTopologyController {
         $current  = TopoDiff::snapshot($edges, $host_label);
         $baseline = NtCache::get('topo_baseline', $cache_parts);
         $base_arr = is_array($baseline) ? $baseline : null;
+
+        // Datenschutz (Review #11): die Baseline speichert Hostnamen. Verliert
+        // ein User den Zugriff auf einen Host, darf dessen Name nicht ueber den
+        // Diff als "removed" geleakt werden — und ein Rechteverlust ist keine
+        // physische Topologie-Aenderung. Baseline-Endpunkte, die nicht schon in
+        // der aktuellen host.get-Sicht stehen, gezielt gegen die Leserechte
+        // pruefen (ein Host kann aus der Auswahl fallen und doch sichtbar
+        // bleiben — der zaehlt weiter als echte Aenderung). Filter trifft
+        // compare UND ageOut, also leakt auch der gespeicherte Stand nicht.
+        if ($base_arr !== null) {
+            // Sichtbare Hosts aus den Knoten, NICHT aus einem $hosts-Array:
+            // respondData() bekommt kein host.get-Ergebnis (bei einem
+            // Cache-Treffer gibt es keins), und die numerischen Knoten-IDs sind
+            // genau die aktuell gezeigten echten Hosts. Ghost-/Internet-Knoten
+            // tragen nicht-numerische IDs und zaehlen hier ohnehin nicht (der
+            // ctype_digit-Filter unten laesst sie aus). Hier stand bis 5.5.12
+            // array_keys($hosts) — in der GitHub-Linie lebt dieser Block in
+            // doAction(), wo $hosts im Scope ist; hierher cherry-gepickt war die
+            // Variable undefiniert -> array_keys(null) -> Fatal, sobald eine
+            // Baseline gecacht war (APCu + zweiter Aufruf).
+            $sichtbar = [];
+            foreach ($nodes as $n) {
+                $nid = (string) ($n['id'] ?? '');
+                if ($nid !== '' && ctype_digit($nid)) {
+                    $sichtbar[$nid] = true;
+                }
+            }
+            $zu_pruefen = [];
+            foreach ($base_arr as $bk => $_) {
+                foreach (explode('|', TopoDiff::pairKey((string) $bk)) as $bid) {
+                    if ($bid !== '' && ctype_digit($bid) && !isset($sichtbar[$bid])) {
+                        $zu_pruefen[$bid] = true;
+                    }
+                }
+            }
+            if ($zu_pruefen) {
+                try {
+                    $noch = API::Host()->get([
+                        'output'       => ['hostid'],
+                        'hostids'      => array_keys($zu_pruefen),
+                        'preservekeys' => true,
+                    ]);
+                    if (is_array($noch)) {
+                        foreach ($noch as $hid => $_) {
+                            $sichtbar[(string) $hid] = true;
+                        }
+                    }
+                }
+                catch (\Throwable $e) {
+                    // Konservativ: nicht bestaetigte Hosts bleiben unsichtbar.
+                }
+            }
+            $base_arr = TopoDiff::filterByVisible($base_arr, $sichtbar);
+        }
+
         $topo_changes = TopoDiff::compare($base_arr, $current);
 
         // Alterung: was gerade nicht gemeldet wird, verschwindet nicht sofort
@@ -1084,6 +1143,10 @@ class NetworkTopologyData extends NetworkTopologyController {
              'scope_total'         => $scope_info !== null ? $scope_info['total'] : 0,
              'scope_shown'         => $scope_info !== null ? count($scope_info['hostids']) : 0,
              'scope_complete_hops' => $scope_info !== null ? $scope_info['complete_hops'] : 0,
+             // Host+hops mode: wie viele Host-Chunks beim Graph-Aufbau mit einem
+             // API-Fehler ausfielen — dann kann der Hop-Graph Kanten vermissen.
+             // 0 = vollstaendig (wie edges_truncated). Nicht still verschlucken.
+             'scope_graph_incomplete' => $scope_info !== null ? (int) ($scope_info['graph_incomplete'] ?? 0) : 0,
              // Review §12: versionierter, dokumentierter API-Contract. Additiv,
              // bestehende Top-Level-Felder bleiben unveraendert.
              'api_version'     => self::API_VERSION,
@@ -1183,26 +1246,77 @@ class NetworkTopologyData extends NetworkTopologyController {
                 'output'           => ['hostid', 'host', 'name'],
                 'selectInterfaces' => ['ip'],
                 'selectTags'       => ['tag', 'value'],
+                // {$NT_PARENT}-Macro, damit Hosting-Kanten auch im Hop-Graphen
+                // entstehen (nt:parent-Kanten sind hop-relevant, HopScope.php).
+                'selectMacros'     => ['macro', 'value'],
                 'monitored_hosts'  => true,
                 'preservekeys'     => true
             ]);
+            // API::Host()->get kann bei einem Fehler false liefern (der
+            // Frontend-Wrapper gibt bei JEDEM Fehler false zurueck, Review #2).
+            // Ohne diese Pruefung liefe array_fill_keys(array_keys($hosts)...)
+            // weiter unten in array_keys(false) -> TypeError -> HTTP 500 —
+            // dieselbe Klasse wie der respondData-500, und ausgerechnet im
+            // Hop-Pfad, der gerade gehaertet wurde. Leeren, als unvollstaendig
+            // markierten Scope zurueckgeben und NICHT cachen, damit ein
+            // transienter Fehler nicht EDGE_GRAPH_TTL lang eine leere Karte
+            // festhaelt.
+            if (!is_array($hosts)) {
+                return ['graph_incomplete' => 1] + HopScope::cap([], self::MAX_HOP_HOSTS);
+            }
             $edges = [];
+            // Wie viele Host-Chunks ihre Nachbar-Item-Abfrage mit einem
+            // API-Fehler quittiert haben (Review-Nachtrag zu #10). Deren Hosts
+            // fehlen dann im Graphen — der Graph ist unvollstaendig, und das
+            // soll NICHT still passieren (wie edges_truncated: 0 = vollstaendig).
+            $fehlende_chunks = 0;
             if ($hosts) {
-                $items = API::Item()->get([
-                    'output'       => ['itemid', 'hostid', 'key_', 'name', 'value_type'],
-                    'hostids'      => array_keys($hosts),
-                    // Dieselben Nachbar-Schluessel wie die Hauptabfrage. Hier
-                    // stand eine eigene, kuerzere Liste ohne uplink.id und mndp.
-                    'search'       => ['key_' => self::EDGE_NAME_KEYS],
-                    'searchByAny'  => true,
-                    'monitored'    => true,
-                    'preservekeys' => true
-                ]);
-                $lv = $this->fetchLastValues($items);
-                foreach ($items as $iid => &$it) {
-                    $it['lastvalue'] = $lv['values'][$iid] ?? null;
+                // Nachbar-Items in Host-Chunks holen (Review #10). Vorher zog
+                // EIN item.get die Nachbar-Items ALLER sichtbaren Hosts in einer
+                // Abfrage, samt der Fenster-Scan der letzten Werte ueber dasselbe
+                // unbegrenzte Set lief — bei grossen Bestaenden der Spitzenwert,
+                // noch bevor ueberhaupt auf die Nachbarschaft gekappt wird. Jetzt
+                // bleibt jede Abfrage auf HOSTS_PER_ITEM_CHUNK begrenzt, wie die
+                // Hauptabfrage (L552).
+                //
+                // Akkumuliert wird trotzdem: der LLDP-Kantenbau loest Nachbarnamen
+                // HOSTUEBERGREIFEND auf und braucht danach den vollen Item-Satz.
+                // Das chunked also die Abfrage, nicht den Gesamtspeicher des
+                // Graph-Aufbaus — ein inkrementeller Adjazenzindex (BFS, der nur
+                // die Frontier expandiert, statt den ganzen Graphen zu bauen)
+                // waere der naechste, groessere Schritt und braucht einen eigenen
+                // Lasttest an einem realistisch grossen Bestand.
+                $items = [];
+                foreach (array_chunk(array_keys($hosts), self::HOSTS_PER_ITEM_CHUNK) as $chunk_hids) {
+                    $teil = API::Item()->get([
+                        'output'       => ['itemid', 'hostid', 'key_', 'name', 'value_type'],
+                        'hostids'      => $chunk_hids,
+                        // Dieselben Nachbar-Schluessel wie die Hauptabfrage. Hier
+                        // stand eine eigene, kuerzere Liste ohne uplink.id und mndp.
+                        'search'       => ['key_' => self::EDGE_NAME_KEYS],
+                        'searchByAny'  => true,
+                        'monitored'    => true,
+                        'preservekeys' => true
+                    ]);
+                    if ($teil === false) {
+                        // API-Fehler fuer diesen Chunk (der Frontend-Wrapper
+                        // gibt bei JEDEM Fehler false zurueck, Review #2): die
+                        // Hosts dieses Chunks fehlen im Graphen. Zaehlen, damit
+                        // es gemeldet statt verschluckt wird.
+                        $fehlende_chunks++;
+                        continue;
+                    }
+                    if (!is_array($teil) || !$teil) {
+                        // Leeres Ergebnis ist legitim (Chunk ohne Nachbar-Items)
+                        // und keine Unvollstaendigkeit — nur nichts beizutragen.
+                        continue;
+                    }
+                    $lv = $this->fetchLastValues($teil);
+                    foreach ($teil as $iid => $it) {
+                        $it['lastvalue'] = $lv['values'][$iid] ?? null;
+                        $items[$iid]     = $it;
+                    }
                 }
-                unset($it);
                 $metrics = MetricExtractor::extract($items);
                 // Erst die Tags, dann die Kanten: nt:lldp haengt an den Hosts
                 // und muss stehen, bevor der Kantenbau seine Namenstabelle
@@ -1236,14 +1350,21 @@ class NetworkTopologyData extends NetworkTopologyController {
                 }
             }
             $graph = [
-                'edges'   => $edges,
-                'visible' => array_fill_keys(array_map('strval', array_keys($hosts)), true),
+                'edges'      => $edges,
+                'visible'    => array_fill_keys(array_map('strval', array_keys($hosts)), true),
+                // Im Cache-Eintrag mitfuehren, damit auch ein Cache-Treffer im
+                // 60-s-Fenster die Unvollstaendigkeit weitermeldet.
+                'incomplete' => $fehlende_chunks,
             ];
             NtCache::set('edge_graph', [], $graph, self::EDGE_GRAPH_TTL);
         }
 
+        // Fehlende Chunks aus Aufbau ODER Cache-Treffer (?? 0 fuer alte
+        // Cache-Eintraege ohne das Feld) in jedes cap()-Ergebnis mergen.
+        $incomplete = (int) ($graph['incomplete'] ?? 0);
+
         if (!isset($graph['visible'][$hostid])) {
-            return HopScope::cap([], self::MAX_HOP_HOSTS);
+            return ['graph_incomplete' => $incomplete] + HopScope::cap([], self::MAX_HOP_HOSTS);
         }
         $links = array_merge(ManualLinks::loadShared(), ManualLinks::loadPersonal());
         $dist  = HopScope::distances($hostid, $hops, $graph['edges'], $links);
@@ -1258,7 +1379,7 @@ class NetworkTopologyData extends NetworkTopologyController {
             return isset($graph['visible'][(string) $id]);
         }, ARRAY_FILTER_USE_KEY);
 
-        return HopScope::cap($dist, self::MAX_HOP_HOSTS);
+        return ['graph_incomplete' => $incomplete] + HopScope::cap($dist, self::MAX_HOP_HOSTS);
     }
 
     /**

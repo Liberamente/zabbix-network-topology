@@ -380,3 +380,100 @@ export function aggregateEndpoints(nodes, edges, offen) {
 
     return { nodes: outNodes, edges: outEdges };
 }
+
+/**
+ * Gast-Hosts (VMs/Pods) je Traeger einklappen — das Gegenstueck zu
+ * aggregateEndpoints, aber fuer ECHTE Hosts, die ueber eine Hosting-Kante
+ * (kind='hosts', aus nt:parent / {$NT_PARENT}) an genau einem Traeger haengen.
+ * Loest das "400 Pods an einem Node"-Problem: viele Blatt-Gaeste werden zu
+ * einem aufklappbaren Buendel.
+ *
+ * Reine Funktion. Nutzt bewusst DIESELBE _isEndpointBundle-Maschinerie (Style,
+ * Tap-Handler zum Aufklappen, Ausschluss aus der Kabel-Logik), damit kein
+ * zweiter Renderpfad entsteht; `offen` ist derselbe Aufklappzustand wie bei den
+ * Endgeraeten (der Traeger ist der Schluessel).
+ *
+ * Gebuendelt wird nur ein Gast, der NUR an seinem Traeger haengt (Grad 1) und
+ * selbst kein Traeger ist — so bleibt eine Kette (Hypervisor→Node→Pod) sichtbar
+ * und nur die Blatt-Ebene klappt zusammen. Geister laesst aggregateEndpoints.
+ */
+export function aggregateHostingChildren(nodes, edges, offen) {
+    const auf = offen || {};
+    const byId = Object.create(null);
+    (nodes || []).forEach(function(n) { byId[String(n.id)] = n; });
+
+    const grad = Object.create(null);
+    const carrierOf  = Object.create(null);   // childId -> carrierId (hosts-Kante)
+    const istTraeger = Object.create(null);   // carrierId -> true
+    (edges || []).forEach(function(e) {
+        const a = String(e.source || e.from || '');
+        const b = String(e.target || e.to || '');
+        if (!a || !b || a === b) return;
+        grad[a] = (grad[a] || 0) + 1;
+        grad[b] = (grad[b] || 0) + 1;
+        if (e.kind === 'hosts' || e._type === 'hosts') {
+            carrierOf[b]  = a;   // Parent(a) → Kind(b)
+            istTraeger[a] = true;
+        }
+    });
+
+    const proCarrier = Object.create(null);   // carrierId -> [gastNode, ...]
+    (nodes || []).forEach(function(n) {
+        const id = String(n.id);
+        const carrier = carrierOf[id];
+        if (!carrier || !byId[carrier]) return;
+        if (n._isGhost) return;              // Geister: aggregateEndpoints
+        if ((grad[id] || 0) !== 1) return;   // haengt an mehr als dem Traeger
+        if (istTraeger[id]) return;          // selbst Traeger → Kette behalten
+        (proCarrier[carrier] = proCarrier[carrier] || []).push(n);
+    });
+
+    const gebuendelt = Object.create(null);   // gastId -> carrierId
+    Object.keys(proCarrier).forEach(function(c) {
+        if (auf[c]) return;
+        if (proCarrier[c].length < BUENDEL_AB) return;
+        proCarrier[c].forEach(function(n) { gebuendelt[String(n.id)] = c; });
+    });
+
+    const outNodes = [];
+    (nodes || []).forEach(function(n) { if (!gebuendelt[String(n.id)]) outNodes.push(n); });
+    Object.keys(proCarrier).forEach(function(c) {
+        if (auf[c] || proCarrier[c].length < BUENDEL_AB) return;
+        const kinder = proCarrier[c];
+        // Buendel traegt die SCHLIMMSTE Gast-Severity + Problemsumme, damit ein
+        // kritischer Gast nicht aus der KPI faellt, nur weil er eingeklappt ist.
+        let sev = 0, probs = 0;
+        kinder.forEach(function(k) {
+            if ((k.severity || 0) > sev) sev = k.severity || 0;
+            probs += (k.problems || 0);
+        });
+        outNodes.push({
+            id: 'guests_' + c,
+            label: t('bundle.guests', { n: kinder.length }),
+            host: '',
+            type: 'bundle',
+            severity: sev,
+            problems: probs,
+            _isEndpointBundle: true,   // gleiche Maschinerie (Style/Tap/Ausschluss)
+            _bundleSwitch: c,          // Aufklapp-Schluessel = Traeger-ID
+            _childCount: kinder.length,
+            groups: [], traffic: { in: 0, out: 0 }
+        });
+    });
+
+    const outEdges = [];
+    const bk = Object.create(null);
+    (edges || []).forEach(function(e) {
+        const a = String(e.source || e.from || '');
+        const b = String(e.target || e.to || '');
+        const cA = gebuendelt[a];
+        const cB = gebuendelt[b];
+        if (!cA && !cB) { outEdges.push(e); return; }
+        const c = cA || cB;
+        if (bk[c]) return;
+        bk[c] = true;
+        outEdges.push({ source: c, target: 'guests_' + c, _isBundleEdge: true });
+    });
+
+    return { nodes: outNodes, edges: outEdges };
+}

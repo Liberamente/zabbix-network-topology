@@ -6,6 +6,7 @@ declare(strict_types = 1);
 namespace Modules\NetworkTopology\Actions;
 
 use API;
+use Modules\NetworkTopology\Topology\ProblemLoader;
 
 /**
  * NetworkTopologyCompliance
@@ -105,17 +106,20 @@ class NetworkTopologyCompliance extends NetworkTopologyController {
         $stale_problem_hosts = [];   // hid => true wenn mind. ein altes krit Problem
         if ($hostids) {
             $cutoff = time() - (self::STALE_PROBLEM_DAYS * 86400);
+            // KEIN selectHosts: problem.get kennt ihn auf keiner Version -> false.
+            // objectid in die Ausgabe und Host ueber triggerHostMap aufloesen.
             $problems = API::Problem()->get([
-                'output'      => ['clock'],
+                'output'      => ['objectid', 'clock'],
                 'hostids'     => $hostids,
                 'severities'  => [4, 5],
                 'time_till'   => $cutoff,
-                'selectHosts' => ['hostid'],
                 'limit'       => max(1000, count($hostids) * 5),
             ]);
+            if (!is_array($problems)) $problems = [];
+            $trigger_hosts = ProblemLoader::triggerHostMap($problems);
             foreach ($problems as $p) {
-                foreach ($p['hosts'] ?? [] as $ph) {
-                    $stale_problem_hosts[$ph['hostid']] = true;
+                foreach ($trigger_hosts[(string) ($p['objectid'] ?? '')] ?? [] as $hid) {
+                    $stale_problem_hosts[$hid] = true;
                 }
             }
         }

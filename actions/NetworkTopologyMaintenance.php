@@ -85,9 +85,21 @@ class NetworkTopologyMaintenance extends NetworkTopologyController {
     }
 
     protected function checkPermissions(): bool {
-        // Wartung anlegen ist eine Admin-Aktion (deckt sich mit can_edit im
-        // Frontend, das den Menue-Eintrag nur Admins zeigt).
-        return $this->getUserType() >= USER_TYPE_ZABBIX_ADMIN;
+        // Mindestens Admin — darunter gibt es die Aktion gar nicht.
+        if ($this->getUserType() < USER_TYPE_ZABBIX_ADMIN) {
+            return false;
+        }
+
+        // ABER: der User-Typ allein reicht nicht. Eine Zabbix-Rolle kann einem
+        // Admin das Bearbeiten von Wartungen (und die Konfigurations-UI)
+        // ausdruecklich verbieten. Die interne API erzwingt diese feineren
+        // Rollenrechte NICHT nach: CLocalApiClient::isAllowedMethod() prueft sie
+        // nur im EXTERNEN API-Ausfuehrungsmodus, nicht beim Aufruf aus einem
+        // Frontend-Controller. Ohne die Pruefung hier liesse das Modul einen
+        // Admin eine Wartung anlegen, die seine Rolle verbietet — dieselben zwei
+        // Regeln verlangt der native Wartungscontroller (CControllerMaintenance*).
+        return $this->checkAccess(\CRoleHelper::UI_CONFIGURATION_MAINTENANCE)
+            && $this->checkAccess(\CRoleHelper::ACTIONS_EDIT_MAINTENANCE);
     }
 
     protected function doAction(): void {
@@ -178,10 +190,20 @@ class NetworkTopologyMaintenance extends NetworkTopologyController {
             return;
         }
 
-        $maintenanceid = $res['maintenanceids'][0] ?? null;
+        // Der Frontend-API-Wrapper WIRFT bei einem Fehler nicht — er gibt false
+        // zurueck und legt die Meldung auf den Stack (CFrontendApiWrapper). Der
+        // catch oben faengt also keinen API-Fehler. Ohne diese Pruefung meldete
+        // eine fehlgeschlagene Anlage 'ok:true' mit maintenanceid:null, und der
+        // Client zeigte einen Erfolgstoast.
+        if ($res === false || empty($res['maintenanceids'][0])) {
+            $this->fail(implode('; ', array_column(get_and_clear_messages(), 'message'))
+                ?: _('The maintenance period could not be created.'));
+            return;
+        }
+
         $this->jsonResponse([
             'ok'            => true,
-            'maintenanceid' => $maintenanceid,
+            'maintenanceid' => (string) $res['maintenanceids'][0],
             'name'          => $name,
             'hosts'         => count($hosts),
             'label'         => $label,

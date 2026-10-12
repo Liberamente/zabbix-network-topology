@@ -147,6 +147,25 @@ check('hoechstens vier',            count($tagLldp(['a', 'b', 'c', 'd', 'e'])['h
 check('Steuerzeichen verworfen',    $tagLldp(["sw\x07a"]), []);
 check('zu lang verworfen',          $tagLldp([str_repeat('x', 200)]), []);
 
+// ── {$NT_PARENT}-Macro: Traeger-Beziehung als Macro (Tag gewinnt) ──────────
+echo "\n  HostTagParser — {\$NT_PARENT}-Macro\n\n";
+
+$parMac = static function (array $tags, array $macros): ?string {
+    return HostTagParser::parse([
+        'h1' => ['host' => 'h', 'name' => 'h', 'tags' => $tags, 'macros' => $macros],
+    ])['parent']['h1'] ?? null;
+};
+
+check('Macro ohne Tag -> parent aus Macro',
+    $parMac([], [['macro' => '{$NT_PARENT}', 'value' => 'pve-01']]), 'pve-01');
+check('Tag gewinnt gegen Macro',
+    $parMac([['tag' => 'nt:parent', 'value' => 'tag-host']],
+            [['macro' => '{$NT_PARENT}', 'value' => 'macro-host']]), 'tag-host');
+check('anderes Macro wird ignoriert',
+    $parMac([], [['macro' => '{$SNMP_COMMUNITY}', 'value' => 'public']]), null);
+check('zu langer Macro-Wert wird verworfen',
+    $parMac([], [['macro' => '{$NT_PARENT}', 'value' => str_repeat('x', 200)]]), null);
+
 echo "\n", $failures === 0
     ? "=== ALLE TESTS PASS ===\n"
     : "=== {$failures} TEST(S) FEHLGESCHLAGEN ===\n";

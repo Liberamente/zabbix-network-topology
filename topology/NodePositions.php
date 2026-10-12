@@ -5,7 +5,6 @@ declare(strict_types = 1);
 
 namespace Modules\NetworkTopology\Topology;
 
-use API;
 use APP;
 use CProfile;
 
@@ -156,15 +155,10 @@ final class NodePositions {
             return [];
         }
 
-        $config                   = $module->getConfig();
-        $config[self::CONFIG_KEY] = $clean;
-
-        API::Module()->update([[
-            'moduleid' => $module->getModuleId(),
-            'config'   => $config
-        ]]);
-
-        $module->setConfig($config);
+        // Frisch lesen + nur diesen Schluessel mergen (Review #4: sonst
+        // ueberschreibt ein gleichzeitiges Speichern der Links diese
+        // Anordnung). false-Rueckgabe (Review #2) wird dort geprueft.
+        SharedConfig::write($module, self::CONFIG_KEY, $clean);
 
         return $clean;
     }

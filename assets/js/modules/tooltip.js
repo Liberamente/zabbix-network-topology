@@ -9,8 +9,9 @@
 //   _sparkCache   — hostid -> {cpu:[...], ping:[...], since, ts}
 //   _sparkPending — hostid -> true, verhindert parallele Fetches
 
-import { esc, fmt, fmtItemValue, isDark } from './utils.js';
+import { esc, fmt, fmtItemValue, isDark, paintAdaptive } from './utils.js';
 import { utilizationColor, utilizationPct } from './traffic.js';
+import { meta as qualiMeta, QUALITY } from './quality.js';
 import { t } from './i18n.js';
 import { fetchJson } from './http.js';
 
@@ -31,6 +32,7 @@ document.body.appendChild(_tip);
 
 function _syncTheme() {
     _tip.classList.toggle('nt-dark', isDark());
+    paintAdaptive(_tip);
 }
 
 const _sparkCache   = {};
@@ -276,7 +278,7 @@ export function showEdgeTip(evt, edgeData, srcLabel, tgtLabel) {
             ? '<div style="font-size:10px;color:var(--nt-text-2);margin-bottom:5px">'
                 + '<span style="color:var(--nt-muted)">Port</span> '
                 + '<b>' + esc(pSrc || '?') + '</b> <span style="color:var(--nt-muted)">↔</span> <b>' + esc(pTgt || '?') + '</b>'
-                + (edgeData.perLink ? ' <span style="font-size:9px;color:#16a34a;font-weight:600;text-transform:uppercase;letter-spacing:0.04em">per-Link</span>' : '')
+                + (edgeData.perLink ? ' <span style="font-size:9px;color:#16a34a;font-weight:600;text-transform:uppercase;letter-spacing:0.04em">' + qualiMeta(QUALITY.MEASURED).glyph + ' per-Link</span>' : '')
                 + '</div>'
             : '';
 

@@ -509,6 +509,65 @@ if (epb) {
     pruefe('... und die Buendel-Kante auch',          epb.bundleEdgeEl, true);
 }
 
+console.log('\n  Gaeste (VMs/Pods) je Traeger buendeln\n');
+const ghb = szenario('guests', { lang: 'en_US' }, `
+    const A = await import(${JSON.stringify(MODULE('aggregation.js'))});
+    const host = (id, extra) => Object.assign({ id, type: 'server', severity: 0, problems: 0 }, extra || {});
+    // pve01 traegt 4 Blatt-VMs (vm4 kritisch) + vm5 mit Zusatzkante (kein Blatt).
+    // knode haengt selbst an pve01 (Kette) und traegt 3 Pods.
+    const nodes = [
+        host('pve01', { type: 'hypervisor' }),
+        host('vm1'), host('vm2'), host('vm3'), host('vm4', { severity: 5, problems: 2 }),
+        host('vm5'), host('sw1', { type: 'switch' }),
+        host('knode'), host('pod1'), host('pod2'), host('pod3'),
+    ];
+    const edges = [
+        { source: 'pve01', target: 'vm1', kind: 'hosts' },
+        { source: 'pve01', target: 'vm2', kind: 'hosts' },
+        { source: 'pve01', target: 'vm3', kind: 'hosts' },
+        { source: 'pve01', target: 'vm4', kind: 'hosts' },
+        { source: 'pve01', target: 'vm5', kind: 'hosts' },
+        { source: 'vm5',   target: 'sw1' },
+        { source: 'pve01', target: 'knode', kind: 'hosts' },
+        { source: 'knode', target: 'pod1', kind: 'hosts' },
+        { source: 'knode', target: 'pod2', kind: 'hosts' },
+        { source: 'knode', target: 'pod3', kind: 'hosts' },
+    ];
+    const zu = A.aggregateHostingChildren(nodes, edges, {});
+    const ids = zu.nodes.map((n) => n.id).sort();
+    const bpve = zu.nodes.find((n) => n.id === 'guests_pve01');
+    const bknode = zu.nodes.find((n) => n.id === 'guests_knode');
+    const auf = A.aggregateHostingChildren(nodes, edges, { pve01: true });
+    console.log(JSON.stringify({
+        pveBuendel: !!bpve,
+        pveKinder: bpve ? bpve._childCount : 0,
+        pveSev: bpve ? bpve.severity : -1,
+        pveProbs: bpve ? bpve.problems : -1,
+        vm5Bleibt: ids.indexOf('vm5') >= 0,
+        knodeBleibt: ids.indexOf('knode') >= 0,
+        podBuendel: !!bknode,
+        podKinder: bknode ? bknode._childCount : 0,
+        vmsWeg: ['vm1','vm2','vm3','vm4'].every((x) => ids.indexOf(x) < 0),
+        aufKeinPveBuendel: auf.nodes.some((n) => n.id === 'guests_pve01') === false,
+        aufVmsEinzeln: ['vm1','vm2','vm3','vm4'].every((x) => auf.nodes.map((n)=>n.id).indexOf(x) >= 0),
+        buendelEdge: zu.edges.filter((e) => e._isBundleEdge).length,
+    }));
+`);
+if (ghb) {
+    pruefe('pve01 buendelt seine VMs',            ghb.pveBuendel, true);
+    pruefe('... vier Blatt-VMs (vm5 nicht)',      ghb.pveKinder, 4);
+    pruefe('... Buendel traegt worst severity 5', ghb.pveSev, 5);
+    pruefe('... und die Problemsumme (2)',        ghb.pveProbs, 2);
+    pruefe('VM mit Zusatzkante bleibt sichtbar',  ghb.vm5Bleibt, true);
+    pruefe('k8s-node (Traeger) bleibt — Kette',   ghb.knodeBleibt, true);
+    pruefe('node buendelt seine Pods',            ghb.podBuendel, true);
+    pruefe('... drei Pods',                       ghb.podKinder, 3);
+    pruefe('die VMs verschwinden einzeln',        ghb.vmsWeg, true);
+    pruefe('aufgeklappt: kein pve-Buendel',       ghb.aufKeinPveBuendel, true);
+    pruefe('aufgeklappt: VMs wieder da',          ghb.aufVmsEinzeln, true);
+    pruefe('zwei Buendel-Kanten (pve + node)',    ghb.buendelEdge, 2);
+}
+
 console.log('\n  Port-Sparkline: SVG aus Zahlen\n');
 const spk = szenario('spark-el', { lang: 'en_US' }, `
     const dom = miniDom();
@@ -886,6 +945,39 @@ if (stat) {
     pruefe('Geist schlaegt eine Severity',    stat.geistSev, ['NOT MONITORED', '#94a3b8']);
     pruefe('Text ist uebersetzbar',           stat.geistTxt, 'NICHT UEBERWACHT');
     pruefe('istGeist trennt sauber',          stat.istGeist, [true, false, false]);
+}
+
+// quality.js: der fehlende Wert ist NICHT die 0. Genau das war die Luecke —
+// ein nacktes "—" (fehlend) und ein gemessenes "0 b/s" sahen gleich harmlos
+// aus. classify() trennt das, und stale schlaegt estimated (Frische zuerst).
+console.log('\n  quality.js: vier Zustaende, fehlender Wert ist nicht 0\n');
+const qual = szenario('quality', { lang: 'en_US' }, `
+    const Q = await import(${JSON.stringify(MODULE('quality.js'))});
+    const c = (v, o) => Q.classify(v, o);
+    console.log(JSON.stringify({
+        null_:    c(null),
+        leer:     c(''),
+        nan:      c(NaN),
+        null0:    c(0),
+        wert:     c(42),
+        stale:    c(42, { stale: true }),
+        est:      c(42, { estimated: true }),
+        staleEst: c(42, { stale: true, estimated: true }),
+        metaUnk:  Q.meta('unknown').key,
+        metaMeas: Q.meta(Q.QUALITY.MEASURED).key,
+    }));
+`);
+if (qual) {
+    pruefe('null -> unknown',          qual.null_,    'unknown');
+    pruefe('leerer String -> unknown', qual.leer,     'unknown');
+    pruefe('NaN -> unknown',           qual.nan,      'unknown');
+    pruefe('echte 0 ist gemessen',     qual.null0,    'measured');
+    pruefe('Wert ist gemessen',        qual.wert,     'measured');
+    pruefe('stale schlaegt measured',  qual.stale,    'veraltet');
+    pruefe('estimated erkannt',        qual.est,      'estimated');
+    pruefe('stale schlaegt estimated', qual.staleEst, 'veraltet');
+    pruefe('meta-Schluessel unknown',  qual.metaUnk,  'quality.unknown');
+    pruefe('meta-Schluessel measured', qual.metaMeas, 'quality.measured');
 }
 
 // Eine Geisterzeile darf KEINEN Link nach Zabbix tragen: ihre id ist
@@ -1775,6 +1867,38 @@ if (lq) {
     pruefe('LLDP-Q: Reporter-Label escaped da',   lq.labelEsc,   true);
     pruefe('LLDP-Q: Nachbarname escaped da',      lq.nachbarEsc, true);
     pruefe('LLDP-Q: Matched-Zahl steht da',       lq.matched,    true);
+}
+
+// ── History: offene Probleme ueber eventid, nicht ueber Trigger-Namen ─────────
+// Review #8: das Frontend schloss Probleme ueber open[name]. Zwei gleichnamige
+// Trigger (oder mehrere Probleme desselben Triggers) ueberschrieben sich, eine
+// Recovery loeschte das falsche Problem. Jetzt laeuft es ueber die eventid
+// (PROBLEM: id, RECOVERY: pid = geschlossene Problem-eventid).
+console.log('\n  History: Problem-Identitaet statt Trigger-Name\n');
+const hist = szenario('history', { selected_groupids: [] }, `
+    const { severitiesFromEvents } = await import(${JSON.stringify(MODULE('history-mode.js'))});
+    // h1: zwei Trigger GLEICHEN Namens; der zweite (sev 3) wird behoben, der
+    // erste (sev 5) bleibt offen. Ueber den Namen loeschte die Recovery beide.
+    const a = { h1: [
+        { ts: 100, val: 1, id: 'eA', sev: 5, name: 'Disk full' },
+        { ts: 110, val: 1, id: 'eB', sev: 3, name: 'Disk full' },
+        { ts: 120, val: 0, pid: 'eB' }
+    ]};
+    // h2: ein zum Range-Start offenes Problem (pre), das im Fenster recovert.
+    const b = { h2: [
+        { ts: 0,  val: 1, id: 'eP', sev: 4, name: 'X', pre: true },
+        { ts: 50, val: 0, pid: 'eP' }
+    ]};
+    console.log(JSON.stringify({
+        kollision: severitiesFromEvents(a, 130),
+        preVor:    severitiesFromEvents(b, 20),
+        preNach:   severitiesFromEvents(b, 80)
+    }));
+`);
+if (hist) {
+    pruefe('History: gleichnamiger Trigger ueberlebt fremde Recovery', hist.kollision, { h1: 5 });
+    pruefe('History: Open-at-start aktiv vor Recovery',                hist.preVor,    { h2: 4 });
+    pruefe('History: Open-at-start zu nach Recovery',                  hist.preNach,   {});
 }
 
 console.log('');

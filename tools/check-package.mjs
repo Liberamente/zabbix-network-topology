@@ -129,6 +129,22 @@ if (mb > 8) {
     problems++;
 }
 
+// Versions-Gleichstand: manifest.json (Modul-Version) und package.json
+// (Build/npm) duerfen nicht auseinanderlaufen — sonst zeigt package.json eine
+// veraltete Version, und kein anderes Gate faellt darauf auf (Review 2026-10-13).
+try {
+    const mv = JSON.parse(readFileSync('manifest.json', 'utf8')).version;
+    const pv = JSON.parse(readFileSync('package.json', 'utf8')).version;
+    if (String(mv) !== String(pv)) {
+        console.log(`  [FAIL] Version driftet: manifest.json ${mv} != package.json ${pv} — beide gleich halten.`);
+        problems++;
+    }
+}
+catch (e) {
+    console.log(`  [FAIL] Version aus manifest/package nicht lesbar: ${e.message}`);
+    problems++;
+}
+
 console.log('');
 if (problems) {
     console.log(`check-package: ${problems} Problem(e) — so darf das Paket nicht raus.`);

@@ -41,6 +41,7 @@ import { toast } from './toast.js';
 import { parseQuery, matchQuery, nodeToQueryFields } from './query.js';
 import { isLinkModeActive, enterLinkMode, exitLinkMode } from './manual-links.js';
 import { setupExportMenu } from './export.js';
+import { setupFdbFinder } from './fdb-finder.js';
 import { addHistoryButton } from './history-mode.js';
 import { LAYOUT_OPTIONS, buildLayoutConfig } from './layouts.js';
 import { setupPresetsUI } from './presets-ui.js';
@@ -750,6 +751,9 @@ export function setupToolbar(cy, wrap, nodes, groupNames, isDark, useLayout) {
 
     // Export-Menü (PNG/PDF/HTML/Mail) — eigenständiges Modul
     setupExportMenu(bar, isFirstRun);
+
+    // MAC-Finder (FDB-Suche) — Knopf + schwebendes Panel, eigenständiges Modul
+    setupFdbFinder(bar, isFirstRun);
 
     // Layout-Presets: Save / SaveAs / Load / Delete für komplette
     // Visual-States (Positionen + Pins + Notes + Manual-Links).

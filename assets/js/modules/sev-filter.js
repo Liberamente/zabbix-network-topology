@@ -39,6 +39,11 @@ const _sevFilter = loadSevFilter();
 // localStorage — das ist eher ein Ad-hoc-Filter ("zeig mir gerade die
 // Toten") als eine Dauer-Praeferenz.
 let _offlineOnly = false;
+// Setzt die Pills/Ghost-Pille optisch auf den aktuellen _sevFilter-Zustand.
+// Von buildSevFilter belegt (Closure ueber wrap), damit setSevLevels() den
+// Filter von aussen (KPI-Kacheln) aendern kann, ohne dass Pills und Karte
+// auseinanderlaufen. Vor dem ersten Build ein No-op.
+let _syncUI = null;
 
 // Filter-Logik einmal als Helper, wird beim Build initial und bei jedem
 // Pillen-Klick erneut angewendet. Empty Set → alle sichtbar via reset-style.
@@ -68,6 +73,27 @@ function applyFilter(cy) {
     });
 }
 
+// Filter von aussen setzen (z.B. Klick auf eine KPI-Kachel): ersetzt die aktive
+// Auswahl durch GENAU diese Stufen, zieht Pills + Offline-Zustand optisch nach,
+// wendet an und persistiert. `levels`: Array<number> (darf SEV_GHOST enthalten);
+// [] = Filter aus, alles sichtbar. Offline-Only wird dabei aufgehoben, weil es
+// die Severity-Auswahl sonst ueberschreiben wuerde (siehe applyFilter).
+export function setSevLevels(cy, levels) {
+    _sevFilter.clear();
+    (levels || []).forEach(function(n) { _sevFilter.add(n); });
+    _offlineOnly = false;
+    if (_syncUI) _syncUI();
+    applyFilter(cy);
+    saveSevFilter(_sevFilter);
+}
+
+// Die aktuell aktiven Stufen als Array — fuer den Aufrufer, um Toggle zu
+// entscheiden (gleiche Auswahl nochmal geklickt → leeren) und die passende
+// Kachel optisch zu markieren.
+export function activeSevLevels() {
+    return Array.from(_sevFilter);
+}
+
 export function buildSevFilter(bar, cy) {
     if (document.getElementById('nt-sev-filter')) return;
     const wrap = document.createElement('div');
@@ -90,6 +116,7 @@ export function buildSevFilter(bar, cy) {
      { sev: 5, col: '#991b1b', lbl: t('sev.crit') }].forEach(function(sd) {
         const pill = document.createElement('button');
         pill.dataset.sev = sd.sev;
+        pill.dataset.col = sd.col;   // fuer _syncUI(): Restyle ohne SEV_COL-Lookup
         pill.style.cssText = 'display:flex;align-items:center;gap:3px;padding:2px 7px;'
             + 'border-radius:12px;border:1.5px solid ' + sd.col
             + ';background:transparent;cursor:pointer;font-size:11px;color:' + sd.col
@@ -193,6 +220,29 @@ export function buildSevFilter(bar, cy) {
         applyFilter(cy);
     });
     wrap.appendChild(offBtn);
+
+    // Pills/Ghost/Offline optisch auf _sevFilter + _offlineOnly ziehen. Wird
+    // von setSevLevels() aufgerufen, wenn der Filter von aussen gesetzt wird
+    // (KPI-Kachel-Klick) — sonst saehe man die Karte gefiltert, die Pills aber
+    // unberuehrt. Die Sev-Pills restylen ueber ihr dataset.col; die Ghost-Pille
+    // inline, weil ihr gStil()-Closure hier nicht im Scope ist.
+    _syncUI = function() {
+        wrap.querySelectorAll('button[data-sev]').forEach(function(b) {
+            const a = _sevFilter.has(parseInt(b.dataset.sev, 10));
+            const c = b.dataset.col;
+            b.style.background    = a ? c + '33' : 'transparent';
+            b.style.boxShadow     = a ? '0 0 0 2px ' + c + '44' : 'none';
+            b.style.opacity       = _offlineOnly ? '0.4' : '';
+            b.style.pointerEvents = _offlineOnly ? 'none' : '';
+        });
+        const gp = document.getElementById('nt-sev-ghost');
+        if (gp) {
+            const a = _sevFilter.has(SEV_GHOST);
+            gp.style.background = a ? '#94a3b833' : 'transparent';
+            gp.style.boxShadow  = a ? '0 0 0 2px #94a3b844' : 'none';
+        }
+        _setOffStyle();
+    };
 
     const clr = document.createElement('button');
     clr.textContent = '\u2715';

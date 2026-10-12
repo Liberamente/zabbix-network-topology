@@ -161,6 +161,40 @@ class TopoDiff {
     }
 
     /**
+     * Baseline-Eintraege wegfiltern, deren realer Host-Endpunkt NICHT in der
+     * Menge sichtbarer Hostids steht (Review #11, Datenschutz).
+     *
+     * Die Schluessel tragen die Host-IDs ("idA|idB[#port]"). Ein Endpunkt, der
+     * eine numerische Hostid ist, muss in $visible stehen — sonst taucht ein
+     * Host, auf den der aufrufende User den Zugriff verloren hat, mit seinem in
+     * der Baseline gespeicherten Namen als "removed" auf. Nicht-numerische
+     * Endpunkte (Ghosts, Internet-Wolke) bleiben: sie tragen keinen aus Zabbix
+     * stammenden Hostnamen, den man leaken koennte.
+     *
+     * Rein und damit ohne Datenbank testbar; der Aufrufer baut $visible via
+     * host.get, das die Leserechte durchsetzt.
+     *
+     * @param array              $baseline  topo_baseline (key => entry)
+     * @param array<string,bool> $visible   sichtbare Hostids als Set
+     */
+    public static function filterByVisible(array $baseline, array $visible): array {
+        $out = [];
+        foreach ($baseline as $k => $e) {
+            $ok = true;
+            foreach (explode('|', self::pairKey((string) $k)) as $id) {
+                if ($id !== '' && ctype_digit($id) && empty($visible[$id])) {
+                    $ok = false;
+                    break;
+                }
+            }
+            if ($ok) {
+                $out[$k] = $e;
+            }
+        }
+        return $out;
+    }
+
+    /**
      * Carry baseline entries over to the key their link has NOW.
      *
      * The key of a link changes when a second cable joins it ("a|b" becomes

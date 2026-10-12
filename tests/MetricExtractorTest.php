@@ -227,6 +227,27 @@ $cpuRev = MetricExtractor::extract(array_reverse($cpuItems));
 check('Reihenfolge der Items ist egal',
       (float) ($cpuRev['cpu']['hc'] ?? -1), (float) ($cpu['cpu']['hc'] ?? -2));
 
+// ── CPU-Teilkategorien sind NICHT die Gesamtauslastung (Review #5) ──────────
+//
+// system.cpu.util[,user] ist der Default-Typ-Anteil (user auf Linux), nicht das
+// Ganze. Frueher gewann je nach Item-Reihenfolge dieser Anteil (7 %) vor dem
+// echten Gesamtwert (80 %). Verlaesslich total sind nur bare system.cpu.util
+// und system.cpu.util[,idle] (-> 100 - idle). Werte erfunden.
+echo "\n  MetricExtractor — CPU: Teilkategorie ist nicht das Ganze (#5)\n\n";
+$cpuMix = [
+    $it(1, 'cx', 'system.cpu.util[,user]',   '7'),
+    $it(2, 'cx', 'system.cpu.util[,system]', '9'),
+    $it(3, 'cx', 'system.cpu.util',          '80'),
+];
+check('Gesamtwert gewinnt, Teilkategorie zuerst',
+      (float) (MetricExtractor::extract($cpuMix)['cpu']['cx'] ?? -1), 80.0);
+check('…unabhaengig von der Item-Reihenfolge',
+      (float) (MetricExtractor::extract(array_reverse($cpuMix))['cpu']['cx'] ?? -1), 80.0);
+check('nur idle -> 100 - idle',
+      (float) (MetricExtractor::extract([$it(1, 'ci', 'system.cpu.util[,idle]', '20')])['cpu']['ci'] ?? -1), 80.0);
+check('nur Teilkategorie -> kein Gesamtwert (ehrliches "—")',
+      isset(MetricExtractor::extract([$it(1, 'cu', 'system.cpu.util[,user]', '7')])['cpu']['cu']), false);
+
 // ── Interface-Keys ohne MIB-Namen: net.if.in[24] (Issue #16) ───────────────
 //
 // Eine ganze Familie offizieller Zabbix-Templates (Cisco Catalyst 3750V2,

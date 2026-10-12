@@ -174,6 +174,23 @@ final class HostTagParser {
                     }
                 }
             }
+
+            // {$NT_PARENT}-Macro als Alternative zum nt:parent-Tag. Gleiche
+            // Semantik (ein Traeger, Namensaufloesung unten), aber per Template
+            // oder LLD massenhaft setzbar — fuer Proxmox-/k8s-Baeume, wo jede VM
+            // bzw. jeder Pod ein eigener Host ist und niemand hunderte Tags von
+            // Hand pflegt. Der TAG GEWINNT, falls beides gesetzt ist.
+            if (!isset($host_parent[$hid])) {
+                foreach ($h['macros'] ?? [] as $m) {
+                    if (($m['macro'] ?? '') === '{$NT_PARENT}') {
+                        $pv = trim((string) ($m['value'] ?? ''));
+                        if ($pv !== '' && strlen($pv) <= 128) {
+                            $host_parent[$hid] = $pv;
+                        }
+                        break;
+                    }
+                }
+            }
         }
 
 

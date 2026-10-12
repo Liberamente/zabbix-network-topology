@@ -33,6 +33,20 @@
 import { t } from './i18n.js';
 import { injectGhostNodes } from './build-elements.js';
 import { loadGhostMode } from './storage.js';
+import { setSevLevels, activeSevLevels } from './sev-filter.js';
+
+// Welche Severity-Stufen hinter einer klickbaren Kachel stehen — dieselben
+// Toepfe wie in collect() (OK=0, Warn=1-3, Crit=4-5). "Hosts" = [] = Filter aus.
+const KACHEL_SEV = { hosts: [], ok: [0], warn: [1, 2, 3], crit: [4, 5] };
+
+// Mengengleichheit zweier Zahl-Arrays (Reihenfolge egal) — fuer Toggle und die
+// Aktiv-Markierung: ist der aktive Filter genau diese Kachel?
+function gleicheMenge(a, b) {
+    if (a.length !== b.length) return false;
+    const sa = a.slice().sort(function(x, y) { return x - y; });
+    const sb = b.slice().sort(function(x, y) { return x - y; });
+    return sa.every(function(v, i) { return v === sb[i]; });
+}
 
 const COL = {
     neutral: { light: '#334155', dark: '#f1f5f9' },
@@ -85,10 +99,35 @@ export function ensureKpiRow() {
     return row;
 }
 
-/** Ein Chip: [Punkt] Zahl Label (Zusatz). */
-function chip(value, label, colour, sub) {
+/**
+ * Ein Chip: [Punkt] Zahl Label (Zusatz).
+ *
+ * `filter` (optional): { levels:Array<number>, cy } macht den Chip zu einem
+ * Severity-Filter — Klick setzt den Toolbar-Sev-Filter auf diese Stufen
+ * (nochmal auf denselben → aus). Der aktive Chip wird markiert. Dieselbe
+ * Mechanik wie die feinen Pills, nur grob pro Topf.
+ */
+function chip(value, label, colour, sub, filter) {
     const el = document.createElement('div');
     el.className = 'nt-kpi__chip';
+
+    if (filter && filter.cy) {
+        const aktiv = gleicheMenge(activeSevLevels(), filter.levels);
+        el.style.cursor = 'pointer';
+        el.title = t('kpi.filter.tip');
+        if (aktiv) {
+            // Markiert: dezenter Ring in der Chip-Farbe. Inset, damit die Zeile
+            // nicht springt (kein zusaetzlicher Platz wie bei aussenliegendem
+            // box-shadow).
+            el.style.boxShadow = 'inset 0 0 0 1.5px ' + (colour || col('neutral'));
+            el.style.borderRadius = '9px';
+        }
+        el.addEventListener('click', function() {
+            const same = gleicheMenge(activeSevLevels(), filter.levels);
+            setSevLevels(filter.cy, same ? [] : filter.levels);
+            refreshKpi();   // Zeile neu, damit die Aktiv-Markierung umspringt
+        });
+    }
 
     if (colour) {
         const dot = document.createElement('span');
@@ -288,10 +327,16 @@ export function updateKpi(nodes, cy) {
         return;
     }
 
-    row.appendChild(chip(g.hosts, t('kpi.hosts'), null, ''));
-    row.appendChild(chip(g.ok,    t('kpi.ok'),    col('ok'), ''));
-    row.appendChild(chip(g.warn,  t('kpi.warn'),  col('warn'), ''));
-    row.appendChild(chip(g.crit,  t('kpi.crit'),  col('crit'), ''));
+    // Hosts/OK/Warn/Crit sind klickbare Severity-Filter (Hosts = alle). Edges
+    // und Ghosts bleiben reine Anzeige: Edges ist keine Host-Severity, und
+    // Ghosts waeren bei ausgeblendeten Geistern ein Filter auf nichts.
+    const fcy = cy || window._ntCy || null;
+    const flt = function(key) { return fcy ? { levels: KACHEL_SEV[key], cy: fcy } : null; };
+
+    row.appendChild(chip(g.hosts, t('kpi.hosts'), null, '', flt('hosts')));
+    row.appendChild(chip(g.ok,    t('kpi.ok'),    col('ok'),   '', flt('ok')));
+    row.appendChild(chip(g.warn,  t('kpi.warn'),  col('warn'), '', flt('warn')));
+    row.appendChild(chip(g.crit,  t('kpi.crit'),  col('crit'), '', flt('crit')));
     row.appendChild(chip(g.edges, t('kpi.edges'), col('link'),
         g.manual ? t('kpi.edges.manual', { n: g.manual }) : ''));
     row.appendChild(chip(g.ghosts, t('kpi.ghosts'), col('ghost'), ghostSub));

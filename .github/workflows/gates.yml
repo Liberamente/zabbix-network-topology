@@ -92,6 +92,11 @@ jobs:
         run: node tools/check-i18n.mjs
       - name: ghost
         run: node tools/check-ghost.mjs
+      - name: quality
+        run: node tools/check-quality.mjs
+      # nt-assign-guard.js: Guard greift auf Zabbix 8 (xor readonly), No-op auf 7.x.
+      - name: assign-guard
+        run: node tools/check-assign-guard.mjs
       - name: pipeline
         run: npm run ci:pipeline
       - name: npm-audit

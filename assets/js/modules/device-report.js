@@ -28,7 +28,7 @@
 // nirgends nachlesen, nur messen. Genau dafuer ist die Matrix da.
 
 import { t } from './i18n.js';
-import { isDark } from './utils.js';
+import { isDark, paintAdaptive } from './utils.js';
 
 function cfg() {
     return (typeof window !== 'undefined' && window.NT_CONFIG) || {};
@@ -154,6 +154,7 @@ export function showDeviceReport() {
     ov.id = 'nt-devreport';
     ov.className = 'nt-float';
     ov.classList.toggle('nt-dark', isDark());
+    paintAdaptive(ov);
     ov.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(15,23,42,0.45);'
         + 'display:flex;align-items:center;justify-content:center;padding:24px';
 

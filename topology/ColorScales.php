@@ -5,7 +5,6 @@ declare(strict_types = 1);
 
 namespace Modules\NetworkTopology\Topology;
 
-use API;
 use APP;
 
 /**
@@ -96,21 +95,11 @@ final class ColorScales {
             return null;
         }
 
-        $config = $module->getConfig();
-
-        if ($clean === null) {
-            unset($config[self::CONFIG_KEY]);
-        }
-        else {
-            $config[self::CONFIG_KEY] = $clean;
-        }
-
-        API::Module()->update([[
-            'moduleid' => $module->getModuleId(),
-            'config'   => $config
-        ]]);
-
-        $module->setConfig($config);
+        // Frisch lesen + nur diesen Schluessel mergen (Review #4: sonst
+        // ueberschreibt ein gleichzeitiges Speichern von Links/Positionen diese
+        // Farbskalen). $clean === null entfernt den Schluessel (Reset auf die
+        // Defaults). false-Rueckgabe (Review #2) wird dort geprueft.
+        SharedConfig::write($module, self::CONFIG_KEY, $clean);
 
         return $clean;
     }

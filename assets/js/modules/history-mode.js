@@ -69,35 +69,44 @@ function buildBaseUrl() {
     return i > 0 ? p.substring(0, i + 1) : '/';
 }
 
-// Berechnet pro Host die aktive Severity zum Timestamp ts.
-// Ein Host hat ein aktives Problem wenn ein PROBLEM-Event (val=1) vor ts
-// liegt UND kein RECOVERY-Event (val=0) mit gleichem Trigger-Namen
-// dazwischen kam. Höchste Severity aller aktiven Probleme = Host-Severity.
+// Pro Host die aktive Severity zum Timestamp ts aus der Event-Liste.
 //
+// Offene Probleme werden ueber ihre PROBLEM-eventid verwaltet, NICHT ueber den
+// Trigger-Namen: ein PROBLEM (val=1) oeffnet open[id], ein RECOVERY (val=0)
+// schliesst GENAU das Problem mit open[pid] (pid = die vom Backend aufgeloeste
+// geschlossene Problem-eventid). Vorher lief das ueber den Namen — zwei
+// gleichnamige Trigger, oder mehrere Probleme desselben Triggers, ueberschrieben
+// sich dann gegenseitig und eine Recovery loeschte das falsche Problem
+// (Review #8). Hoechste offene Severity = Host-Severity.
+//
+// Pur und exportiert, damit ci:frontend die Aussage ohne Browser pruefen kann.
 // Returns: { hostid: severity, ... } — nur Hosts mit aktivem Problem.
-function computeSeveritiesAt(ts) {
-    if (!_eventsCache || !_eventsCache.events) return {};
+export function severitiesFromEvents(eventsByHost, ts) {
     const result = {};
-    Object.keys(_eventsCache.events).forEach(function(hid) {
-        const evs = _eventsCache.events[hid] || [];
-        const open = {};   // name → severity, falls offen zum Zeitpunkt ts
+    Object.keys(eventsByHost || {}).forEach(function(hid) {
+        const evs = eventsByHost[hid] || [];
+        const open = {};   // problem-eventid → severity, offen zum Zeitpunkt ts
         for (let i = 0; i < evs.length; i++) {
             const e = evs[i];
             if (e.ts > ts) break;
             if (e.val === 1) {
-                open[e.name] = e.sev;
-            } else {
-                delete open[e.name];
+                open[e.id] = e.sev;
+            } else if (e.pid != null) {
+                delete open[e.pid];
             }
         }
-        // Höchste offene Severity
         let max = 0;
-        Object.keys(open).forEach(function(n) {
-            if (open[n] > max) max = open[n];
+        Object.keys(open).forEach(function(k) {
+            if (open[k] > max) max = open[k];
         });
         if (max > 0) result[hid] = max;
     });
     return result;
+}
+
+function computeSeveritiesAt(ts) {
+    if (!_eventsCache || !_eventsCache.events) return {};
+    return severitiesFromEvents(_eventsCache.events, ts);
 }
 
 // Public — wird vom Render-Code aufgerufen (render-tech, render-mgmt etc.)

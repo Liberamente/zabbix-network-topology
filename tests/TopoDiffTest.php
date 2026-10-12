@@ -349,6 +349,24 @@ check('Einzelne Leitung: keine Kabelangaben',
 $kH = TopoDiff::keys([$lag2[0], ['from' => 'h1', 'to' => 'h2', '_type' => 'hosts']]);
 check('hosts-Kante zaehlt nicht als Member',   $kH[0], 'h1|h2');
 
+// ── #11: Baseline-Eintraege ohne sichtbaren Endpunkt fallen raus ────────────
+// Datenschutz: verliert der User den Zugriff auf Host 30, darf dessen in der
+// Baseline gespeicherter Name ("Secret C") nicht mehr ueber den Diff geleakt
+// werden. Ghost-/Internet-Endpunkte (nicht-numerisch) bleiben — sie tragen
+// keinen aus Zabbix stammenden Hostnamen. (Hier mit numerischen Hostids, wie
+// sie real in den Schluesseln stehen.)
+$baseVis = [
+    '10|20'      => ['a' => 'Host A', 'b' => 'Host B'],
+    '10|20#i3'   => ['a' => 'Host A', 'b' => 'Host B', 'pa' => '1'],
+    '10|30'      => ['a' => 'Host A', 'b' => 'Secret C'],
+    '10|ghost_x' => ['a' => 'Host A', 'b' => 'Neighbour'],
+];
+$fv = TopoDiff::filterByVisible($baseVis, ['10' => true, '20' => true]);
+check('#11: sichtbares Paar bleibt',             isset($fv['10|20']),      true);
+check('#11: Member des sichtbaren Paars bleibt', isset($fv['10|20#i3']),   true);
+check('#11: Ghost-Endpunkt bleibt',              isset($fv['10|ghost_x']), true);
+check('#11: Host ohne Sichtbarkeit faellt raus', isset($fv['10|30']),      false);
+
 echo "\n", $failures === 0
     ? "=== ALLE TESTS PASS ===\n"
     : "=== {$failures} TEST(S) FEHLGESCHLAGEN ===\n";

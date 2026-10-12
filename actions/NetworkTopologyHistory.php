@@ -116,12 +116,11 @@ class NetworkTopologyHistory extends NetworkTopologyController {
             return;
         }
 
-        // Events im Zeitfenster ziehen.
-        // event.get mit source=0 (Trigger), object=0 (Trigger), value=any
-        // gibt PROBLEM- und RECOVERY-Events. Wir brauchen beides um die
-        // Timeline zu rekonstruieren.
+        // In-Range-Events (PROBLEM + RECOVERY) — die Zustandswechsel im Fenster.
+        // r_eventid (die Recovery-eventid eines Problems) brauchen wir unten, um
+        // ein RECOVERY-Event GENAU dem Problem zuzuordnen, das es schliesst.
         $events = API::Event()->get([
-            'output'      => ['eventid', 'objectid', 'clock', 'value', 'severity', 'name'],
+            'output'      => ['eventid', 'objectid', 'clock', 'value', 'severity', 'name', 'r_eventid'],
             'source'      => EVENT_SOURCE_TRIGGERS,
             'object'      => EVENT_OBJECT_TRIGGER,
             'hostids'     => $hostids,
@@ -132,72 +131,103 @@ class NetworkTopologyHistory extends NetworkTopologyController {
             'limit'       => self::MAX_EVENTS + 1,    // +1 um Truncation zu erkennen
             'selectHosts' => ['hostid'],
         ]);
+        if (!is_array($events)) $events = [];
         $truncated = false;
         if (count($events) > self::MAX_EVENTS) {
             $truncated = true;
             $events = array_slice($events, 0, self::MAX_EVENTS);
         }
 
-        // Pro Host eine Liste von Severity-Wechseln aufbauen.
-        // Format: [{ ts, sev, name, eventid }, ...]
-        // - PROBLEM-Event (value=1): Severity = severity-Wert
-        // - RECOVERY-Event (value=0): Severity = 0 (Problem ist weg)
-        // Beide erhalten den name des Triggers, damit das Frontend
-        // beim Resolve den entsprechenden Problem-Event finden kann.
-        $by_host = [];
-        foreach ($events as $ev) {
-            $hosts_list = $ev['hosts'] ?? [];
-            if (empty($hosts_list)) continue;
-            // Ein Trigger kann auf mehrere Hosts referenzieren — Event jedem zuordnen
-            foreach ($hosts_list as $h) {
-                $hid = $h['hostid'];
-                if (!isset($by_host[$hid])) $by_host[$hid] = [];
-                $by_host[$hid][] = [
-                    'ts'   => (int) $ev['clock'],
-                    'sev'  => ((int) $ev['value']) === 1 ? (int) $ev['severity'] : 0,
-                    'name' => $ev['name'],
-                    'val'  => (int) $ev['value'],   // 1=PROBLEM, 0=RECOVERY
-                ];
+        // Welche Probleme waren GENAU zum Range-Start offen?
+        //
+        // Frueher: problem.get mit time_till=from. Das lieferte nur die HEUTE
+        // noch offenen Probleme und verlor jedes, das vor `from` aufmachte und
+        // seither behoben wurde — der Host sah dann zwischen Range-Start und
+        // Recovery faelschlich unauffaellig aus (Review-Befund #7). Zudem war
+        // selectHosts auf problem.get auf keiner Version gueltig.
+        //
+        // Richtig: event.get mit problem_time_from = problem_time_till = from
+        // gibt die Probleme, die ZUM ZEITPUNKT `from` im Problem-Zustand waren —
+        // auch die danach behobenen. selectHosts ist auf event.get (anders als
+        // problem.get) auf allen Versionen gueltig.
+        $open_at_start = API::Event()->get([
+            'output'            => ['eventid', 'objectid', 'clock', 'severity', 'name', 'r_eventid'],
+            'source'            => EVENT_SOURCE_TRIGGERS,
+            'object'            => EVENT_OBJECT_TRIGGER,
+            'value'             => TRIGGER_VALUE_TRUE,     // nur PROBLEM-Events
+            'hostids'           => $hostids,
+            'problem_time_from' => $from,
+            'problem_time_till' => $from,
+            'selectHosts'       => ['hostid'],
+        ]);
+        if (!is_array($open_at_start)) $open_at_start = [];
+
+        // Recovery -> Problem: welche PROBLEM-eventid schliesst ein RECOVERY?
+        // Der Weg geht ueber r_eventid der PROBLEM-Events (deren eigene
+        // Recovery-eventid). Aus BEIDEN Abfragen, damit auch ein vor `from`
+        // aufgemachtes und im Fenster behobenes Problem zugeordnet wird — sein
+        // PROBLEM-Event liegt nicht im Fenster, steckt aber in open_at_start.
+        // Loest #8: vorher schloss das Frontend ueber den Trigger-NAMEN, womit
+        // sich zwei gleichnamige Trigger (oder mehrere Probleme desselben
+        // Triggers) gegenseitig ueberschrieben.
+        $recovery_to_problem = [];   // recovery-eventid => problem-eventid
+        foreach (array_merge($events, $open_at_start) as $ev) {
+            if ((int) ($ev['value'] ?? 1) === 1
+                    && !empty($ev['r_eventid']) && (string) $ev['r_eventid'] !== '0') {
+                $recovery_to_problem[(string) $ev['r_eventid']] = (string) $ev['eventid'];
             }
         }
 
-        // Zusätzlich: Events die VOR `from` schon offen waren und in den
-        // Zeitraum hineinragen. Sonst sehen Hosts die seit Tagen ein Problem
-        // haben am Slider-Anfang fälschlich "ok" aus.
-        // Wir holen alle aktiven Probleme zum Zeitpunkt `from` via problem.get
-        // mit recent=true ist nicht das Richtige — wir brauchen "PROBLEM-Events
-        // die vor `from` aufgemacht und nach `from` (oder gar nicht) geclosed
-        // wurden".
-        //
-        // Einfachster Weg: problem.get mit time_till=from gibt alle Probleme
-        // die zu diesem Zeitpunkt OFFEN waren. Diese hängen wir als
-        // synthetische "ts=from"-Events an damit das Frontend das richtige
-        // Startzustand hat.
-        $open_at_start = API::Problem()->get([
-            'output'      => ['eventid', 'objectid', 'clock', 'severity', 'name'],
-            'source'      => EVENT_SOURCE_TRIGGERS,
-            'object'      => EVENT_OBJECT_TRIGGER,
-            'hostids'     => $hostids,
-            'time_till'   => $from,
-            'recent'      => false,    // alle, nicht nur recent
-            'selectHosts' => ['hostid'],
-        ]);
-        foreach ($open_at_start as $pr) {
-            $hosts_list = $pr['hosts'] ?? [];
-            if (empty($hosts_list)) continue;
-            foreach ($hosts_list as $h) {
+        // Pro Host eine nach Zeit sortierte Liste von Zustandswechseln:
+        //   PROBLEM  (val=1): { ts, sev, val:1, id:<problem-eventid>, name }
+        //   RECOVERY (val=0): { ts, val:0, pid:<geschlossene problem-eventid|null> }
+        $by_host = [];
+        foreach ($events as $ev) {
+            foreach ($ev['hosts'] ?? [] as $h) {
                 $hid = $h['hostid'];
                 if (!isset($by_host[$hid])) $by_host[$hid] = [];
-                // Synthetisches Event "PROBLEM bestand bereits zum Range-Start"
-                array_unshift($by_host[$hid], [
-                    'ts'   => $from,
-                    'sev'  => (int) $pr['severity'],
-                    'name' => $pr['name'],
-                    'val'  => 1,
-                    'pre'  => true,       // Marker: war schon vor dem Range
-                ]);
+                if ((int) $ev['value'] === 1) {
+                    $by_host[$hid][] = [
+                        'ts'   => (int) $ev['clock'],
+                        'sev'  => (int) $ev['severity'],
+                        'val'  => 1,
+                        'id'   => (string) $ev['eventid'],
+                        'name' => $ev['name'],
+                    ];
+                }
+                else {
+                    $by_host[$hid][] = [
+                        'ts'  => (int) $ev['clock'],
+                        'val' => 0,
+                        'pid' => $recovery_to_problem[(string) $ev['eventid']] ?? null,
+                    ];
+                }
             }
         }
+        // Zum Range-Start offene Probleme als "pre"-PROBLEM bei ts=from — mit
+        // ihrer ECHTEN eventid, damit ihr spaeteres Recovery im Fenster sie
+        // ueber pid schliesst.
+        foreach ($open_at_start as $pr) {
+            foreach ($pr['hosts'] ?? [] as $h) {
+                $hid = $h['hostid'];
+                if (!isset($by_host[$hid])) $by_host[$hid] = [];
+                $by_host[$hid][] = [
+                    'ts'   => $from,
+                    'sev'  => (int) $pr['severity'],
+                    'val'  => 1,
+                    'id'   => (string) $pr['eventid'],
+                    'name' => $pr['name'],
+                    'pre'  => true,
+                ];
+            }
+        }
+        // Nach Zeit sortieren (pre-Eintraege ts=from und In-Range-Events sind
+        // gemischt). Ein PROBLEM und sein RECOVERY haben nie denselben ts, die
+        // Reihenfolge bei gleichem ts ist fuer die offene Menge also egal.
+        foreach ($by_host as &$_list) {
+            usort($_list, static fn ($a, $b) => $a['ts'] <=> $b['ts']);
+        }
+        unset($_list);
 
         $_payload = [
             'from'      => $from,

@@ -114,21 +114,32 @@ export function hostEditUrl(basis, params) {
 }
 
 export function mkTabTheme(dark) {
-    // ok/warn/crit gehoeren dazu, weil die Tabs sie ohnehin brauchen und sie
-    // sich sonst als rohe Hex-Werte in die Module schleichen — in render-diag
-    // standen sie schon, und das Rot #dc2626 ist auf dunklem Zabbix kaum zu
-    // lesen. Die Werte sind dieselben wie --nt-ok-text/--nt-crit-text in
-    // network-topology.css; eine CSS-Variable hilft hier nicht, weil diese
-    // Tabs ihre Farben als JS-Zeichenketten in style-Attribute schreiben.
-    return dark
-        ? { bg:'#0d1117', surface:'#161b22', head:'#1c2128', hover:'#21262d',
-            text:'#e6edf3', sub:'#8b949e', subSoft:'#6e7681',
-            border:'#30363d', borderSoft:'#21262d', accent:'#0275b8',
-            ok:'#4ade80', warn:'#fbbf24', crit:'#fca5a5' }
-        : { bg:'#ffffff', surface:'#f8fafc', head:'#f1f5f9', hover:'#f1f5f9',
-            text:'#1f2c33', sub:'#64748b', subSoft:'#94a3b8',
-            border:'#dfe4e7', borderSoft:'#eef2f5', accent:'#0275b8',
-            ok:'#166534', warn:'#92400e', crit:'#9c1a25' };
+    // Der Dunkel-Zweig zieht die ECHTEN adaptiven Farbwerte (rgb) aus derselben
+    // Messung wie das CSS-Theme — NICHT var(--nt-*): diese Tabs schreiben Farben
+    // auch in SVG-Attribute (fill=/stroke= in render-health/render-stats), und
+    // dort loest var() nicht auf. Reale Strings wirken in beiden Kontexten.
+    // Scheitert die Messung (oder hell), gelten die alten festen Dunkelwerte als
+    // Fallback. ok/warn/crit bleiben fest (Status-Farben adaptieren nicht).
+    if (dark) {
+        const a = ntAdaptiveTokens() || {};
+        const pick = function(key, fallback) { return a[key] || fallback; };
+        return {
+            bg:      pick('--nt-bg', '#0d1117'),
+            surface: pick('--nt-surface', '#161b22'),
+            head:    pick('--nt-surface-2', '#1c2128'),
+            hover:   pick('--nt-surface-3', '#21262d'),
+            text:    pick('--nt-text-2', '#e6edf3'),
+            sub:     pick('--nt-sub', '#8b949e'),
+            subSoft: pick('--nt-muted', '#6e7681'),
+            border:  pick('--nt-line', '#30363d'),
+            borderSoft: pick('--nt-line-soft', '#21262d'),
+            accent:'#0275b8', ok:'#4ade80', warn:'#fbbf24', crit:'#fca5a5'
+        };
+    }
+    return { bg:'#ffffff', surface:'#f8fafc', head:'#f1f5f9', hover:'#f1f5f9',
+             text:'#1f2c33', sub:'#64748b', subSoft:'#94a3b8',
+             border:'#dfe4e7', borderSoft:'#eef2f5', accent:'#0275b8',
+             ok:'#166534', warn:'#92400e', crit:'#9c1a25' };
 }
 
 // aggregateValues — Sum/Avg/Min/Max/P50/P95/P99 ueber non-null numerische
@@ -225,42 +236,143 @@ export function el(tag, css, text) {
  *
  * @param {boolean} hinweis Voreinstellung, wenn sich nirgends etwas messen laesst.
  */
+// Relative Luminanz (sRGB) einer [r,g,b]-Farbe.
+function _lum(c) {
+    const kanal = function(x) {
+        x = x / 255;
+        return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * kanal(c[0]) + 0.7152 * kanal(c[1]) + 0.0722 * kanal(c[2]);
+}
+
+// Die Hintergrundfarbe der Zabbix-Seite als [r,g,b], oder null. Reihenfolge der
+// Kandidaten wie gehabt; Alpha 0 heisst "nur Durchsicht" -> weitersuchen.
+function sampleBg() {
+    const kandidaten = [
+        document.querySelector('main'),
+        document.querySelector('.wrapper'),
+        document.body,
+        document.documentElement
+    ];
+    for (let i = 0; i < kandidaten.length; i++) {
+        const el = kandidaten[i];
+        if (!el) continue;
+        const m = (window.getComputedStyle(el).backgroundColor || '').match(/rgba?\(([^)]+)\)/);
+        if (!m) continue;
+        const t = m[1].split(',').map(function(v) { return parseFloat(v); });
+        if (t.length > 3 && t[3] === 0) continue;
+        return [t[0], t[1], t[2]];
+    }
+    return null;
+}
+
+// Die Textfarbe der Zabbix-Seite als [r,g,b], oder null.
+function sampleText() {
+    const kandidaten = [document.querySelector('main'), document.querySelector('.wrapper'), document.body];
+    for (let i = 0; i < kandidaten.length; i++) {
+        const el = kandidaten[i];
+        if (!el) continue;
+        const m = (window.getComputedStyle(el).color || '').match(/rgba?\(([^)]+)\)/);
+        if (!m) continue;
+        const t = m[1].split(',').map(function(v) { return parseFloat(v); });
+        return [t[0], t[1], t[2]];
+    }
+    return null;
+}
+
 export function seiteIstDunkel(hinweis) {
     try {
-        const kanal = function(c) {
-            c = c / 255;
-            return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-        };
-
-        const kandidaten = [
-            document.querySelector('main'),
-            document.querySelector('.wrapper'),
-            document.body,
-            document.documentElement
-        ];
-
-        for (let i = 0; i < kandidaten.length; i++) {
-            const el = kandidaten[i];
-            if (!el) continue;
-            const m = (window.getComputedStyle(el).backgroundColor || '').match(/rgba?\(([^)]+)\)/);
-            if (!m) continue;
-            const teile = m[1].split(',').map(function(v) { return parseFloat(v); });
-            // Alpha 0 heisst: hier ist gar keine Farbe, nur Durchsicht —
-            // weitersuchen statt aufgeben.
-            if (teile.length > 3 && teile[3] === 0) continue;
-            const L = 0.2126 * kanal(teile[0]) + 0.7152 * kanal(teile[1]) + 0.0722 * kanal(teile[2]);
-            // 0.18 statt 0.5: die Grenze soll dunkle Themes treffen, nicht
-            // bloss graue. Sie liegt bei etwa #777; Zabbix' dark-theme liegt
-            // weit darunter, blue-theme weit darueber.
-            return L < 0.18;
-        }
-        return !!hinweis;
+        const bg = sampleBg();
+        if (!bg) return !!hinweis;
+        // 0.18 statt 0.5: die Grenze soll dunkle Themes treffen, nicht bloss
+        // graue. Sie liegt bei etwa #777; Zabbix' dark-Themes liegen weit
+        // darunter, die blauen/hellen weit darueber.
+        return _lum(bg) < 0.18;
     } catch (e) {
-        // getComputedStyle kann in exotischen Kontexten werfen. Dann gilt
-        // der Hinweis; ein Fehler hier darf die Karte nicht kosten.
+        // getComputedStyle kann in exotischen Kontexten werfen. Dann gilt der
+        // Hinweis; ein Fehler hier darf die Karte nicht kosten.
         return !!hinweis;
     }
 }
+
+// ── Adaptives Theme: Zabbix' echte Dunkel-Farben in die Modul-Token ─────────
+//
+// Das Modul hatte eine feste GitHub-graue Dunkel-Palette. Zabbix 8 bringt
+// mehrere dunkle Themes (dark-blue = Navy, dark, dark-classic, hc-dark). Statt
+// je Theme zu pflegen, messen wir Hintergrund + Textfarbe und leiten die
+// CHROME-Token farbton-erhaltend ab — grau bleibt grau, navy bleibt navy. Nur
+// im Dunkelmodus (hell behaelt die statische Palette); Status-Farben
+// (ok/warn/crit) bleiben fix. Scheitert das Messen, greift die CSS-Klasse.
+function _mix(a, b, t) {
+    return [Math.round(a[0] + (b[0] - a[0]) * t),
+            Math.round(a[1] + (b[1] - a[1]) * t),
+            Math.round(a[2] + (b[2] - a[2]) * t)];
+}
+function _rgb(c) { return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')'; }
+// Alle drei Kanaele innerhalb von tol um target? (fuer die HC-Erkennung).
+function _near(c, target, tol) {
+    return Math.abs(c[0] - target) <= tol && Math.abs(c[1] - target) <= tol
+        && Math.abs(c[2] - target) <= tol;
+}
+
+let _ntTokenCache = null;   // null = noch nicht gemessen; false = kein Adaptiv
+
+function ntAdaptiveTokens() {
+    if (_ntTokenCache !== null) return _ntTokenCache;
+    let res = false;
+    try {
+        const bg = sampleBg();
+        const tx = sampleText();
+        if (bg && tx && _lum(bg) < 0.18) {
+            // High-Contrast (hc-dark): bg nahe reinschwarz UND Text nahe
+            // reinweiss. Dort die Text-/Linienfarben naeher am Text halten
+            // (kraeftiger) statt Mitteltoene zu mischen — ein Hochkontrast-Theme
+            // will ueberall hohen Kontrast. dark-blue/dark/dark-classic erkennen
+            // das nicht (bg nicht reinschwarz bzw. Text nicht reinweiss) und
+            // bleiben bei den weichen Faktoren. Flaeche = Hintergrund leicht
+            // Richtung Text aufgehellt; Muted/Linien dazwischen (Farbton bleibt).
+            const hc = _near(bg, 0, 16) && _near(tx, 255, 16);
+            const f = hc
+                ? { s1:0.08, s2:0.14, s3:0.26, t2:0.05, sub:0.22, muted:0.32, faint:0.44, ln:0.38, lns:0.22 }
+                : { s1:0.07, s2:0.12, s3:0.22, t2:0.08, sub:0.42, muted:0.55, faint:0.68, ln:0.20, lns:0.11 };
+            res = {
+                '--nt-bg':        _rgb(bg),
+                '--nt-surface':   _rgb(_mix(bg, tx, f.s1)),
+                '--nt-surface-2': _rgb(_mix(bg, tx, f.s2)),
+                '--nt-surface-3': _rgb(_mix(bg, tx, f.s3)),
+                '--nt-text':      _rgb(tx),
+                '--nt-text-2':    _rgb(_mix(tx, bg, f.t2)),
+                '--nt-sub':       _rgb(_mix(tx, bg, f.sub)),
+                '--nt-muted':     _rgb(_mix(tx, bg, f.muted)),
+                '--nt-faint':     _rgb(_mix(tx, bg, f.faint)),
+                '--nt-line':      _rgb(_mix(bg, tx, f.ln)),
+                '--nt-line-soft': _rgb(_mix(bg, tx, f.lns))
+            };
+        }
+    } catch (e) {
+        res = false;
+    }
+    _ntTokenCache = res;
+    return res;
+}
+
+// Die adaptiven Dunkel-Token inline auf ein Element schreiben (inline schlaegt
+// die CSS-Klasse, auch bei body-Floats). Ohne Treffer: nichts tun -> die
+// statische .nt-dark-Palette gilt weiter.
+export function paintAdaptive(el) {
+    if (!el) return;
+    const t = ntAdaptiveTokens();
+    if (!t) return;
+    for (const k in t) {
+        if (Object.prototype.hasOwnProperty.call(t, k)) {
+            el.style.setProperty(k, t[k]);
+        }
+    }
+}
+
+// Messung vergessen — einmal je Voll-Render aufgerufen, damit ein Theme-Wechsel
+// (mit Neu-Render) frisch gemessen wird; Floats nutzen danach den Cache.
+export function resetAdaptiveTheme() { _ntTokenCache = null; }
 
 /**
  * Die Zeichenflaeche leeren, aber den Lade-Hinweis stehen lassen.

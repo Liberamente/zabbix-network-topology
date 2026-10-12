@@ -23,6 +23,9 @@ und schreibt hin, was er gefunden hat.
 | **Cluster-Knoten zusammenfassen** | **Fertig** (`aggregation.js`, 106 Zeilen). `aggregateByGroup()` verschmilzt alle Hosts einer Gruppe zu einem Pseudo-Knoten, Kanten zwischen Gruppen werden zu Aggregat-Kanten. Reine Funktion ohne Seiteneffekte. Umschalter „🗂 Group". Nicht zu verwechseln mit `group-cluster-layout.js` — das ordnet Gruppen räumlich an, ohne zu verschmelzen. |
 | **Parallele Links / LAG** | **Fertig in 5.4.0** (`parallel-links.js`, `LldpEdgeBuilder::findMember()`). Ein Kabel = eine Kante, je eigene Ports, Zähler und Zustand. Hineingezoomt aufgefächert, in der Übersicht zu einer Linie mit ×N zusammengeklappt. Beigesteuert von Christos Diamantis, [#21](https://github.com/linuser/zabbix-network-topology/pull/21). Siehe Punkt 6 unten. |
 | **Presets (Positionen, Pins, Notizen, Links)** | Vorhanden. Achtung: Positionen wurden bis zur Korrektur still verschluckt, weil `applyPreset()` in den localStorage schrieb, den seit der Server-Umstellung nur noch die Migration liest. |
+| **Link-Uptime** | **Fertig** (`HostMetadata::linkUptime`, `NetworkTopologyData` holt `ifLastChange`+`sysUpTime`). Opportunistisch: zeigt sich nur, wo ein Template die OIDs sammelt — kein erzwungener Re-Import. Stand früher als „offen" unter Punkt 1. |
+| **Sparklines für RX/TX je Port** | **Fertig** (`edge-detail.js` `portSparkline`, Action `network.topology.spark`). RX/TX-Kurve unter jeder Port-Zeile im Kanten-Panel, nachgeladen. Stand früher als „offen" unter Punkt 1. |
+| **NetBox-Export** | **Fertig** (`netbox.js` `buildNetboxCsv`, Menüeintrag neben GraphML). Kabelliste im NetBox-Importformat, die vier Regeln umgesetzt (nur beidseitige Ports, nur gemessen/konfident, `_ntRawNodes` statt gerenderter Karte, Gerätenamen), übersprungene Zeilen gezählt. Siehe Punkt 5 unten für die Begründung. |
 
 ---
 
@@ -38,15 +41,18 @@ werden je Port ausgewertet und im Kanten-Panel angezeigt, nicht mehr als
 Host-Summe. Ebenfalls dazugekommen: Portnamen aus `ifName`/`ifDescr`/`ifAlias`
 statt nackter Indizes.
 
-**Offen bleiben zwei Dinge:**
+**Die zwei zuletzt offenen Punkte sind inzwischen gebaut (jetzt oben in „Bereits
+vorhanden"):**
 
-- **Link-Uptime** aus `ifLastChange`. Ein Standard-OID, aber es steht in keinem
-  der mitgelieferten Templates — es braeuchte also eine Template-Aenderung und
-  damit einen Re-Import beim Nutzer. Das ist der Grund, warum es liegen blieb,
-  nicht der Aufwand im Code.
-- **Sparklines fuer RX/TX je Port.** Die Action `network.topology.spark`
-  existiert fuer Knoten; ob sie sich auf Port-Items umbiegen laesst, ist
-  weiterhin ungeprueft.
+- **Link-Uptime** aus `ifLastChange` + `sysUpTime` — `HostMetadata::linkUptime`
+  rechnet sie in Sekunden aus, `NetworkTopologyData` holt die OIDs
+  **opportunistisch** (nur wo ein Template sie sammelt, sonst bleibt die Zeile
+  leer). Damit entfaellt der erzwungene Re-Import, der der eigentliche Grund fuer
+  den Aufschub war.
+- **Sparklines fuer RX/TX je Port** — `edge-detail.js` `portSparkline` haengt die
+  RX/TX-Kurve unter jede Port-Zeile, nachgeladen ueber `network.topology.spark`.
+  Die Frage „laesst sie sich auf Port-Items umbiegen" ist damit mit ja
+  beantwortet.
 
 > **Vorbehalt, der beim Bauen nicht verschwunden, sondern sichtbar geworden
 > ist:** die Zuordnung Port → Traffic setzt `lldpRemLocalPortNum == ifIndex`
@@ -88,20 +94,18 @@ der Satz, den ein Verantwortlicher wissen will, und er kostet keinen Millimeter
 auf der Karte. Markierung am Knoten erst, wenn sich zeigt, dass das nicht
 reicht.
 
-### 3. Zabbix 8
+### 3. Zabbix 8 — ERLEDIGT (auf 8.0rc1 verifiziert)
 
-Branch `feat/zabbix-8`: Guard (`nt-assign-guard.js`), 261 Zeilen Befundtext,
-auf zwei Installationen bestätigt. Merged **konfliktfrei** auf main, ist in
-Kombination mit den Widget-Änderungen aber **ungetestet**.
+Guard (`nt-assign-guard.js`) ist auf main. Der ursprüngliche **Blocker ist weg**:
+seit 10/2026 läuft eine eigene **Zabbix-8.0rc1-Test-VM** (Proxmox, Debian 12 +
+PG15), auf der Modul **und** Widgets ausgerollt und geprüft sind — die Karte
+rendert, der xor-Guard greift (Cytoscape lud auf 8.0 sonst nicht, weil
+`Array.prototype.xor` dort read-only ist). Seither ist die VM ein reguläres
+Deploy-Ziel und bekommt jede Release mit.
 
-**Blocker:** kein Zabbix-8.0-Image erreichbar (Docker Hub antwortet mit 403),
-und auf dem vorhandenen Testserver liegt nur 7.4. Ohne Testinstanz nicht
-verifizierbar, und ungetestet gehört es in kein Release.
-
-**Was sich geändert hat:** Seit 09/2026 gibt es eine Entwicklungsumgebung mit
-simulierten SNMP-Geräten, in der ein Stack in Minuten steht. Ein zweiter mit 8.0
-ist damit derselbe Handgriff wie einer mit 7.4 — der Blocker ist eher ein
-Termin als ein Hindernis.
+**Offen bleibt nur das Laufende:** 8.0 bis zur finalen Version weiter
+gegenprüfen (neue RCs), und die 8.0-spezifischen API-/Makro-Chancen bewerten
+(eigener Punkt, wenn konkret).
 
 ### 4. Layout-Import — neu entwerfen
 
@@ -138,7 +142,12 @@ lässt sich Punkt 2 nicht sinnvoll beheben, nur verschieben.
 Die ausgebaute Prüfung (`sanitizeLayout`, ~90 Zeilen mit den serverseitigen
 Mustern und Grenzen) steht in der Git-Historie. Sie war **nicht** das Problem.
 
-### 5. NetBox-Export — Kabelliste im NetBox-Importformat
+### 5. NetBox-Export — Kabelliste im NetBox-Importformat — ERLEDIGT
+
+> **Gebaut** (`netbox.js` `buildNetboxCsv`, Menüeintrag neben GraphML in
+> `export.js`). Die vier Regeln unten sind umgesetzt, übersprungene Zeilen werden
+> gezählt und im Dialog gemeldet. Der folgende Text bleibt als **Begründung**
+> stehen, warum es so und nicht anders gebaut wurde.
 
 Nutzerwunsch vom September 2026. Die Gegenrichtung zur
 [Dokumentationsdrift gegen NetBox](#dokumentationsdrift-gegen-netbox) weiter
@@ -709,7 +718,13 @@ wenn er eine Idee oder ein MVP hat.
 der VLAN-Ansicht. Drei Einträge, ein Thema — wer hier anfängt, sollte alle drei
 gelesen haben.
 
-### Dienst-/Abhängigkeitskarte — eine URL und was unter ihr hängt
+### Dienst-/Abhängigkeitskarte — eine URL und was unter ihr hängt — TEILWEISE (read-only, in Entwicklung)
+
+> **Stand 10/2026:** Eine **read-only Fassung ist gebaut** — der Dependencies-Tab
+> (Service-Baum aus Zabbix-Services + SLA% + Web-Antwortzeit), auf
+> `feat/service-map`/GitLab. Bewusst noch **dev**: Editieren der Abhängigkeiten
+> und das Service-Overlay auf der Technical-Karte stehen aus (eigener Plan,
+> `giggly-honking-tulip`). Der folgende Text ist der ursprüngliche Entwurf.
 
 Eine andere Frage als „welches Kabel wohin": nicht die physische Topologie,
 sondern die **logische Abhängigkeit**. Oben eine Webseite (URL), darunter, woran

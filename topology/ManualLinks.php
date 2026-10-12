@@ -152,15 +152,10 @@ final class ManualLinks {
             return [];
         }
 
-        $config                    = $module->getConfig();
-        $config[self::CONFIG_KEY]  = $clean;
-
-        API::Module()->update([[
-            'moduleid' => $module->getModuleId(),
-            'config'   => $config
-        ]]);
-
-        $module->setConfig($config);
+        // Frisch lesen + nur diesen Schluessel mergen (Review #4: sonst
+        // ueberschreibt ein gleichzeitiges Speichern der Positionen diese
+        // Links). Der false-Rueckgabewert (Review #2) wird dort geprueft.
+        SharedConfig::write($module, self::CONFIG_KEY, $clean);
 
         return $clean;
     }

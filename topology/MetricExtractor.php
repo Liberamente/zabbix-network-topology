@@ -511,12 +511,17 @@ final class MetricExtractor {
             if ($key === 'system.cpu.util' || $key === 'system.cpu.utilization') {
                 if (!isset($host_cpu[$hid])) $host_cpu[$hid] = round($val, 1);
             } elseif (preg_match('/^system\.cpu\.util\[/', $key)) {
-                // system.cpu.util[,user] / system.cpu.util[all,idle] etc.
-                // Bei [*,idle]: 100 - val. Sonst direkter Wert.
-                if (!isset($host_cpu[$hid])) {
-                    $host_cpu[$hid] = (strpos($key, 'idle') !== false)
-                        ? round(max(0.0, 100.0 - $val), 1)
-                        : round($val, 1);
+                // NUR die idle-Variante (-> 100 - idle) ist hier ein verlaesslicher
+                // GESAMTWERT. Die benannten Teilkategorien (user/system/nice/
+                // iowait/...) und die geklammerte Form mit leerem Typ sind es
+                // NICHT: der Default-Typ ist user (Linux) bzw. system (Windows),
+                // also ebenfalls nur ein Anteil. Frueher wurde jeder Nicht-idle-
+                // Key direkt als CPU% genommen -> je nach Item-Reihenfolge gewann
+                // system.cpu.util[,user] (z.B. 7 %) vor dem echten Gesamtwert
+                // (80 %). Review #5. Den Gesamtwert liefert bare system.cpu.util
+                // (oben) bzw. 100 - idle hier.
+                if (strpos($key, 'idle') !== false && !isset($host_cpu[$hid])) {
+                    $host_cpu[$hid] = round(max(0.0, 100.0 - $val), 1);
                 }
             } elseif (preg_match('/proxmox\.[^.]*\.?cpu\.usage/', $key)) {
                 // Proxmox liefert CPU als 0..1 Float (z.B. 0.42 = 42%)

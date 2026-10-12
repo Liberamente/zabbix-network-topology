@@ -25,7 +25,7 @@ import { isSimulated, isSimActive, simulatedCount,
 import { isFocusActive, getFocusId, getFocusHops,
          setFocus, clearFocus } from './focus-mode.js';
 import { t } from './i18n.js';
-import { isDark, hostEditUrl } from './utils.js';
+import { isDark, hostEditUrl, paintAdaptive } from './utils.js';
 import { fetchJson } from './http.js';
 
 // Attached to <body> like the tooltip → color tokens via .nt-float; the dark
@@ -43,6 +43,7 @@ document.body.appendChild(_ctx);
 // → die Koordinaten sind viewport-relativ, also direkt gegen innerWidth/Height.
 function _showCtxAt(cx, cy) {
     _ctx.classList.toggle('nt-dark', isDark());
+    paintAdaptive(_ctx);
     const m = 8;   // Mindestabstand zum Bildrand
     _ctx.style.maxHeight = (window.innerHeight - 2 * m) + 'px';
     _ctx.style.overflowY = 'auto';

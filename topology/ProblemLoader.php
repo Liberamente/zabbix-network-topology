@@ -185,4 +185,48 @@ final class ProblemLoader {
             'problem_list' => $host_problem_list,
         ];
     }
+
+    /**
+     * Host-IDs je Problem aufloesen.
+     *
+     * problem.get unterstuetzt KEIN selectHosts — und zwar auf KEINER Version
+     * (7.0, 7.4, 8.0; nachgemessen in CProblem.php jeder Version). Der
+     * Frontend-Wrapper gibt bei dem ungueltigen Parameter `false` zurueck, ein
+     * foreach darueber warnt, und das Feature blieb still leer. Der Weg zum Host
+     * fuehrt stattdessen ueber die Problem-objectid (= die triggerid):
+     * trigger.get mit selectHosts liefert die Zuordnung. Dasselbe Muster wie in
+     * aggregateProblems(), nur gezielt fuer die objectids der uebergebenen
+     * Probleme — genutzt von History, Compliance und Spark, die vorher jeweils
+     * selectHosts auf problem.get legten (und damit auf allen Versionen nichts
+     * bekamen; erst auf 8.0 fielen die PHP-Warnungen im Log auf).
+     *
+     * @param array $problems  problem.get-Ergebnis (output MUSS 'objectid' enthalten)
+     * @return array<string, string[]>  triggerid => [hostid, ...]
+     */
+    public static function triggerHostMap(array $problems): array {
+        $triggerids = [];
+        foreach ($problems as $p) {
+            $tid = (string) ($p['objectid'] ?? '');
+            if ($tid !== '') {
+                $triggerids[$tid] = true;
+            }
+        }
+        if (!$triggerids) {
+            return [];
+        }
+
+        $triggers = API::Trigger()->get([
+            'output'       => ['triggerid'],
+            'triggerids'   => array_keys($triggerids),
+            'selectHosts'  => ['hostid'],
+            'preservekeys' => false,
+        ]);
+
+        $map = [];
+        foreach ($triggers as $t) {
+            $map[(string) ($t['triggerid'] ?? '')] = array_column($t['hosts'] ?? [], 'hostid');
+        }
+
+        return $map;
+    }
 }

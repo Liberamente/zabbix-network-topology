@@ -2,6 +2,523 @@
 
 Changes since the first public release. Versioning: MAJOR.MINOR.PATCH.
 
+## v5.5.27 — 2026-10-13
+
+### Anonymised example data in the finder tests and docstrings
+
+An IPv6/EUI-64 example in the ARP parser's test and docstring used a real MAC
+address observed while validating the feature; it is replaced with an invented
+one (`00:11:22:33:44:55`), in line with the project's rule that all example data
+is fabricated. No behaviour change.
+
+## v5.5.26 — 2026-10-13
+
+### Code-review follow-ups (MAC/IP finder)
+
+- **IPv6 EUI-64 now checks the universal/local bit.** A privacy or DHCPv6 address
+  whose random interface-ID happened to carry the `ff:fe` marker (1 in 65 536) was
+  accepted as EUI-64 and yielded a fabricated MAC instead of falling through to the
+  ND table. The extraction now also requires the U/L bit to be set (as a real
+  MAC-derived address has), so random addresses correctly go to the ND lookup.
+- **The LLDP capability query is scoped to the switches with hits** instead of
+  pulling every `lldpRemSysCapEnabled` item in the install on each search.
+- **The "all locations" list de-duplicates by host and port**, so a MAC seen on one
+  uplink port in two VLANs (dot1q) no longer appears twice.
+- **Version drift guard.** `package.json` had fallen behind `manifest.json`;
+  `ci:package` now fails if the two module versions disagree.
+
+The per-switch LLDP-vs-heuristic choice is kept as a documented, deliberate limit:
+unioning them would re-introduce the hypervisor-port false uplink that LLDP fixes,
+and the finder stays honest via its `ambiguous` status.
+
+## v5.5.25 — 2026-10-13
+
+### Improved: crisper adaptive tokens under the high-contrast dark theme
+
+The adaptive dark palette (5.5.24) mixed mid-tone text and line colours, which is
+right for dark-blue/dark/dark-classic but too soft for Zabbix's **high-contrast**
+dark theme, where everything should stay maximally legible. The derivation now
+detects high-contrast (background near pure black and text near pure white) and
+holds the secondary text and border colours closer to the text, so they keep a
+high contrast ratio on black instead of fading to grey. The other dark themes are
+detected as not-high-contrast and are unchanged, so the dark-blue look from 5.5.24
+is untouched.
+
+## v5.5.24 — 2026-10-12
+
+### Improved: the dark palette adapts to the active Zabbix theme (Zabbix 8 dark-blue)
+
+The module's dark mode used one fixed GitHub-grey palette, so under Zabbix 8's new
+**dark-blue** theme it sat as a grey island on the navy UI. It now **measures**
+Zabbix's actual background and text colour at render and derives its chrome tokens
+(surfaces, text, lines, muted) from them — hue-preserving, so grey themes stay grey
+and dark-blue becomes navy. Backdrop, toolbar, canvas, detail panel, legend,
+tooltips, context menu and the MAC panel all follow, as do the simple tabs
+(Diag/Health/Stats/Compliance/LLDP-Q) via the shared tab palette. Status colours
+(ok/warn/crit) stay fixed, and if the measurement fails the previous static dark
+palette applies unchanged. Only dark mode is adaptive; light mode is untouched.
+This builds on the existing "measure the background, don't guess the theme name"
+dark-detection (`seiteIstDunkel`).
+
+## v5.5.23 — 2026-10-11
+
+### New: the MAC finder also searches by IPv6
+
+IP search now covers **IPv6**, in two ways. A link-local or SLAAC address carries
+its MAC inside it (EUI-64, the `ff:fe` in the middle of the interface ID), so the
+finder extracts it **directly — no SNMP, no item** — and the panel says the MAC
+was derived from the address. Any other IPv6 (privacy extensions, DHCPv6) is
+resolved through the router's **ND table** (`ipNetToPhysicalPhysAddress`): add one
+`walk[1.3.6.1.2.1.4.35.1.4]` item with key `nt.nd` next to `nt.arp` (see
+FDB-SETUP.md; `tools/nt-arp-add-item.sh` now creates both). Matching is on the
+canonical IPv6 form, so `fe80::1` and `fe80:0:0:0:0:0:0:1` resolve the same.
+
+The IPv6 logic is pure and unit-tested (`ArpParser::macFromEui64` / `parseNd` /
+`canonicalV6`): EUI-64 extraction with the U/L-bit flip, global vs link-local,
+privacy addresses correctly declined, the ND index shape (ifIndex/type/len/addr)
+with IPv4 rows skipped, and zone-id stripping.
+
+## v5.5.22 — 2026-10-09
+
+### New: the MAC finder also searches by IP address (ARP)
+
+The **🔎 MAC** finder now accepts an **IP address** as well as a MAC. It resolves
+the IP to a MAC through the **ARP table** of a router or L3 switch, then runs the
+normal FDB lookup — so you get the access switch and port straight from an IP, and
+the panel shows how the IP resolved (`IP → MAC`, which router, how fresh the ARP
+entry is). Like the FDB, the ARP table comes from Zabbix, not SNMP done by the
+module: add one `walk[1.3.6.1.2.1.4.22.1.2]` item with key `nt.arp` on the
+gateway (see FDB-SETUP.md). Several routers can carry it; the newest ARP entry
+wins. Without the item, MAC search is unchanged and IP search simply says it has
+no data.
+
+The value parser is pure and unit-tested (`ArpParser`), tolerant of the common
+MAC encodings (`Hex-STRING:`, `0x…`, colon/dash/dotted), and drops incomplete
+all-zero entries. `tools/nt-arp-probe.sh` checks a device before you wire the item
+(counts plus one masked sample line — never a real MAC or IP).
+
+## v5.5.21 — 2026-10-09
+
+### Improved: MAC finder classifies uplinks by LLDP, not just MAC counts
+
+The **🔎 MAC** finder tells an access port from an uplink so it can name the one
+port where a device actually lives. Until now that was a pure heuristic — a port
+carrying many MACs was assumed to be an uplink — which misreads a hypervisor port
+or a downstream unmanaged switch. It now uses LLDP where the data exists: a local
+port whose LLDP neighbor advertises **Bridge** or **Router** capability is an
+uplink, while access devices (AP, phone, station) are not. Port names come from
+the same ifName source as the FDB hits, so they line up. Switches without LLDP
+fall back to the MAC-count heuristic, so nothing a search found before is lost,
+and the panel says which method stood behind the answer. The classification logic
+is pure and unit-tested (`LldpEdgeBuilder::uplinkPortsByCaps`), covering hex and
+value-map capability forms, the LLDP vs CDP index shapes, and the ifName fallback.
+
+## v5.5.20 — 2026-10-09
+
+### Fixed: MAC finder returned HTTP 500 on real (numeric) host IDs
+
+The first live search with the **🔎 MAC** finder failed with an HTTP 500. The
+search action groups each switch's walk[] values under its host ID, cast to a
+string — but PHP normalizes a numeric array key back to an integer, so iterating
+the map handed `FdbParser::parse()` an `int` where it requires a `string`, and the
+strict type threw. The unit tests never saw it because their host IDs are
+non-numeric (`sw1`), the same blind spot as the numeric-host-ID note in the LLDP
+builder. The host-map parse now lives in a single `FdbParser::parseHostMap()` that
+casts the key back at the boundary, covered by a regression test with a numeric
+key. No data or SNMP change — the walk[] items were fine.
+
+## v5.5.19 — 2026-10-09
+
+### Fixed: nt:lldp alias did not match MAC-formatted neighbor names
+
+When a device reports its neighbor by **MAC address** (common with CDP, and with
+switches that do not expose `lldpLocSysName`), an `nt:lldp` tag written in one MAC
+notation did not match the neighbor reported in another. The alias comparison ran
+against the raw neighbor string before the MAC was normalized, so
+`nt:lldp = AA:BB:CC:DD:EE:FF` missed a neighbor reported as `AA BB CC DD EE FF`
+even though both are the same address. MAC-shaped aliases are now also indexed in
+a canonical form and MAC neighbors are matched against it, so every common
+notation — colon, dash, space-separated bytes, Cisco dotted, and bare — resolves
+to the same host. Ambiguity stays honest (two hosts claiming one MAC → no edge, a
+Quality-tab note), and broadcast/all-zero MACs are never used as an identity.
+Reported on GitHub (#24), with a precise analysis from the reporter.
+
+## v5.5.18 — 2026-10-09
+
+### New: find which switch port a MAC address is on
+
+A **🔎 MAC** button in the toolbar opens a small panel: type a MAC address and
+it answers with the **access switch and port** — the one port where the MAC
+lives that is not an uplink. It reads each switch's forwarding database from
+Zabbix (not by doing SNMP itself, so it also works for switches behind a proxy)
+and is honest about the rest: it lists every location including the uplinks, with
+how fresh each sighting is, and says "ambiguous" with all candidates rather than
+guessing when several access ports match.
+
+This first version estimates which ports are uplinks from the FDB itself (a port
+carrying many MACs), which is weaker than LLDP — the panel says so, so ports with
+a hypervisor or a downstream switch get a second look. Using the module's LLDP
+knowledge of switch-to-switch ports instead is the planned refinement.
+
+**Opt-in:** add four `walk[]` items to a switch (see `FDB-SETUP.md`) — the
+finder has no data for a switch until you do, and says so.
+
+### Data-quality markers are now gated
+
+The measured / estimated / stale / unknown vocabulary (5.5.16–5.5.17) is now held
+in one place by a gate (`ci:quality`), so a state can't be added without its glyph
+and its text in both languages.
+
+### Updating from 5.5.17 — replace the directory
+
+Backend + frontend (bundle), one new action (`network.topology.fdb_search`).
+Replace the module directory, `chown`, reload php-fpm. No template change on the
+module itself; the MAC finder is inert until you add the `walk[]` items.
+
+## v5.5.17 — 2026-10-09
+
+### Data-quality markers now consistent across edge panel, tooltip and table
+
+Step two of making data quality traceable. The measured / estimated / unknown
+distinction introduced in the node panel (5.5.16) is now drawn the same way
+everywhere:
+
+- The edge panel's "per-link" (measured) and "estimated" markers carry the same
+  glyph as the node chip (● / ◐), and the tooltip's per-link marker matches.
+- In the table, a not-collected CPU, Memory, Ping or traffic value shows a muted
+  dash in the "unknown" colour with a "not collected" hover title — kept as a
+  dash, not a full chip, so a table of thousands of rows stays readable. The
+  traffic column no longer shows a measured 0 b/s and a missing value the same
+  way: a measured 0 now reads as 0, a missing one as the unknown mark.
+
+### Updating from 5.5.16 — replace the directory
+
+Frontend only (bundle). No new action, no template change, nothing stored is
+touched. Replace the module directory, `chown`, reload php-fpm.
+
+## v5.5.16 — 2026-10-09
+
+### A missing metric now reads as "not collected", not a healthy dash
+
+In the node detail panel a CPU, Memory, Ping or traffic value that was not
+collected showed a bare "—", which reads like a healthy zero — the same trap
+`ci:ghost` already guards against for node status. Those values now show a muted
+"? not collected" chip instead. For traffic this also separates "no traffic
+item" (not collected) from a genuinely measured 0 b/s.
+
+Under the hood a new pure module (`quality.js`) defines one vocabulary —
+measured / estimated / stale / unknown — reused across views, so the same
+distinction is drawn the same way everywhere. This is the first step; the edge
+panel, tooltip and table view follow. From the "make data quality traceable"
+plan.
+
+### Updating from 5.5.15 — replace the directory
+
+Frontend only (bundle). No new action, no template change, nothing stored is
+touched. Replace the module directory, `chown`, reload php-fpm.
+
+## v5.5.15 — 2026-10-09
+
+### Right-click on a node no longer also opens the browser's menu
+
+Right-clicking a node opened the module's node menu, but the browser's own
+context menu popped up on top of it — clicking dismissed both, and you had to
+nudge the native menu aside to reach the node actions. The native menu was never
+suppressed: the handler cancelled the wrong event (the mouse-up, not the
+contextmenu event). The map now cancels the contextmenu event on its canvas, so
+only the node menu shows. Present since at least 5.3.x; reported from the field.
+
+### Label boxes are solid, so values stay readable over the lines
+
+The host-name and traffic (`×N`, `↓`/`↑`) label boxes were slightly translucent,
+so the dashed link lines ran through the text. They are now opaque (theme-aware,
+light or dark), and a labelled link draws above its bundle siblings so its box
+covers their lines instead of being crossed by them. Reported from the field.
+
+### Hop view: a failed host query no longer crashes the request
+
+`hopScope()`'s host query was unguarded. On a large install where it errors or
+times out, the Zabbix API wrapper returns `false`, and the code then hit
+`array_keys(false)` — an uncaught error that returned HTTP 500 for the whole
+host+hops request. It now returns an empty, incomplete-flagged scope instead of
+crashing, and does not cache that empty result. From the code review.
+
+### Hop view warns when its graph came back incomplete
+
+The incomplete-graph signal added in 5.5.14 (`scope_graph_incomplete`) now raises
+a warning toast, like the existing "groups truncated" and "edges truncated"
+warnings — before, the backend flagged a hop graph with missing links that the
+map user never saw. From the code review.
+
+### Updating from 5.5.14 — replace the directory
+
+Backend + frontend (bundle). No new action, no template change, nothing stored
+is touched. Replace the module directory, `chown`, reload php-fpm.
+
+## v5.5.14 — 2026-10-08
+
+### Host+hops: an incomplete edge graph is reported, not swallowed
+
+When the host+hops map builds its edge graph it fetches neighbour items in host
+chunks (5.5.12). If one of those chunks came back as an API error, the chunk was
+skipped silently — its hosts were missing from the graph, yet the map looked
+complete. The data response now carries `scope_graph_incomplete` (the count of
+chunks that failed to load; 0 means complete, same convention as
+`edges_truncated`), and the flag is kept on the 60-second graph cache so a cache
+hit reports it too. An empty chunk (hosts that simply have no neighbour items) is
+not an error and does not count. Follow-up to the external review (finding #10).
+
+### Updating from 5.5.13 — replace the directory
+
+Backend only. No new action, no template change, nothing stored is touched.
+Replace the module directory, `chown`, reload php-fpm.
+
+## v5.5.13 — 2026-10-08
+
+### Fix: map data action crashed (HTTP 500) when a baseline was cached
+
+The topology-diff privacy guard (5.5.9, review #11) referenced a `$hosts`
+variable that does not exist in the method where it runs on this build — the
+response builder gets its host data as nodes, and on a cache hit there is no
+host.get result at all. Whenever a baseline snapshot was already cached (APCu
+present, map opened a second time), the guard hit `array_keys(null)` and the
+data action died with a 500 instead of drawing the map. It now derives the set
+of visible hosts from the rendered nodes (the numeric node ids), which is the
+correct source here and also works on a cache hit. The privacy behaviour is
+unchanged: baseline endpoints not currently visible are still permission-checked
+before they can count as a change.
+
+### Updating from 5.5.12 — replace the directory
+
+Backend only. No new action, no template change, nothing stored is touched.
+Replace the module directory, `chown`, reload php-fpm.
+
+## v5.5.12 — 2026-10-08
+
+### Host+hops map builds its edge graph in bounded chunks
+
+The host-and-hops view builds a graph of all cable/neighbour edges once, caches
+it for a minute, then walks outward from the focus host and cuts the result to
+the hop limit. The build itself was unbounded: it fetched the neighbour items of
+*every* visible host in a single `item.get`, and the last-value window scan ran
+over that same unbounded set — on a large installation the memory peak landed
+before the hop limit ever applied, so even a "1 host + 1 hop" view paid for the
+whole inventory. The fetch now runs in host-sized chunks (the same chunk size the
+main map query already uses), so each query and its last-value scan stay bounded.
+
+This chunks the *query*, not the total memory of the graph build: the neighbour
+name resolution is cross-host, so the builder still needs the full item set once
+it is collected. Walking only the frontier (an incremental adjacency index that
+never materialises the whole graph) is the larger follow-up — it needs its own
+load test against a realistically large inventory before it ships. From the
+external review (finding #10).
+
+### Updating from 5.5.11 — replace the directory
+
+Backend only. No new action, no template change, nothing stored is touched.
+Replace the module directory, `chown`, reload php-fpm.
+
+## v5.5.11 — 2026-10-08
+
+### Sparklines of fast items no longer freeze on the first two minutes
+
+The hourly sparklines fetched the oldest 120 samples per item. For an item polled
+every 30s that is the whole hour, but for a faster item (say every second) it was
+only the first two minutes — the little chart never moved past the start of the
+hour. It now fetches the most recent samples instead, so a fast item shows the
+current window, which is the part you actually want. Items at 30s or slower look
+the same as before. From the external review (finding #9).
+
+### Updating from 5.5.10 — replace the directory
+
+Backend only. No new action, no template change, nothing stored is touched.
+Replace the module directory, `chown`, reload php-fpm.
+
+## v5.5.10 — 2026-10-08
+
+### Saving shared links, positions or colours no longer clobbers each other
+
+The shared manual links, node positions and colour scales all live in one
+`module.config`, under different keys. Each writer used the config as it was at
+the start of the request, set its own key, and wrote the whole thing back — so
+two people (or two browser tabs) saving different things at the same time could
+undo each other: you save new links, a colleague saves positions a moment later,
+and their save puts your old links back. The per-key "changed elsewhere" check
+didn't catch it, because it only looked at the key being edited.
+
+Each shared save now re-reads the config fresh from the database right before
+writing and merges in only its own key, so a concurrent change to another key is
+kept. The read path is unchanged. From the external review (finding #4).
+
+### Updating from 5.5.9 — replace the directory
+
+Backend only. No new action, no template change, nothing stored is touched.
+Replace the module directory, `chown`, reload php-fpm.
+
+## v5.5.9 — 2026-10-08
+
+### Privacy: the change list no longer leaks a host you lost access to
+
+The "what changed" list (`topo_changes`) is a diff against a 7-day baseline that
+stores host names. The diff ran against the raw baseline, so this could happen:
+you could see both ends of a link, then lost access to one host but kept others
+in the selection; once the short data cache expired, the fresh topology no longer
+held that host while the baseline still did, and the change list reported its
+name and connection as "removed" — a name you were no longer allowed to see.
+
+The baseline is now filtered to the hosts you can currently see (checked with a
+permission-respecting `host.get`) before the diff is computed and before it is
+stored, so losing access to a host neither leaks its name nor shows up as a
+physical topology change. Ghost and internet endpoints carry no Zabbix host name
+and are unaffected. From the external review (finding #11); covered by a test.
+
+### Updating from 5.5.8 — replace the directory
+
+Backend only. No new action, no template change, nothing stored is touched.
+Replace the module directory, `chown`, reload php-fpm.
+
+## v5.5.8 — 2026-10-08
+
+### CPU: one correct source per host, never a time category
+
+`system.cpu.util`'s default type is *user* (on Linux) or *system* (on Windows) —
+a fraction of the CPU, not the total — and the bracketed subcategory keys
+(`system.cpu.util[,user]`, `[,system]`, …) are the same. The total is the bare
+`system.cpu.util` item (the official Linux template labels it "CPU utilization")
+or `100 − system.cpu.util[,idle]`.
+
+- The **shown CPU %** took any non-idle `system.cpu.util[...]` as the value, so
+  depending on item order a subcategory (e.g. 7% user) could win over the real
+  total (80%). It now uses only the bare total and `100 − idle`; named
+  subcategories are ignored — an honest "—" beats a wrong number.
+
+- The **CPU forecast** averaged total, idle and subcategories together per hour
+  (80% + 20% idle → a flat 50%). It now picks one source per host
+  (total → idle → per-core), converts idle to `100 − idle`, and only averages
+  homogeneous series (e.g. `hrProcessorLoad` cores).
+
+From the external review (findings #5 and #6). A MetricExtractor test covers the
+selection.
+
+### Updating from 5.5.7 — replace the directory
+
+Backend only. No new action, no template change, nothing stored is touched.
+Replace the module directory, `chown`, reload php-fpm.
+
+## v5.5.7 — 2026-10-08
+
+### History slider: correct state at the range start, and no name collisions
+
+Two coupled correctness bugs in the Stats/History slider, from the external
+review:
+
+- The state at the **start of the range** was taken from the problems open
+  *now* whose creation predated the range start. A problem that was open at the
+  range start but has since been resolved was simply missing, so a host looked
+  fine between the range start and its recovery. The start state now comes from
+  the problems that were actually in the problem state at that moment (resolved
+  ones included), via `event.get` with `problem_time_from`/`problem_time_till`.
+
+- The slider closed problems by trigger **name**. Two triggers with the same
+  name — or one trigger that raised several problems — overwrote each other, and
+  a recovery closed the wrong one. Problems are now tracked by their event id,
+  and each recovery closes exactly the problem it belongs to.
+
+Covered by a new headless scenario (`ci:frontend`): a same-named trigger
+surviving another's recovery, and an open-at-start problem recovering in range.
+
+### Updating from 5.5.6 — replace the directory, reload with a cache bypass
+
+The change is backend plus the bundle. No new action, no template change,
+nothing stored is touched. Replace the module directory, `chown`, reload
+php-fpm, then reload the topology page once with a cache bypass.
+
+## v5.5.6 — 2026-10-08
+
+### Maintenance creation now honours role permissions
+
+Creating a maintenance period from the map checked only that the user was at
+least an Admin. A Zabbix role can forbid an Admin from editing maintenance (and
+from the configuration UI), and the internal API does not enforce those finer
+role rules when it is called from a frontend controller. The action now also
+checks the two role rules the native maintenance controller requires
+(`ui.configuration.maintenance` and `actions.edit_maintenance`), so a role that
+forbids maintenance editing is no longer bypassed.
+
+### Failed writes are no longer reported as success
+
+Zabbix's frontend API wrapper does not throw on an API error — it returns
+`false` and registers the message. The module's write paths relied on
+exceptions, so a failed write slipped through as success: a duplicate host name
+came back as a created host with an empty id, a failed maintenance returned
+`ok: true` with a null id, and a failed save of shared links, positions or
+colour scales updated the in-request state while nothing was persisted. Each
+write now checks the return value, surfaces the real API message, and reports
+success only when the write actually happened.
+
+### Correction to the 5.5.5 note
+
+5.5.5 described the `problem.get selectHosts` fix as a Zabbix 8 change. That was
+wrong: `problem.get` never supported `selectHosts` on any version — 7.0, 7.4 and
+8.0 alike — so Stats, Compliance and sparklines were silently empty on 7.x too;
+only on 8.0 did the PHP warnings in the log make it visible. The fix itself is
+unchanged and correct; the entry below is corrected accordingly.
+
+### Updating from 5.5.5 — replace the directory
+
+Backend only. No new action, no template change, nothing stored is touched.
+Replace the module directory, `chown`, reload php-fpm.
+
+## v5.5.5 — 2026-10-08
+
+### Stats, Compliance and sparklines were silently empty
+
+Three tabs quietly produced nothing: the **Stats** timeline's "already open at
+range start" markers, the **Compliance** stale-critical-problem check, and the
+per-host **sparkline** problem age. Each called `problem.get` with `selectHosts`
+— a parameter `problem.get` does not support on **any** version (7.0, 7.4 or
+8.0). The frontend API wrapper then returned `false`, a `foreach` over it warned
+in the log, and the feature produced nothing. The warnings were only noticed
+during 8.0 testing, which is why this first surfaced as an "8.0" problem.
+
+The host for a problem is now resolved through its trigger (the same
+`trigger.get(selectHosts)` path the main map already uses), so these features
+work again on every version. `event.get` does support `selectHosts`, so the
+Stats timeline's event query is unchanged. A wider audit of the module's API and
+macro usage against Zabbix 8's removals (massupdate, replacehostinterfaces, the
+deprecated macros) found nothing else.
+
+### Internal
+
+The Object.assign guard that makes Cytoscape load on Zabbix 8 now has its own
+gate (`ci:assign-guard`), wired into both CI pipelines.
+
+### Updating from 5.5.4 — replace the directory, reload with a cache bypass
+
+Backend only (plus one CI/tooling file). No new action, no template change,
+nothing stored is touched. Replace the module directory, `chown`, reload
+php-fpm, then reload the topology page once with a cache bypass.
+
+## v5.5.4 — 2026-10-08
+
+### Click the count tiles to filter by severity
+
+The count chips above the map — Hosts, OK, Warn, Crit — are now clickable and
+drive the same filter as the toolbar's severity pills. Click **Crit** to show
+only High and Disaster, **Warn** for Info/Warning/Average, **OK** for Normal,
+and **Hosts** to clear the filter. Clicking the active chip again clears it, the
+active chip is ringed, and the fine pills stay in sync — so isolating *only*
+Disaster is still one pill away. Edges and Ghosts stay display-only (Edges is
+not a host severity; Ghosts would filter to nothing while ghost injection is
+off).
+
+### Updating from 5.5.3 — replace the directory, reload with a cache bypass
+
+Frontend only: the change is in the bundle. No new action, no template change,
+the widgets are unchanged, nothing stored is touched. Replace the module
+directory, `chown`, reload php-fpm, then reload the topology page once with a
+cache bypass.
+
 ## v5.5.3 — 2026-10-06
 
 ### Zabbix 8 support

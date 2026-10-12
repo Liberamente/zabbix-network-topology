@@ -33,9 +33,13 @@ export function buildCytoscapeStyle(dark, knotenzahl) {
             'label': 'data(label)', 'text-valign': 'bottom', 'text-halign': 'center',
             'font-size': 11, 'font-family': 'sans-serif',
             'color': dark ? '#e2e8f0' : '#334155',
-            'text-margin-y': 6, 'text-background-opacity': dark ? 0.75 : 0.85,
+            // Deckende Label-Box: bei 0.75/0.85 liefen die gestrichelten
+            // Kantenlinien durch den Hostnamen (aus dem Feld gemeldet). Farbe
+            // bleibt themenabhängig — Canvas erreicht kein var(), deshalb der
+            // Hex je nach dark-Flag, nicht fest weiß.
+            'text-margin-y': 6, 'text-background-opacity': 1,
             'text-background-color': dark ? '#1e293b' : '#f8fafc',
-            'text-background-padding': '2px', 'text-background-shape': 'roundrectangle',
+            'text-background-padding': '3px', 'text-background-shape': 'roundrectangle',
             'min-zoomed-font-size': labelSchwelle,
         }},
         // Eingeklappte Blaetter: display none, nicht visibility hidden. Der
@@ -88,13 +92,23 @@ export function buildCytoscapeStyle(dark, knotenzahl) {
             'label': 'data(tLabel)',
             'font-size': 9, 'font-family': 'monospace', 'text-wrap': 'wrap',
             'text-background-color': dark ? '#1e293b' : '#f8fafc',
-            'text-background-opacity': 0.88, 'text-background-padding': '2px',
+            // Deckend statt 0.88: die Traffic-/×N-Box soll die kreuzenden
+            // Bündel-Linien überdecken, nicht durchscheinen lassen (Feldmeldung).
+            'text-background-opacity': 1, 'text-background-padding': '3px',
             'color': dark ? '#94a3b8' : '#16a34a',
             'line-cap': 'round', 'text-rotation': 'none', 'text-margin-y': -12,
             // Port-Labels an den Edge-Enden (port-labels.js setzt source-/
             // target-label inline; hier nur die Offsets weg vom Node)
             'source-text-offset': 26, 'target-text-offset': 26,
         }},
+        // Beschriftete Kante über die unbeschrifteten legen: in einem Bündel
+        // trägt nur der Lead ein tLabel, die Geschwister werden aber NACH ihm
+        // gezeichnet (Einfügereihenfolge) und ihre gestrichelte Linie lief
+        // sonst über die (jetzt deckende) Box. z-index hebt den Lead über die
+        // anderen KANTEN; die Node-über-Edge-Regel (z-index-compare: auto)
+        // bleibt, die Box verdeckt also keine Knoten. Path-Highlight (999)
+        // liegt weiterhin darüber.
+        { selector: 'edge[?tLabel]', style: { 'z-index': 10 }},
         // Hosting/Containment-Kante (nt:parent → build-elements kind=hosts):
         // gerichtet Parent→Child (Pfeil zeigt auf den gehosteten Host), violett
         // + fein gestrichelt, klar abgesetzt von gruenem LLDP und blauem Uplink.

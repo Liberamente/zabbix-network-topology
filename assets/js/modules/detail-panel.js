@@ -31,6 +31,7 @@
 
 import { el, fmt, fmtItemValue, hostEditUrl } from './utils.js';
 import { SEV_COL, SEV_LBL, statusLabel, statusColor } from './severity.js';
+import { meta as qualiMeta, QUALITY } from './quality.js';
 import { herstellerVon } from './oui.js';
 import { t } from './i18n.js';
 
@@ -75,6 +76,20 @@ function fuege(eltern) {
 /** Textknoten — kuerzer als document.createTextNode an zwanzig Stellen. */
 function tx(s) {
     return document.createTextNode(String(s));
+}
+
+/**
+ * Kleiner Güte-Chip (Glyph + Wort), Farbe aus quality.meta (Theme-Token).
+ * Für einen fehlenden Messwert statt eines nackten "—": ein Strich liest sich
+ * wie ein gesunder Nullwert, der Chip sagt "nicht erfasst" ausdrücklich.
+ */
+function qualiChip(state) {
+    const m = qualiMeta(state);
+    const c = el('span', 'display:inline-flex;align-items:center;gap:3px;'
+        + 'font-size:10px;font-weight:600;color:' + m.cssVar + ';'
+        + 'padding:1px 6px;border-radius:8px;background:rgba(148,163,184,0.14)');
+    fuege(c, tx(m.glyph + ' ' + t(m.key)));
+    return c;
 }
 
 // Close the panel — and let the color guide return to its place. Every site
@@ -281,24 +296,30 @@ export function showDetail(panel, d, cy) {
     }
 
     // Metrik-Numeric-Liste (zusaetzlich zu den Rings — gibt exakte Werte
-    // mit Unit). Stale-Marker greifen hier durch fmtMetric().
-    const fettOderStrich = function(wert, einheit) {
-        return wert != null ? el('b', '', wert + (einheit || '')) : tx('—');
+    // mit Unit). Ein VORHANDENER Wert geht durch fmtMetric() (bei stale
+    // durchgestrichen + "(stale)"); ein FEHLENDER wird jetzt zum
+    // "nicht erfasst"-Chip statt zu einem nackten "—" — ein Strich sah aus wie
+    // ein gesunder Nullwert (quality.js, dieselbe Idee wie ci:ghost).
+    // Beim Traffic ist das die wichtige Unterscheidung: kein Traffic-Item
+    // (d.traffic == null) heisst "nicht erfasst", nicht "0 b/s gemessen".
+    const metrikWert = function(vorhanden, innen) {
+        return vorhanden ? fmtMetric(innen) : qualiChip(QUALITY.UNKNOWN);
     };
     const metriken = [
-        idRow('CPU',    fmtMetric(fettOderStrich(d.cpu, '%'))),
-        idRow('Memory', fmtMetric(fettOderStrich(d.memory, '%'))),
-        idRow('Ping',   fmtMetric(d.ping > 0 ? el('b', '', d.ping + ' ms') : tx('—'))),
-        idRow('↓ In',  fmtMetric(el('span', 'color:#22c55e',
+        idRow('CPU',    metrikWert(d.cpu != null,    el('b', '', d.cpu + '%'))),
+        idRow('Memory', metrikWert(d.memory != null, el('b', '', d.memory + '%'))),
+        idRow('Ping',   metrikWert(d.ping > 0,       el('b', '', d.ping + ' ms'))),
+        idRow('↓ In',  metrikWert(d.traffic != null, el('span', 'color:#22c55e',
             fmt(d.traffic ? d.traffic.in : 0)))),
-        idRow('↑ Out', fmtMetric(el('span', 'color:#38bdf8',
+        idRow('↑ Out', metrikWert(d.traffic != null, el('span', 'color:#38bdf8',
             fmt(d.traffic ? d.traffic.out : 0)))),
     ];
 
     // Offline-Banner: rote prominente Box ueber dem Action-Bar.
     // "vor 5m" / "vor 2h" / "vor 3d" relative-time-Format.
     const fmtAgo = function(unixTs) {
-        if (!unixTs || unixTs <= 0) return '';
+        unixTs = Number(unixTs);
+        if (!unixTs || unixTs <= 0) return '';   // NaN/0/negativ -> keine Angabe
         const sec = Math.max(0, Math.floor(Date.now() / 1000) - unixTs);
         if (sec < 60)    return t('detail.ago', { v: sec + 's' });
         if (sec < 3600)  return t('detail.ago', { v: Math.floor(sec / 60) + 'm' });

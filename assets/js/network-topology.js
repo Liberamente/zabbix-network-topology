@@ -95,6 +95,7 @@ import { renderDiag } from './modules/render-diag.js';
 import { renderHealth } from './modules/render-health.js';
 import { renderStats } from './modules/render-stats.js';
 import { renderCompliance } from './modules/render-compliance.js';
+import { renderServices, cleanupServices } from './modules/render-services.js';
 import { renderLldpQuality } from './modules/render-lldp-quality.js';
 import { notifyTopoChanges } from './modules/topo-notify.js';
 import { setupToolbar, setRenderCallback as setToolbarRenderCallback } from './modules/toolbar.js';
@@ -239,6 +240,11 @@ function switchTab(tab, wrap, nodes, edges, dataUrl) {
     if (_activeTab === 'tech' && tab !== 'tech') {
         destroyGroupHulls();
     }
+    // Beim Verlassen des Dependencies-Tabs dessen eigene Cytoscape-Instanz
+    // abbauen (sie ist getrennt von window._ntCy).
+    if (_activeTab === 'services' && tab !== 'services') {
+        cleanupServices();
+    }
     _activeTab = tab;
     try { localStorage.setItem(NT_TAB_KEY, tab); } catch (e) {}
     // Den Tab in die Adresszeile schreiben, damit ein kopierter Link die
@@ -259,6 +265,7 @@ function switchTab(tab, wrap, nodes, edges, dataUrl) {
     else if (tab === 'health') renderHealth(wrap, nodes);
     else if (tab === 'stats')      renderStats(wrap, nodes);
     else if (tab === 'compliance') renderCompliance(wrap);
+    else if (tab === 'services')   renderServices(wrap);
     else if (tab === 'lldpq')      renderLldpQuality(wrap);
     else                           render(wrap, nodes, edges, dataUrl);
     ensureBaseToolbar(wrap);
@@ -421,6 +428,15 @@ function init() {
             if (data.edges_truncated) {
                 toastTruncatedOnce('edges:' + data.edges_truncated,
                     t('warn.edges_truncated', { n: data.edges_truncated }));
+            }
+            // Host+hops: der Graph-Aufbau konnte nicht alle Nachbar-Items laden
+            // (ein gechunkter item.get fiel mit einem API-Fehler aus), also
+            // koennen Kanten fehlen. Das Backend meldet das als
+            // scope_graph_incomplete (5.5.14) — hier sichtbar machen, statt die
+            // lueckenhafte Karte als vollstaendig zu zeigen.
+            if (data.scope_graph_incomplete) {
+                toastTruncatedOnce('scope_inc:' + cfg.selected_hostid + '/' + data.scope_graph_incomplete,
+                    t('warn.scope_graph_incomplete', { n: data.scope_graph_incomplete }));
             }
             // lldp_quality mit durchreichen — der LLDP-Q-Tab liest es aus
             // _ntLastData (ohne dieses Feld waere der Tab immer leer).
