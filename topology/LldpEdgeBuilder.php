@@ -287,6 +287,101 @@ final class LldpEdgeBuilder {
         // denselben Host mit Namen UND Chassis-ID genannt hat — und welcher
         // Host am anderen Ende eines Kabels steckt, erst, wenn dessen eigene
         // Meldung gelesen ist. Beides kann in $lldp_raw spaeter kommen.
+	//
+	// ---MAURO
+	//
+        // LOCAL PATCH:
+        // LLDP neighbor without SysName but with textual ChassisId.
+        //
+        // MetricExtractor intentionally promotes unnamed neighbors only
+        // when ChassisId is a MAC. Here we also accept a textual ChassisId,
+        // but ONLY when an explicit nt:lldp alias exists for that exact value.
+        //
+        // This avoids creating arbitrary ghost nodes while allowing devices
+        // such as Windows hosts that announce:
+        //   lldpRemSysName   = ""
+        //   lldpRemChassisId = "LAPTOP-8F2EIVM7"
+
+        $lldp_named_idx = [];
+
+        // Remember LLDP indexes which already have a real SysName row.
+        foreach ($lldp_raw as $existing_item) {
+            if (($existing_item['src'] ?? '') !== 'lldp') {
+                continue;
+            }
+
+            $existing_key = (string) ($existing_item['key_'] ?? '');
+
+            if (strpos($existing_key, 'lldpRemSysName') === false) {
+                continue;
+            }
+
+            $existing_idx = HostMetadata::ifaceParam($existing_key);
+
+            if ($existing_idx !== '') {
+                $lldp_named_idx[
+                    (string) $existing_item['hostid']
+                ][
+                    (string) $existing_idx
+                ] = true;
+            }
+        }
+
+        foreach ($lldp_meta as $reporter_hid => $idxmap) {
+            foreach ($idxmap as $idx => $meta) {
+
+                // Only real LLDP table indexes:
+                // TimeMark.LocalPort.RemIndex
+                if (!preg_match('/^\d+\.\d+\.\d+$/', (string) $idx)) {
+                    continue;
+                }
+
+                // A real SysName already exists: do nothing.
+                if (isset(
+                    $lldp_named_idx[
+                        (string) $reporter_hid
+                    ][
+                        (string) $idx
+                    ]
+                )) {
+                    continue;
+                }
+
+                $chassis = trim(
+                    (string) ($meta['chassis'] ?? '')
+                );
+
+                if ($chassis === '') {
+                    continue;
+                }
+
+                // MAC ChassisIds are already handled by MetricExtractor.
+                if (self::macForm($chassis) !== null) {
+                    continue;
+                }
+
+                // IMPORTANT:
+                // promote textual ChassisId only if somebody explicitly
+                // declared the same value through nt:lldp.
+                $alias_key = strtolower($chassis);
+
+                if (!isset($alias_map[$alias_key])) {
+                    continue;
+                }
+
+                // Feed the existing LLDP matching engine with a synthetic
+                // SysName row. Alias uniqueness/ambiguity will still be
+                // handled by the normal LldpEdgeBuilder logic.
+                $lldp_raw[] = [
+                    'hostid'   => (string) $reporter_hid,
+                    'key_'     => 'lldpRemSysName[' . $idx . ']',
+                    'lastvalue'=> $chassis,
+                    'src'      => 'lldp'
+                ];
+            }
+        }
+	//
+	// --MAURO
         $rows = [];
         foreach ($lldp_raw as $item) {
             // Wert kann komma-separierte Liste sein: "hv-01,SW-CORE-01".
