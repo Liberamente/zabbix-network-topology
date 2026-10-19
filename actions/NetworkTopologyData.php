@@ -8,6 +8,7 @@ namespace Modules\NetworkTopology\Actions;
 use Modules\NetworkTopology\Topology\HostMetadata;
 use Modules\NetworkTopology\Topology\MetricExtractor;
 use Modules\NetworkTopology\Topology\LldpEdgeBuilder;
+use Modules\NetworkTopology\Topology\AutoFdbEdges;
 use Modules\NetworkTopology\Topology\HostTagParser;
 use Modules\NetworkTopology\Topology\HopScope;
 use Modules\NetworkTopology\Topology\ManualLinks;
@@ -18,6 +19,9 @@ use CControllerResponseFatal;
 use API;
 
 class NetworkTopologyData extends NetworkTopologyController {
+
+    // Pilot feature flag: OFF on production until the Techsigno branch is tested.
+    private const AUTO_FDB_EDGES = false;
 
     /**
      * Wie lange eine nicht mehr gemeldete Kante auf der Karte bleibt, bevor
@@ -401,7 +405,7 @@ class NetworkTopologyData extends NetworkTopologyController {
             // Probleme gibt (= last_seen-Aequivalent fuer "down since").
             'selectInterfaces'      => ['ip', 'type', 'main', 'available', 'errors_from', 'error'],
             'selectParentTemplates' => ['name'],
-            'selectInventory'       => ['location_lat', 'location_lon', 'location'],
+            'selectInventory'       => ['location_lat', 'location_lon', 'location', 'macaddress_a', 'macaddress_b'],
             'selectTags'            => ['tag', 'value'],
             // Fuer das {$NT_PARENT}-Macro (Traeger-Beziehung als Macro statt Tag,
             // damit sie per Template/LLD massenhaft setzbar ist — eine VM je
@@ -741,6 +745,42 @@ class NetworkTopologyData extends NetworkTopologyController {
                 $metrics['port_traffic'], $metrics['port_speed'],
                 $metrics['port_errors'] ?? [], $metrics['port_discards'] ?? [],
                 $metrics['port_names'] ?? []);
+        }
+        // ── 5a0b. OPTIONAL FDB AUTO-LINKS (read-only, disabled by default) ──
+        // Strictly scope reads to the visible hostids (including proxy/group
+        // boundaries); do not use the install-wide interactive Finder query.
+        if (self::AUTO_FDB_EDGES) {
+            $fdb_items = API::Item()->get([
+                'output'    => ['hostid', 'key_', 'lastclock', 'lastvalue', 'status', 'state'],
+                'hostids'   => $hostids,
+                'filter'    => ['key_' => [
+                    'nt.fdb.dot1d', 'nt.fdb.dot1q',
+                    'nt.fdb.baseport', 'nt.fdb.ifname', 'nt.arp',
+                ]],
+                'monitored' => true,
+            ]);
+            if (is_array($fdb_items) && $fdb_items) {
+                $fdb_switches = [];
+                foreach ($fdb_items as $fi) {
+                    if (strpos((string) ($fi['key_'] ?? ''), 'nt.fdb.') === 0) {
+                        $fdb_switches[(string) $fi['hostid']] = true;
+                    }
+                }
+                $caps = [];
+                if ($fdb_switches) {
+                    $caps_result = API::Item()->get([
+                        'output'    => ['hostid', 'key_', 'lastclock', 'lastvalue', 'status', 'state'],
+                        'hostids'   => array_keys($fdb_switches),
+                        'search'    => ['key_' => 'lldpRemSysCapEnabled'],
+                        'monitored' => true,
+                    ]);
+                    if (is_array($caps_result)) {
+                        $caps = $caps_result;
+                    }
+                }
+                $edges = AutoFdbEdges::append($hosts, $fdb_items, $caps, $edges,
+                    $host_uplink, $metrics, time());
+            }
         }
         $lldp_quality   = $lldp['quality'];
         $lldp_unmatched = $lldp['unmatched'];
