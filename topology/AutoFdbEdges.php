@@ -114,12 +114,16 @@ final class AutoFdbEdges {
                 continue;
             }
             foreach ([$src, $dst] as $hid) {
-                $name = (string) ($edge['ports'][$hid] ?? '');
-                if ($name === '' && isset($edge['port_idx'][$hid])) {
-                    $name = $ifNames[$hid][(string) $edge['port_idx'][$hid]] ?? '';
+                // Preserve the LLDP label and also resolve the local ifIndex.
+                $label = (string) ($edge['ports'][$hid] ?? '');
+                if ($label !== '') {
+                    $ports[$hid][$label] = true;
                 }
-                if ($name !== '') {
-                    $ports[$hid][$name] = true;
+
+                $idx = (string) ($edge['port_idx'][$hid] ?? '');
+                if ($idx !== '' && isset($ifNames[$hid][$idx])) {
+                    $canonical = $ifNames[$hid][$idx];
+                    $ports[$hid][$canonical] = true;
                 }
             }
         }

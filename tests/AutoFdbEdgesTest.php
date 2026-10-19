@@ -92,6 +92,18 @@ t('Real Cudy caps: QNAP attached to switch .16',
     (string)($cudyEdges[1]['from'] ?? ''),'12');
 t('Real Cudy caps: QNAP on GE3',
     $cudyEdges[1]['ports']['12'] ?? null,'GigabitEthernet3');
+// Regression: real Cudy LLDP reports numeric port labels ("24"),
+// while FDB resolves the same ifIndex to "GigabitEthernet24".
+$switchLinkNumeric = $switchLink;
+$switchLinkNumeric[0]['ports'] = ['11'=>'24', '12'=>'24'];
+
+$cudyNumeric = runCase($hosts, sourceRows(), $cudyCaps, $switchLinkNumeric);
+
+t('Real Cudy numeric LLDP: QNAP edge created',
+    count($cudyNumeric), 2);
+t('Real Cudy numeric LLDP: QNAP on GE3',
+    $cudyNumeric[1]['ports']['12'] ?? null, 'GigabitEthernet3');
+
 t('Real Cudy caps without LLDP switch edge: no guess',
     count(runCase($hosts,sourceRows(),$cudyCaps)),0);
 
