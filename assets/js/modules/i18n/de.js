@@ -483,6 +483,13 @@ export default {
     'path.link_trouble': 'Diese Verbindung meldet Ports down, Fehler oder Verworfene \u2014 anklicken f\u00fcr die Zahlen.',
     // Kanten-Detailpanel (edge-detail.js)
     'edge.port.uptime': 'steht seit {t}',
+    'wifi.association': 'WLAN-Zuordnung',
+    'wifi.registered': 'Per SNMP verbunden',
+    'wifi.radio': 'WLAN-Radio',
+    'wifi.signal': 'Signal (RSSI)',
+    'wifi.source': 'Quelle',
+    'wifi.unknown': 'Nicht verfügbar',
+    'wifi.no_traffic': 'Für diese Zuordnung werden weder WLAN-Verkehr pro Client noch Ethernet-Portmetriken gemessen.',
     'edge.sec.ports': 'Ports',
     'edge.sec.traffic': 'Traffic',
     'edge.sec.health': 'Beide Hosts (alle Interfaces)',

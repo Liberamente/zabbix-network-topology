@@ -228,6 +228,38 @@ function _sumArrays(a, b) {
 }
 
 export function showEdgeTip(evt, edgeData, srcLabel, tgtLabel) {
+    if (edgeData.kind === 'wifi') {
+        // Association data are not link traffic. Do not fetch host traffic
+        // histories, infer Ethernet capacity or display interface errors.
+        const sig = Number(edgeData.signalDbm);
+        const signal = edgeData.signalDbm !== null && edgeData.signalDbm !== undefined
+            && Number.isFinite(sig) && sig < 0 && sig >= -150
+            ? String(sig) + ' dBm' : t('wifi.unknown');
+        const radio = String(edgeData.radioIfIndex || '');
+        const header = '<div style="font-weight:700;font-size:11px;color:var(--nt-text);margin-bottom:7px;'
+            + 'padding-bottom:5px;border-bottom:1px solid var(--nt-line-soft)">'
+            + esc(srcLabel) + ' <span style="color:var(--nt-muted)">↔</span> ' + esc(tgtLabel)
+            + ' <span style="font-size:9px;color:#fff;background:#0891b2;border-radius:3px;'
+            + 'padding:1px 5px;margin-left:4px;font-weight:600">WIFI</span></div>';
+        const r = function(label, value) {
+            return '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:5px;'
+                + 'font-size:11px"><span style="color:var(--nt-muted)">'
+                + esc(label) + '</span><b>' + esc(value) + '</b></div>';
+        };
+        _syncTheme();
+        _tip.style.width = '230px';
+        _tip.innerHTML = header
+            + r(t('wifi.association'), t('wifi.registered'))
+            + r(t('wifi.radio'), radio ? 'ifIndex ' + radio : t('wifi.unknown'))
+            + r(t('wifi.signal'), signal)
+            + r(t('wifi.source'), 'SNMP MikroTik')
+            + '<div style="font-size:10px;color:var(--nt-muted);margin-top:6px;'
+            + 'border-top:1px solid var(--nt-line-soft);padding-top:5px">'
+            + esc(t('wifi.no_traffic')) + '</div>';
+        _tip.style.display = 'block';
+        moveTip(evt);
+        return;
+    }
     const tIn  = edgeData.trafficIn  || 0;
     const tOut = edgeData.trafficOut || 0;
     const srcId = edgeData.source || edgeData.from || '';

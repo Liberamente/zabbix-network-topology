@@ -478,6 +478,13 @@ export default {
     'path.link_trouble': 'This link reports ports down, errors or discards \u2014 open it for the numbers.',
     // Kanten-Detailpanel (edge-detail.js)
     'edge.port.uptime': 'up for {t}',
+    'wifi.association': 'Wireless association',
+    'wifi.registered': 'Associated via SNMP',
+    'wifi.radio': 'Wi-Fi radio',
+    'wifi.signal': 'Signal (RSSI)',
+    'wifi.source': 'Source',
+    'wifi.unknown': 'Not available',
+    'wifi.no_traffic': 'Per-client Wi-Fi traffic and Ethernet port metrics are not measured for this association.',
     'edge.sec.ports': 'Ports',
     'edge.sec.traffic': 'Traffic',
     'edge.sec.health': 'Both hosts (all interfaces)',

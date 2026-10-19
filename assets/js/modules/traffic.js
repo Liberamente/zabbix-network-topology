@@ -181,6 +181,10 @@ export function applyTrafficHeatmap(cy) {
     const root = document.getElementById('nt-root');
     const dark = !!(root && root.classList.contains('nt-dark'));
     cy.edges().forEach(function(edge) {
+        // Wi-Fi associations carry RSSI, NOT Ethernet throughput. In Cytoscape
+        // inline heatmap styles override edge[kind="wifi"] from the stylesheet.
+        // Skip these edges in both traffic and weathermap modes.
+        if (edge.data('kind') === 'wifi') return;
         if (edge.hasClass('dead-edge')) return;
         // §9 Ghost-Kanten haben keine gemessenen Daten — die Heatmap wuerde ihre
         // Inline-Styles ueber den (bewusst dezenten) Ghost-Style aus dem
@@ -326,6 +330,9 @@ export function markDisasterState(c) {
     const ids = {};
     tote.forEach(function(n) { ids[n.id()] = true; });
     c.edges().forEach(function(e) {
+        // A host's severity does not measure the state of its radio association.
+        // Preserve the dedicated cyan Wi-Fi appearance even if a host is down.
+        if (e.data('kind') === 'wifi') { e.removeClass('dead-edge'); return; }
         if (ids[e.source().id()] || ids[e.target().id()]) e.addClass('dead-edge');
         else e.removeClass('dead-edge');
     });
@@ -393,8 +400,11 @@ export function startEdgeAnimation(cy) {
         // trifft genau einmal pro Umlauf.
         if (offset === 20) deadNodes = markDisasterState(c);
 
-        c.edges().filter(function(e) { return !e.hasClass('dead-edge'); })
-            .style('line-dash-offset', -offset);
+        // Animated dashes imply measured traffic. A Wi-Fi association only
+        // reports presence and signal strength, so its dashes stay static.
+        c.edges().filter(function(e) {
+            return e.data('kind') !== 'wifi' && !e.hasClass('dead-edge');
+        }).style('line-dash-offset', -offset);
 
         // Disaster-Knoten pulsieren lassen.
         //

@@ -221,6 +221,27 @@ export function showEdgeDetail(panel, ed, asMember) {
     head.appendChild(close);
     panel.appendChild(head);
 
+    if (d.kind === 'wifi') {
+        // Radio association: never attribute host aggregate traffic, Ethernet
+        // interface state, capacity or per-port sparklines to this edge.
+        const badgeRow = el('div', 'display:flex;gap:4px;margin-bottom:3px');
+        badgeRow.appendChild(pill('WIFI', '#0891b2', t('wifi.registered')));
+        panel.appendChild(badgeRow);
+        section(panel, t('wifi.association'));
+        row(panel, t('wifi.source'), 'SNMP MikroTik');
+        const radio = String(d.radioIfIndex || '');
+        row(panel, t('wifi.radio'), radio ? 'ifIndex ' + radio : t('wifi.unknown'));
+        const sig = Number(d.signalDbm);
+        const signal = d.signalDbm !== null && d.signalDbm !== undefined
+            && Number.isFinite(sig) && sig < 0 && sig >= -150
+            ? String(sig) + ' dBm' : t('wifi.unknown');
+        row(panel, t('wifi.signal'), signal);
+        panel.appendChild(el('div',
+            'font-size:10px;color:var(--nt-muted,#94a3b8);line-height:1.45;margin-top:8px',
+            t('wifi.no_traffic')));
+        return;
+    }
+
     // ── Herkunft ────────────────────────────────────────────────────────────
     // Die Protokollnamen stehen als Literale da, statt d.src durchzureichen:
     // der Satz ist geschlossen, das Backend meldet 'lldp' und 'cdp'. Ein
