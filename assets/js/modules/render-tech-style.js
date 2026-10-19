@@ -109,6 +109,14 @@ export function buildCytoscapeStyle(dark, knotenzahl) {
         // bleibt, die Box verdeckt also keine Knoten. Path-Highlight (999)
         // liegt weiterhin darüber.
         { selector: 'edge[?tLabel]', style: { 'z-index': 10 }},
+        // Measured radio association: not an Ethernet cable.
+        { selector: 'edge[kind = "wifi"]', style: {
+            'width': 2, 'line-color': '#0891b2', 'line-style': 'dashed',
+            'line-dash-pattern': [3, 7], 'opacity': 0.82,
+            'target-arrow-shape': 'none',
+            'color': dark ? '#67e8f9' : '#0e7490',
+            'font-size': 9,
+        }},
         // Hosting/Containment-Kante (nt:parent → build-elements kind=hosts):
         // gerichtet Parent→Child (Pfeil zeigt auf den gehosteten Host), violett
         // + fein gestrichelt, klar abgesetzt von gruenem LLDP und blauem Uplink.
