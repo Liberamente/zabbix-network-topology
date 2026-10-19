@@ -9,6 +9,7 @@ use Modules\NetworkTopology\Topology\HostMetadata;
 use Modules\NetworkTopology\Topology\MetricExtractor;
 use Modules\NetworkTopology\Topology\LldpEdgeBuilder;
 use Modules\NetworkTopology\Topology\AutoFdbEdges;
+use Modules\NetworkTopology\Topology\AutoWifiEdges;
 use Modules\NetworkTopology\Topology\HostTagParser;
 use Modules\NetworkTopology\Topology\HopScope;
 use Modules\NetworkTopology\Topology\ManualLinks;
@@ -764,6 +765,19 @@ class NetworkTopologyData extends NetworkTopologyController {
                 ]],
                 'monitored' => true,
             ]);
+            // WLAN association comes before FDB inference: never describe an
+            // associated wireless client as a direct copper switch link.
+            // Only read items of the already visible hosts in this pilot.
+            $wifi_items = API::Item()->get([
+                'output'    => ['hostid', 'key_', 'lastclock', 'lastvalue', 'status', 'state'],
+                'hostids'   => $hostids,
+                'filter'    => ['key_' => ['nt.wifi.clients']],
+                'monitored' => true,
+            ]);
+            if (is_array($wifi_items) && $wifi_items) {
+                $edges = AutoWifiEdges::append($hosts, $wifi_items,
+                    is_array($fdb_items) ? $fdb_items : [], $edges, $host_uplink, time());
+            }
             if (is_array($fdb_items) && $fdb_items) {
                 $fdb_switches = [];
                 foreach ($fdb_items as $fi) {

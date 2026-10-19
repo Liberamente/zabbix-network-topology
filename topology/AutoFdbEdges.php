@@ -233,8 +233,8 @@ final class AutoFdbEdges {
         return $a !== '0' && $b !== '0' && $a === $b;
     }
 
-    /** MAC identity: known nt:lldp MAC, host inventory, optional scoped router ARP. */
-    private static function macsByHost(array $hosts, array $arpRows, int $now): array {
+    /** Shared MAC identity for FDB and Wi-Fi: tags, inventory, scoped router ARP. */
+    public static function macsByHost(array $hosts, array $arpRows, int $now): array {
         $result = [];
         $ips = [];
         foreach ($hosts as $id => $host) {
