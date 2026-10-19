@@ -1,5 +1,9 @@
 # Changelog
 
+> **Local fork operational history (not an upstream release):** see
+> [AUTO-TOPOLOGY-OPERATIONS.md](AUTO-TOPOLOGY-OPERATIONS.md) for Auto FDB, ARP,
+> Wi-Fi, compiled bundle `f364025` and rollback details.
+
 Changes since the first public release. Versioning: MAJOR.MINOR.PATCH.
 
 ## v5.5.27 — 2026-10-13

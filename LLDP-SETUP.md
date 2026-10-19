@@ -1,5 +1,13 @@
 # LLDP/CDP topology setup — Network Topology for Zabbix
 
+> **Local fork supplement:** for the LLDP/FDB/ARP/Wi-Fi integration, manual
+> aliases (`nt:lldp`), role tag (`nt:icon`), build pipeline and safe rollout,
+> see [AUTO-TOPOLOGY-OPERATIONS.md](AUTO-TOPOLOGY-OPERATIONS.md). The separate
+> `zabbix-nt-lldp-tag.py` has now been source-reviewed; it remains an optional
+> alias-enrichment helper, not an Auto FDB link generator. See
+> [ZABBIX-TOOLS-INTEGRATION.md](ZABBIX-TOOLS-INTEGRATION.md) before modifying
+> the discovery action.
+
 How the module turns LLDP/CDP data into **edges**, and what you have to configure
 on switches, on clients and in Zabbix.
 

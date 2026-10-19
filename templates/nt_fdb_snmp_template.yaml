@@ -1,0 +1,49 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+  - uuid: 734a6000000040008000000000000001
+    name: Templates/FDB Watch
+  templates:
+  - uuid: f6089823b1cd4a7c8032d74b11139b61
+    template: Network Topology FDB by SNMP
+    name: Network Topology FDB by SNMP
+    description: Raccolta SNMP FDB per MAC Finder e collegamenti automatici Network Topology
+    groups:
+    - name: Templates/FDB Watch
+    items:
+    - uuid: e0de1439ba8a4263885c5677b5c7a38d
+      name: 'NT FDB: Bridge port mapping'
+      type: SNMP_AGENT
+      snmp_oid: walk[1.3.6.1.2.1.17.1.4.1.2]
+      key: nt.fdb.baseport
+      delay: 5m
+      history: 1d
+      value_type: TEXT
+      trends: '0'
+    - uuid: a08a7562ed254baa97f273aea1c9b61c
+      name: 'NT FDB: BRIDGE table'
+      type: SNMP_AGENT
+      snmp_oid: walk[1.3.6.1.2.1.17.4.3.1.2]
+      key: nt.fdb.dot1d
+      delay: 5m
+      history: 1d
+      value_type: TEXT
+      trends: '0'
+    - uuid: ee83aa86d4374739a1ed048afdd53d04
+      name: 'NT FDB: Q-BRIDGE table'
+      type: SNMP_AGENT
+      snmp_oid: walk[1.3.6.1.2.1.17.7.1.2.2.1.2]
+      key: nt.fdb.dot1q
+      delay: 5m
+      history: 1d
+      value_type: TEXT
+      trends: '0'
+    - uuid: 0d62d97489f34446a9ddbe3a9f4f3f25
+      name: 'NT FDB: Interface names'
+      type: SNMP_AGENT
+      snmp_oid: walk[1.3.6.1.2.1.31.1.1.1.1]
+      key: nt.fdb.ifname
+      delay: 5m
+      history: 1d
+      value_type: TEXT
+      trends: '0'

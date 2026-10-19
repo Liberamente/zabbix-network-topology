@@ -1,0 +1,199 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+  - uuid: 734a6000000040008000000000000001
+    name: Templates/FDB Watch
+  templates:
+  - uuid: 734a6000000040008000000000000002
+    template: Network FDB Watch by Zabbix agent active
+    name: Network FDB Watch by Zabbix agent active
+    description: FDB Watch diagnostics exported by Linux proxies.
+    groups:
+    - name: Templates/FDB Watch
+    items:
+    - uuid: 734a6000000040008000000000000005
+      name: 'FDB Watch: Export generated at'
+      type: DEPENDENT
+      key: fdb.watch.generated_at
+      delay: '0'
+      units: unixtime
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.generated_at
+      master_item:
+        key: vfs.file.contents[/var/lib/zabbix-tools/export/fdb-watch.json]
+    - uuid: 734a6000000040008000000000000003
+      name: 'FDB Watch: Export JSON'
+      type: ZABBIX_ACTIVE
+      key: vfs.file.contents[/var/lib/zabbix-tools/export/fdb-watch.json]
+      history: 1d
+      value_type: TEXT
+      trends: '0'
+      triggers:
+      - uuid: 734a6000000040008000000000000004
+        expression: '{$FDB.WATCH.ALERTS}=1 and (nodata(/Network FDB Watch by Zabbix agent active/vfs.file.contents[/var/lib/zabbix-tools/export/fdb-watch.json],5m)=1)'
+        name: 'FDB Watch: No JSON received for 5 minutes'
+        priority: HIGH
+    discovery_rules:
+    - uuid: 734a6000000040008000000000000007
+      name: 'FDB Watch: Switch discovery'
+      type: DEPENDENT
+      key: fdb.watch.discovery
+      delay: '0'
+      item_prototypes:
+      - uuid: 734a600000004000800000000000000e
+        name: 'FDB {#SWITCH_IP}: Moving entries 10m'
+        type: DEPENDENT
+        key: fdb.watch.entries10m[{#SWITCH_IP}]
+        delay: '0'
+        preprocessing:
+        - type: JSONPATH
+          parameters:
+          - $.switches[?(@.ip=="{#SWITCH_IP}")].moving_entries_10m.first()
+        master_item:
+          key: vfs.file.contents[/var/lib/zabbix-tools/export/fdb-watch.json]
+      - uuid: 734a600000004000800000000000000f
+        name: 'FDB {#SWITCH_IP}: Moving entries 60m'
+        type: DEPENDENT
+        key: fdb.watch.entries60m[{#SWITCH_IP}]
+        delay: '0'
+        preprocessing:
+        - type: JSONPATH
+          parameters:
+          - $.switches[?(@.ip=="{#SWITCH_IP}")].moving_entries_60m.first()
+        master_item:
+          key: vfs.file.contents[/var/lib/zabbix-tools/export/fdb-watch.json]
+      - uuid: 0be1c1820496486da5a2250bde3df155
+        name: 'FDB {#SWITCH_IP}: Flapping MACs 10m'
+        type: DEPENDENT
+        key: fdb.watch.flapping10m[{#SWITCH_IP}]
+        delay: '0'
+        preprocessing:
+        - type: JSONPATH
+          parameters:
+          - $.switches[?(@.ip=="{#SWITCH_IP}")].flapping_macs_10m.first()
+        master_item:
+          key: vfs.file.contents[/var/lib/zabbix-tools/export/fdb-watch.json]
+      - uuid: 734a600000004000800000000000000c
+        name: 'FDB {#SWITCH_IP}: Last successful collection'
+        type: DEPENDENT
+        key: fdb.watch.lastsuccess[{#SWITCH_IP}]
+        delay: '0'
+        units: unixtime
+        preprocessing:
+        - type: JSONPATH
+          parameters:
+          - $.switches[?(@.ip=="{#SWITCH_IP}")].last_success_clock.first()
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: vfs.file.contents[/var/lib/zabbix-tools/export/fdb-watch.json]
+      - uuid: 734a6000000040008000000000000009
+        name: 'FDB {#SWITCH_IP}: Learned MACs'
+        type: DEPENDENT
+        key: fdb.watch.macs[{#SWITCH_IP}]
+        delay: '0'
+        preprocessing:
+        - type: JSONPATH
+          parameters:
+          - $.switches[?(@.ip=="{#SWITCH_IP}")].learned_macs.first()
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: vfs.file.contents[/var/lib/zabbix-tools/export/fdb-watch.json]
+      - uuid: 734a600000004000800000000000000a
+        name: 'FDB {#SWITCH_IP}: MAC moves 10m'
+        type: DEPENDENT
+        key: fdb.watch.moves10m[{#SWITCH_IP}]
+        delay: '0'
+        preprocessing:
+        - type: JSONPATH
+          parameters:
+          - $.switches[?(@.ip=="{#SWITCH_IP}")].moves_10m.first()
+        master_item:
+          key: vfs.file.contents[/var/lib/zabbix-tools/export/fdb-watch.json]
+      - uuid: 734a600000004000800000000000000b
+        name: 'FDB {#SWITCH_IP}: MAC moves 60m'
+        type: DEPENDENT
+        key: fdb.watch.moves60m[{#SWITCH_IP}]
+        delay: '0'
+        preprocessing:
+        - type: JSONPATH
+          parameters:
+          - $.switches[?(@.ip=="{#SWITCH_IP}")].moves_60m.first()
+        master_item:
+          key: vfs.file.contents[/var/lib/zabbix-tools/export/fdb-watch.json]
+      - uuid: 3ee1089cd1f94881977e72c71d43eebe
+        name: 'FDB {#SWITCH_IP}: Flapping reversals 10m'
+        type: DEPENDENT
+        key: fdb.watch.reversals10m[{#SWITCH_IP}]
+        delay: '0'
+        preprocessing:
+        - type: JSONPATH
+          parameters:
+          - $.switches[?(@.ip=="{#SWITCH_IP}")].flapping_reversals_10m.first()
+        master_item:
+          key: vfs.file.contents[/var/lib/zabbix-tools/export/fdb-watch.json]
+      - uuid: 734a6000000040008000000000000008
+        name: 'FDB {#SWITCH_IP}: Collection status'
+        type: DEPENDENT
+        key: fdb.watch.status[{#SWITCH_IP}]
+        delay: '0'
+        value_type: CHAR
+        trends: '0'
+        preprocessing:
+        - type: JSONPATH
+          parameters:
+          - $.switches[?(@.ip=="{#SWITCH_IP}")].status.first()
+        master_item:
+          key: vfs.file.contents[/var/lib/zabbix-tools/export/fdb-watch.json]
+        trigger_prototypes:
+        - uuid: 734a600000004000800000000000000d
+          expression: '{$FDB.WATCH.ALERTS}=1 and (last(/Network FDB Watch by Zabbix agent active/fdb.watch.status[{#SWITCH_IP}])<>"ok")'
+          name: 'FDB {#SWITCH_IP}: Collection not healthy'
+          priority: WARNING
+      trigger_prototypes:
+      - uuid: 734a6000000040008000000000000011
+        expression: '{$FDB.WATCH.ALERTS}=1 and fuzzytime(/Network FDB Watch by Zabbix agent active/fdb.watch.generated_at,5m)=1 and last(/Network FDB Watch
+          by Zabbix agent active/fdb.watch.status[{#SWITCH_IP}])="ok" and last(/Network FDB Watch by Zabbix agent active/fdb.watch.moves10m[{#SWITCH_IP}])>={$FDB.MOVES.10M.HIGH}'
+        name: 'FDB {#SWITCH_IP}: Frequent MAC port moves (High)'
+        priority: HIGH
+      - uuid: 734a6000000040008000000000000010
+        expression: '{$FDB.WATCH.ALERTS}=1 and fuzzytime(/Network FDB Watch by Zabbix agent active/fdb.watch.generated_at,5m)=1 and last(/Network FDB Watch
+          by Zabbix agent active/fdb.watch.status[{#SWITCH_IP}])="ok" and last(/Network FDB Watch by Zabbix agent active/fdb.watch.moves10m[{#SWITCH_IP}])>={$FDB.MOVES.10M.WARN}
+          and last(/Network FDB Watch by Zabbix agent active/fdb.watch.moves10m[{#SWITCH_IP}])<{$FDB.MOVES.10M.HIGH} and last(/Network FDB Watch by Zabbix
+          agent active/fdb.watch.entries10m[{#SWITCH_IP}])<{$FDB.ENTRIES.10M.WARN} and last(/Network FDB Watch by Zabbix agent active/fdb.watch.flapping10m[{#SWITCH_IP}])=0'
+        name: 'FDB {#SWITCH_IP}: Frequent MAC port moves (Warning)'
+        priority: WARNING
+      - uuid: 4825927722344b0caa0104abde7d5aa8
+        expression: '{$FDB.WATCH.ALERTS}=1 and fuzzytime(/Network FDB Watch by Zabbix agent active/fdb.watch.generated_at,5m)=1 and last(/Network FDB Watch
+          by Zabbix agent active/fdb.watch.status[{#SWITCH_IP}])="ok" and last(/Network FDB Watch by Zabbix agent active/fdb.watch.flapping10m[{#SWITCH_IP}])>=1
+          and last(/Network FDB Watch by Zabbix agent active/fdb.watch.moves10m[{#SWITCH_IP}])<{$FDB.MOVES.10M.HIGH}'
+        name: 'FDB {#SWITCH_IP}: MAC oscillation between ports'
+        status: DISABLED
+        priority: WARNING
+      - uuid: 734a6000000040008000000000000012
+        expression: '{$FDB.WATCH.ALERTS}=1 and fuzzytime(/Network FDB Watch by Zabbix agent active/fdb.watch.generated_at,5m)=1 and last(/Network FDB Watch
+          by Zabbix agent active/fdb.watch.status[{#SWITCH_IP}])="ok" and last(/Network FDB Watch by Zabbix agent active/fdb.watch.entries10m[{#SWITCH_IP}])>={$FDB.ENTRIES.10M.WARN}
+          and last(/Network FDB Watch by Zabbix agent active/fdb.watch.moves10m[{#SWITCH_IP}])<{$FDB.MOVES.10M.HIGH} and last(/Network FDB Watch by Zabbix
+          agent active/fdb.watch.flapping10m[{#SWITCH_IP}])=0'
+        name: 'FDB {#SWITCH_IP}: Multiple FDB entries moved'
+        priority: WARNING
+      master_item:
+        key: vfs.file.contents[/var/lib/zabbix-tools/export/fdb-watch.json]
+      lld_macro_paths:
+      - lld_macro: '{#SWITCH_IP}'
+        path: $.ip
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.switches
+    macros:
+    - macro: '{$FDB.ENTRIES.10M.WARN}'
+      value: '5'
+    - macro: '{$FDB.MOVES.10M.HIGH}'
+      value: '10'
+    - macro: '{$FDB.MOVES.10M.WARN}'
+      value: '3'
+    - macro: '{$FDB.WATCH.ALERTS}'
+      value: '0'
+      description: 'Enable FDB alerts on this host: 0=no, 1=yes'

@@ -1,0 +1,20 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+  - uuid: 734a6000000040008000000000000001
+    name: Templates/FDB Watch
+  templates:
+  - uuid: 91cb6df7a3c2409ba80dea1e4e576bd4
+    template: Network Topology - MikroTik WiFi by SNMP
+    name: Network Topology - MikroTik WiFi by SNMP
+    groups:
+    - name: Templates/FDB Watch
+    items:
+    - uuid: 9b0df69216a249769f60a44080fdfe7b
+      name: 'NT WiFi: registered clients'
+      type: SNMP_AGENT
+      snmp_oid: walk[1.3.6.1.4.1.14988.1.1.1.2.1.3]
+      key: nt.wifi.clients
+      value_type: TEXT
+      trends: '0'
+      delay: 1m

@@ -1,5 +1,16 @@
 # MAC/IP finder setup — Network Topology for Zabbix
 
+> **Auto-topology extension (local fork):** The MAC/IP finder below answers
+> an interactive switch-port lookup. Automatic FDB links and MikroTik ARP/Wi-Fi
+> association edges have separate matching and safety rules. See
+> [AUTO-TOPOLOGY-OPERATIONS.md](AUTO-TOPOLOGY-OPERATIONS.md) for deployment,
+> template exports and verification. The finder heuristics described here must
+> not be taken as the automatic-link algorithm.
+> **Historical FDB Watch is separate:** the `zabbix-nt-fdb-watch.py`,
+> `fdb_flapping.py` and `zabbix-nt-fdb-export.py` pipeline records port moves
+> over time; Auto FDB edges do not replace that event history. See
+> [ZABBIX-TOOLS-INTEGRATION.md](ZABBIX-TOOLS-INTEGRATION.md).
+
 How the module answers **"which switch port is this MAC on?"**, and the four
 Zabbix items you add to a switch to make it work.
 

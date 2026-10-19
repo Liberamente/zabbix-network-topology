@@ -1,5 +1,10 @@
 # Installation — Network Topology for Zabbix
 
+> **Local fork build warning:** Deploying a new commit of the ES modules does
+> not rebuild `assets/js/dist/nt-bundle.js` automatically on a detached-head
+> Git checkout. Always deploy and validate the compiled bundle together with
+> the sources. See [AUTO-TOPOLOGY-OPERATIONS.md](AUTO-TOPOLOGY-OPERATIONS.md).
+
 **🇬🇧 [English](#-english) · 🇩🇪 [Deutsch](#-deutsch)**
 
 Technische Modul-ID / technical module id: **`network_topology`** — das

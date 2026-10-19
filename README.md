@@ -1,5 +1,10 @@
 # Network Topology for Zabbix
 
+> **Local fork (Auto FDB / ARP / Wi-Fi):** operational notes, imported Zabbix
+> templates, the required `nt-bundle.js` build and rollback procedure are in
+> [AUTO-TOPOLOGY-OPERATIONS.md](AUTO-TOPOLOGY-OPERATIONS.md). The tested pilot
+> behavior is not an upstream 5.5.27 feature claim.
+
 Zabbix 7.0 LTS / 7.4 / 8.0 frontend module for interactive network topology visualisation, built on Cytoscape.js and Leaflet.
 *Zabbix 7.0 LTS / 7.4 / 8.0 Frontend-Modul für interaktive Netzwerk-Topologie-Visualisierungen mit Cytoscape.js und Leaflet.*
 

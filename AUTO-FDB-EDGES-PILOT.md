@@ -1,5 +1,12 @@
 # Auto FDB edges — experimental pilot (Techsigno)
 
+> **Historical pilot instructions.** This file documents the original opt-in
+> branch, where production was explicitly unchanged. The later Auto-FDB/ARP
+> and Auto Wi-Fi pilot rollout (through compiled bundle commit `f364025`) is
+> documented in [AUTO-TOPOLOGY-OPERATIONS.md](AUTO-TOPOLOGY-OPERATIONS.md).
+> Do **not** treat the feature-flag or rollout commands below as the current
+> production deployment procedure.
+
 **Branch:** `feature/auto-fdb-edges` from `production/v5.5.27`.
 **Production remains unchanged.** The feature flag is **OFF** by default.
 
