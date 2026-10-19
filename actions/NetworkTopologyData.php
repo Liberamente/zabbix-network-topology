@@ -20,8 +20,8 @@ use API;
 
 class NetworkTopologyData extends NetworkTopologyController {
 
-    // Pilot feature flag: OFF on production until the Techsigno branch is tested.
-    private const AUTO_FDB_EDGES = false;
+    // Pilot: Auto FDB enabled only for the Techsigno group view.
+    private const AUTO_FDB_EDGES = true;
 
     /**
      * Wie lange eine nicht mehr gemeldete Kante auf der Karte bleibt, bevor
@@ -749,7 +749,12 @@ class NetworkTopologyData extends NetworkTopologyController {
         // ── 5a0b. OPTIONAL FDB AUTO-LINKS (read-only, disabled by default) ──
         // Strictly scope reads to the visible hostids (including proxy/group
         // boundaries); do not use the install-wide interactive Finder query.
-        if (self::AUTO_FDB_EDGES) {
+        if (
+           self::AUTO_FDB_EDGES
+           && !$host_mode
+           && count($groupids) === 1
+           && (string) reset($groupids) === '25'
+        ) {
             $fdb_items = API::Item()->get([
                 'output'    => ['hostid', 'key_', 'lastclock', 'lastvalue', 'status', 'state'],
                 'hostids'   => $hostids,
