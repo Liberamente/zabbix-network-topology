@@ -483,6 +483,11 @@ export default {
     'path.link_trouble': 'Diese Verbindung meldet Ports down, Fehler oder Verworfene \u2014 anklicken f\u00fcr die Zahlen.',
     // Kanten-Detailpanel (edge-detail.js)
     'edge.port.uptime': 'steht seit {t}',
+    'fdb.association': 'ARP + FDB: abgeleitete Zuordnung',
+    'fdb.learned': 'MAC auf Switch-Port gelernt',
+    'fdb.port': 'Switch-Port',
+    'fdb.shared': 'Weitere ueberwachte MAC-Adressen wurden an diesem Port gelernt. Die physische Reihenfolge ist unbekannt.',
+    'fdb.note': 'Eine gelernte MAC beweist keine direkte Kabelverbindung: ein Telefon, eine Bridge oder ein WLAN-AP kann dazwischen liegen. Traffic und Betriebszustand pro Client sind nicht gemessen.',
     'wifi.association': 'WLAN-Zuordnung',
     'wifi.registered': 'Per SNMP verbunden',
     'wifi.radio': 'WLAN-Radio',
