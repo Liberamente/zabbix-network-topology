@@ -85,6 +85,86 @@ trunk edges and eight nested physical member pairs. This expectation must
 be checked again against the real private report; synthetic tests do not
 prove that a later live network snapshot is unchanged.
 
+## Interactive Cytoscape preview on the Mac (offline and private)
+
+This branch also includes:
+
+- `tools/verified-trunk-preview.html`: a standalone, visually faithful
+  technical network view based on the module's **vendored Cytoscape.js**,
+  without importing or changing the production module's bundled frontend.
+- `tools/verified-trunk-preview-model.js`: deterministic node/edge layout and
+  fail-closed validation of the **adapter output schema 1** (not the earlier
+  zabbix-tools raw report schema 2). Four logical arcs; member pairs remain
+  nested in the edge details.
+- `tools/verified-trunk-preview-app.js`: no fetch, uploads, external services,
+  API or local storage; the operator chooses the private payload through a
+  local browser file input. Clicking an edge displays each physical port pair,
+  real ifIndex, native LLDP index and source timing. Each switch is represented
+  by a switch icon and a neutral unknown-live-state border.
+- `tests/VerifiedTrunkCytoscapeTest.cjs`: synthetic Node 22+ tests for
+  graph counts, stable positioning, exclusivity, lack of endpoint-candidate
+  promotion, scope, false live statuses and invalid/incomplete members.
+
+The viewer displays **structure only**: four verified static trunks, five
+switches, eight physical port pairs. No invented link performance, ping,
+port-operational status, current alarms, throughput or user coordinates.
+The blue link color means LLDP reciprocal/topological proof, not "port up"
+or "health green".
+
+### From the proxy to the Mac
+
+**On the proxy** (`ubuntu-cardinale`), use the existing checkout; do not
+re-clone or touch the deployed module:
+
+```sh
+cd ~/nt-verified-module-preview
+git status --short
+git fetch origin feature/nt-verified-trunk-adapter-preview
+git switch --detach FETCH_HEAD
+php tests/VerifiedTrunkAdapterTest.php
+php tests/VerifiedTrunkPreviewCliTest.php
+
+# Only if Node is installed:
+node --test tests/VerifiedTrunkCytoscapeTest.cjs
+```
+
+**On the Mac**, use a new disposable directory, NOT the local
+`production/v5.5.27` worktree:
+
+```sh
+git clone --depth 1 --single-branch \
+  --branch feature/nt-verified-trunk-adapter-preview \
+  https://github.com/Liberamente/zabbix-network-topology.git \
+  "$HOME/nt-verified-cytoscape-preview"
+
+umask 077
+mkdir -p "$HOME/nt-preview-private"
+
+scp zabbix@ubuntu-cardinale:/home/zabbix/nt-preview/cardinale-module-payload.json \
+  "$HOME/nt-preview-private/"
+
+open "$HOME/nt-verified-cytoscape-preview/tools/verified-trunk-preview.html"
+```
+
+If `ubuntu-cardinale` is not resolvable from the Mac, use the usual
+SSH-resolvable proxy hostname/IP. This is only an encrypted local copy from
+the operator-controlled host to the Mac; do not share the JSON publicly.
+
+In the browser, click **Apri JSON della preview** and select:
+
+`~/nt-preview-private/cardinale-module-payload.json`
+
+Click any arc to view the **two physical port pairs**. Zoom/pan or press
+**Centra topologia**. The browser loads the local file directly, the local
+`assets/js/cytoscape.min.js`, and the two local preview scripts. No local
+web server and no internet service are needed.
+
+The HTML is a **separate pilot viewer** using the same Cytoscape library,
+not yet the main Network Topology production renderer. For production
+integration we must still reconcile old physical LLDP edges against the
+new four logical trunks, propagate `nt_members` through the existing
+`buildEdgeElements` and edge detail panel, and use live NodeBuilder data.
+
 ## Integration boundary and rollback
 
 This branch adds a pure adapter and an offline CLI, not an active
