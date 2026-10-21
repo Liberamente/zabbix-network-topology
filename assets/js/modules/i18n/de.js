@@ -486,7 +486,7 @@ export default {
     'fdb.association': 'ARP + FDB: abgeleitete Zuordnung',
     'fdb.learned': 'MAC auf Switch-Port gelernt',
     'fdb.port': 'Switch-Port',
-    'fdb.shared': 'Weitere ueberwachte MAC-Adressen wurden an diesem Port gelernt. Die physische Reihenfolge ist unbekannt.',
+    'fdb.shared': 'An diesem Port wurden mehrere MAC-Adressen gelernt (auch von nicht ueberwachten Geraeten). Die physische Reihenfolge ist unbekannt.',
     'fdb.note': 'Eine gelernte MAC beweist keine direkte Kabelverbindung: ein Telefon, eine Bridge oder ein WLAN-AP kann dazwischen liegen. Traffic und Betriebszustand pro Client sind nicht gemessen.',
     'wifi.association': 'WLAN-Zuordnung',
     'wifi.registered': 'Per SNMP verbunden',
