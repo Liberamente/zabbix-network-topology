@@ -35,6 +35,17 @@ final class VerifiedTrunkAdapter {
             'report host-group scope does not match the expected group');
         $captured = self::positiveInt($report['generated_at'] ?? null);
         self::assertThat($captured !== null, 'invalid snapshot generated_at');
+        // Never loosen the collector's own age/skew policy: all absolute
+        // limits are ceilings, not substitutes for a stricter report.
+        $policy = is_array($report['freshness_policy'] ?? null)
+            ? $report['freshness_policy'] : [];
+        $reportAge = self::positiveInt($policy['general_max_age_seconds'] ?? self::MAX_FDB_AGE);
+        $reportSkew = self::nonNegativeInt($policy['correlation_max_skew_seconds'] ?? self::MAX_DYNAMIC_SKEW);
+        self::assertThat($reportAge !== null && $reportSkew !== null,
+            'invalid source freshness policy');
+        $rawMaxAge = min(self::MAX_REMOTE_AGE, $reportAge);
+        $fdbMaxAge = min(self::MAX_FDB_AGE, $reportAge);
+        $maxSkew = min(self::MAX_DYNAMIC_SKEW, $reportSkew);
 
         $allowed = [];
         foreach ($visibleHostids as $hid) {
@@ -152,8 +163,8 @@ final class VerifiedTrunkAdapter {
                     $fdbClock = self::positiveInt($p['fdb_clock'] ?? null);
                     self::assertThat($lldpClock !== null && $fdbClock !== null
                         && $lldpClock <= $captured && $fdbClock <= $captured
-                        && $captured - $lldpClock <= self::MAX_REMOTE_AGE
-                        && $captured - $fdbClock <= self::MAX_FDB_AGE,
+                        && $captured - $lldpClock <= $rawMaxAge
+                        && $captured - $fdbClock <= $fdbMaxAge,
                         'stale or future reciprocal member evidence');
                     $itemIds = $p['source_itemids'] ?? null;
                     self::assertThat(is_array($itemIds) && count($itemIds) > 0,
@@ -177,7 +188,7 @@ final class VerifiedTrunkAdapter {
                     }
                 }
                 $spread = max($clockList) - min($clockList);
-                self::assertThat($spread <= self::MAX_DYNAMIC_SKEW
+                self::assertThat($spread <= $maxSkew
                     && self::nonNegativeInt($pair['dynamic_skew_seconds'] ?? null)
                         === $spread,
                     'dynamic evidence exceeds verified 120s gate');
@@ -270,6 +281,8 @@ final class VerifiedTrunkAdapter {
             self::assertThat(self::hostId($item) !== null,
                 'invalid HPE source itemid');
         }
+        self::assertThat(count(array_unique(array_map('strval', $items))) === count($items),
+            'duplicate HPE source itemid');
         $indices = $input['member_ifindexes'] ?? null;
         $labels = $input['member_port_labels'] ?? null;
         self::assertThat(is_array($indices) && is_array($labels)
@@ -287,6 +300,7 @@ final class VerifiedTrunkAdapter {
             $members[$ix] = (string) $labels[(string) $ix];
         }
         self::assertThat(count($members) === count($labels)
+            && count(array_unique(array_values($members))) === count($members)
             && !isset($members[$idx]),
             'duplicate aggregate interface or extra member label');
         return [
