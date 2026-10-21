@@ -181,6 +181,10 @@ export function applyTrafficHeatmap(cy) {
     const root = document.getElementById('nt-root');
     const dark = !!(root && root.classList.contains('nt-dark'));
     cy.edges().forEach(function(edge) {
+        // A verified aggregate is STRUCTURAL evidence. Without measured
+        // member traffic / operational status the weathermap must not
+        // recolor it idle-green, down-red, or attach fabricated utilization.
+        if (edge.data('ntVerified')) return;
         if (edge.hasClass('dead-edge')) return;
         // §9 Ghost-Kanten haben keine gemessenen Daten — die Heatmap wuerde ihre
         // Inline-Styles ueber den (bewusst dezenten) Ghost-Style aus dem
