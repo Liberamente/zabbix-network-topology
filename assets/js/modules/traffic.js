@@ -185,7 +185,7 @@ export function applyTrafficHeatmap(cy) {
         // §9 Ghost-Kanten haben keine gemessenen Daten — die Heatmap wuerde ihre
         // Inline-Styles ueber den (bewusst dezenten) Ghost-Style aus dem
         // Stylesheet legen. Also auslassen.
-        if (edge.data('_isGhostEdge')) return;
+        if (edge.data('_isGhostEdge') || edge.data('_isFdbEdge')) return;
         // §9 Dasselbe fuer die anderen SYNTHETISCHEN Kanten. Die Internet-Wolke
         // (_isInternetEdge) hat einen eigenen, bewussten Stylesheet-Style (fett,
         // blau, durchgezogen), und die Buendel-Kante (_isBundleEdge) traegt den
