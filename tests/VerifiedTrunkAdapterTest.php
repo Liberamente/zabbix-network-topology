@@ -143,8 +143,9 @@ checkPreview('physical evidence stays in member details',
         && ($output['edges'][0]['nt_members'][0]['ports']['1002'] ?? '') === '45');
 checkPreview('node statuses are unknown, not invented healthy',
     count(array_filter($output['nodes'],
-        static fn($n) => ($n['severity'] ?? 1) === null
-            && ($n['ping'] ?? 1) === null)) === 5);
+        static fn($n) => array_key_exists('severity', $n)
+            && $n['severity'] === null
+            && array_key_exists('ping', $n) && $n['ping'] === null)) === 5);
 checkPreview('never publish',
     $output['publication_allowed'] === false
         && $output['preview_only'] === true);
