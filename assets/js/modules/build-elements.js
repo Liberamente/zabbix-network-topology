@@ -400,6 +400,32 @@ export function buildEdgeElements(edges, nodes) {
             return;
         }
 
+        // Verified trunk pilot: ONE logical edge for the complete 2-member
+        // aggregate. No inferred port traffic or host-wide utilization:
+        // the structural blue edge is evidence, not operational status.
+        if (e.nt_verified_static_trunk === true && e.nt_offline_preview === true) {
+            const ports = e.ports || {};
+            const indices = e.port_idx || {};
+            elements.push({
+                data: {
+                    id: e.id, source: src, target: tgt,
+                    isLLDP: true, ntVerified: true,
+                    ntMembers: Array.isArray(e.nt_members) ? e.nt_members : [],
+                    ntMemberCount: e.nt_member_count,
+                    portSrc: ports[src] || '', portTgt: ports[tgt] || '',
+                    portSrcIdx: indices[src] || '', portTgtIdx: indices[tgt] || '',
+                    tLabel: '×' + e.nt_member_count + ' · LLDP',
+                    src: ['lldp'], confirmed: true,
+                    reporters: [src, tgt],
+                    trafficIn: 0, trafficOut: 0,
+                    perLink: false, capBps: 0,
+                    portDown: null, portErr: null, portDrop: null,
+                    ifaceDown: 0, ifaceErr: 0, ifaceDrop: 0,
+                    ifaceDownRatio: 0
+                }
+            });
+            return;
+        }
         const srcNode = nodeById[src];
         const tgtNode = nodeById[tgt];
         const tIn  = (srcNode && srcNode.traffic ? srcNode.traffic.in  : 0)
