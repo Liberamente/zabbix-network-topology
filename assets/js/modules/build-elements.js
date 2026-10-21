@@ -400,6 +400,28 @@ export function buildEdgeElements(edges, nodes) {
             return;
         }
 
+        // Inferred ARP+FDB association, NOT an LLDP cable. The switch has
+        // learned this host MAC on a physical port. A phone or unmanaged
+        // bridge may sit between them: no direct wiring/traffic assertion.
+        if (e.fdb_learned === true) {
+            elements.push({
+                data: {
+                    id: e.id, source: src, target: tgt,
+                    _isFdbEdge: true, isLLDP: false, tLabel: '',
+                    portSrc: (e.ports && e.ports[src]) || '',
+                    portTgt: '',
+                    portSrcIdx: (e.port_idx && e.port_idx[src]) || '',
+                    portTgtIdx: '',
+                    fdbSharedPort: e.fdb_shared_port === true,
+                    lastSeen: e.last_seen || 0,
+                    src: ['arp', 'fdb'], confirmed: false,
+                    trafficIn: 0, trafficOut: 0, capBps: 0, perLink: false,
+                    portDown: null, portErr: null, portDrop: null
+                }
+            });
+            return;
+        }
+
         const srcNode = nodeById[src];
         const tgtNode = nodeById[tgt];
         const tIn  = (srcNode && srcNode.traffic ? srcNode.traffic.in  : 0)
