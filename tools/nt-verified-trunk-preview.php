@@ -66,13 +66,26 @@ function privateOutput(string $file, string $contents): void {
     if ($handle === false) {
         throw new RuntimeException('output path exists or cannot be opened');
     }
+    $complete = false;
     try {
-        if (@fwrite($handle, $contents) !== strlen($contents)) {
-            throw new RuntimeException('failed writing private output');
+        $length = strlen($contents);
+        $offset = 0;
+        while ($offset < $length) {
+            $written = @fwrite($handle, substr($contents, $offset));
+            if ($written === false || $written === 0) {
+                throw new RuntimeException('failed writing private output');
+            }
+            $offset += $written;
         }
-        @chmod($file, 0600);
+        if (!@chmod($file, 0600)) {
+            throw new RuntimeException('cannot restrict output permissions');
+        }
+        $complete = true;
     } finally {
         fclose($handle);
+        if (!$complete) {
+            @unlink($file);
+        }
     }
 }
 
