@@ -58,6 +58,7 @@ the actual scoped hosts and the group ID when testing privately.
 ```sh
 php -v
 php tests/VerifiedTrunkAdapterTest.php
+php tests/VerifiedTrunkPreviewCliTest.php
 umask 077
 
 php tools/nt-verified-trunk-preview.php \
@@ -72,6 +73,8 @@ php tools/nt-verified-trunk-preview.php \
 dot -Tsvg /path/to/private-module-preview.dot \
   -o /path/to/private-module-preview.svg
 ```
+
+The end-to-end CLI test uses `tests/fixtures/verified-trunks-synthetic.json` with fictional `SW-1001`.. `SW-1005`; it checks four arcs, eight physical pairs, owner-only permissions, refusal to overwrite and refusal to cross host-group boundaries. It never opens a network connection or invokes Zabbix.
 
 The script creates its output using exclusive creation with mode 0600.
 It will not overwrite an existing report/preview. Keep all generated
