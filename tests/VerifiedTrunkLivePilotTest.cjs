@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const fixture = require('./fixtures/verified-trunks-synthetic.json');
-const validator = require('../tools/verified-trunk-preview-model.js');
+const validator = require('../assets/js/nt-verified-trunk-model.js');
 
 // Evaluate the actual ES module source with exports rewritten for Node VM;
 // the project uses esbuild on the live frontend, but tests are pure Node.
