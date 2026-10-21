@@ -89,7 +89,8 @@ final class VerifiedTrunkAdapter {
             $linkId = 'trunk:' . $keyA . '--' . $keyB;
             self::assertThat(($link['link_id'] ?? null) === $linkId
                 && !isset($seenLinks[$linkId])
-                && !isset($usedAggregates[$keyA], $usedAggregates[$keyB]),
+                && !isset($usedAggregates[$keyA])
+                && !isset($usedAggregates[$keyB]),
                 'duplicate or inconsistent aggregate link');
             $seenLinks[$linkId] = true;
             $usedAggregates[$keyA] = true;
