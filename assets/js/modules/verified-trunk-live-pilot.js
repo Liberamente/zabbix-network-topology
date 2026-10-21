@@ -167,6 +167,7 @@ export function installVerifiedTrunkPilot(cfg, getLive, redraw, notify) {
             notify('Il JSON è vuoto o supera 8 MiB.', 'error');
             return;
         }
+        const hadPilot = active !== null;
         try {
             const raw = await file.text();
             const d = getLive();
@@ -177,6 +178,7 @@ export function installVerifiedTrunkPilot(cfg, getLive, redraw, notify) {
         } catch (error) {
             clearVerifiedTrunkPilot();
             sync();
+            if (hadPilot) redraw(); // never leave a stale graph with an OFF badge
             notify(error.message || 'Preview non valida', 'error');
         }
     });
