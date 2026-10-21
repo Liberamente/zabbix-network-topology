@@ -207,6 +207,17 @@ $withParent = [['id'=>'hosts_1','from'=>'12','to'=>'13','_type'=>'hosts']];
 t('Containment edge prevents redundant FDB link',
     count(runCase($hosts,sourceRows(),$caps,$withParent)),1);
 
+// The other MAC need not belong to a monitored Zabbix host. It may be
+// a phone, WLAN station or unmanaged bridge: the port is still shared.
+$unmonitored = sourceRows();
+$unmonitored[] = row('12', 'nt.fdb.dot1q',
+    fdb('02:10:20:30:40:50', 3) . fdb('02:10:20:30:40:58', 3), $now-1);
+$onlyKnown = runCase($hosts, $unmonitored, $caps);
+t('One known endpoint remains mapped with unknown second MAC',
+    count($onlyKnown), 1);
+t('Unmonitored MAC on the same port still marks shared inference',
+    $onlyKnown[0]['fdb_shared_port'] ?? null, true);
+
 if ($failed) {
     fwrite(STDERR,"FAILURES: $failed\n");
     exit(1);
