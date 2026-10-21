@@ -57,6 +57,13 @@ import { fetchJson } from './http.js';
 import { setupGroupHulls, destroyGroupHulls } from './group-hulls.js';
 import { runGroupClusterLayout } from './group-cluster-layout.js';
 import { NT_GROUP_CLUSTER_KEY, loadGhostMode } from './storage.js';
+import { applyVerifiedTrunkPilot, consumeVerifiedPilotPositionGuard }
+    from './verified-trunk-live-pilot.js';
+
+function renderWithVerifiedPilot(wrap, nodes, edges, dataUrl) {
+    const p = applyVerifiedTrunkPilot(nodes, edges, window.NT_CONFIG);
+    return render(wrap, p.nodes, p.edges, dataUrl);
+}
 
 // ── Cross-Module-Glue: setupToolbar lebt im Hauptmodul ─────────────────────
 // (es ist 228 Zeilen und ist eng mit render() und vielen Buttons verknüpft;
@@ -106,6 +113,11 @@ function _markRefresh(ok, err) {
 // (im Hauptmodul). Daher nicht hier — bleibt im Hauptmodul.
 
 export function render(wrap, nodes, edges, dataUrl) {
+    // Isolated pilot never saves layout or alters real Zabbix links.
+    const pilotReadOnly = (nodes || []).some(function(n) {
+        return n.nt_verified_trunk_pilot === true;
+    });
+    const skipPositionSave = pilotReadOnly || consumeVerifiedPilotPositionGuard();
     const pnl = document.getElementById('nt-detail');
     if (!nodes.length) {
         wrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;'
@@ -117,7 +129,7 @@ export function render(wrap, nodes, edges, dataUrl) {
     // internet cloud and ghosts — Cytoscape then only lays out the hop
     // neighbourhood. rawNodes (below, for the KPI row) is thereby the focus
     // subset as well; the banner states the ratio.
-    if (isFocusActive()) {
+    if (!pilotReadOnly && isFocusActive()) {
         const _f = filterToFocus(nodes, edges);
         if (_f.found) {
             nodes = _f.nodes;
@@ -192,7 +204,8 @@ export function render(wrap, nodes, edges, dataUrl) {
         && groupNames.length > 1
         && nodes.length >= GROUP_VIEW_THRESHOLD;
 
-    let _groupViewActive = _groupViewPref !== null ? _groupViewPref : _autoGroup;
+    let _groupViewActive = !pilotReadOnly
+        && (_groupViewPref !== null ? _groupViewPref : _autoGroup);
     // Damit Toolbar und Kontextmenue denselben Zustand sehen wie die Karte.
     setGroupViewEffective(_groupViewActive && groupNames.length > 0);
 
@@ -230,7 +243,7 @@ export function render(wrap, nodes, edges, dataUrl) {
     // Arbeitsplatzrechner, und die verdecken genau das, wofuer man die
     // Anzeige einschaltet.
     const _ghostMode = loadGhostMode();
-    if (_ghostMode !== 'off') {
+    if (!pilotReadOnly && _ghostMode !== 'off') {
         const _lq = (window._ntLastData && window._ntLastData.lldp_quality) || [];
         const withGhosts = injectGhostNodes(nodes, edges, _lq, _ghostMode);
         const _vorher = nodes.length;
@@ -386,6 +399,7 @@ export function render(wrap, nodes, edges, dataUrl) {
         style: buildCytoscapeStyle(dark, nodes.length),
         layout: _initialLayout,
         userZoomingEnabled: true, userPanningEnabled: true, boxSelectionEnabled: false,
+        autoungrabify: pilotReadOnly,
         minZoom: 0.1, maxZoom: 4,
         // Performance bei grossen Graphen (~150-200+ Hosts): Kanten waehrend
         // Pan/Zoom ausblenden und den Viewport als Textur cachen -> deutlich
@@ -476,6 +490,10 @@ export function render(wrap, nodes, edges, dataUrl) {
     cy.on('tap', 'node[!isGroup]', function(e) {
         // Internet-Wolke ist virtuell — keine Highlights, keine Detail-Panel
         if (e.target.data('_isInternet')) return;
+        if (pilotReadOnly && isLinkModeActive()) {
+            exitLinkMode();
+            return;
+        }
         if (isLinkModeActive()) {
             const node = e.target;
             const first = getLinkFirst();
@@ -542,6 +560,7 @@ export function render(wrap, nodes, edges, dataUrl) {
     cy.on('mouseover', 'edge', function(e) {
         // A collapsed bundle shows its totals, not those of the lead member.
         const ed = trunkData(e.target);
+        if (ed.ntVerified) return; // no invented idle/zero traffic
         // Internet-Wolke UND Buendel-Kante sind synthetisch: kein gemessener
         // Traffic, der Nachbar (internet_root / bundle_<sw>) ist kein Host.
         // Ein Tooltip zeigte sonst "0 b/s · lade Verlauf" und feuerte eine
@@ -584,6 +603,7 @@ export function render(wrap, nodes, edges, dataUrl) {
     });
 
     cy.on('cxttap', 'node[!isGroup]', function(e) {
+        if (pilotReadOnly) return;
         const oe = e.originalEvent;
         if (oe) oe.preventDefault();
         hideTip();
@@ -611,6 +631,7 @@ export function render(wrap, nodes, edges, dataUrl) {
     // gedrückter linker Maustaste — kein Problem, weil dort schon cxttap
     // (Rechtsklick) existiert und beide dasselbe Menü öffnen.
     cy.on('taphold', 'node[!isGroup]', function(e) {
+        if (pilotReadOnly) return;
         hideTip();
         if (e.target.data('_isInternet')) return;
         // Position aus touch oder original-event holen
@@ -677,7 +698,7 @@ export function render(wrap, nodes, edges, dataUrl) {
             toggleGroupOpen(pfad);
             const _d = window._ntLastData || {};
             if (_d.nodes && _d.nodes.length) {
-                render(wrap, _d.nodes.slice(), (_d.edges || []).slice(), _d.url || '');
+                renderWithVerifiedPilot(wrap, _d.nodes.slice(), (_d.edges || []).slice(), _d.url || '');
             }
         });
     }
@@ -690,14 +711,14 @@ export function render(wrap, nodes, edges, dataUrl) {
         toggleBundleOpen(sw);
         const _d = window._ntLastData || {};
         if (_d.nodes && _d.nodes.length) {
-            render(wrap, _d.nodes.slice(), (_d.edges || []).slice(), _d.url || '');
+            renderWithVerifiedPilot(wrap, _d.nodes.slice(), (_d.edges || []).slice(), _d.url || '');
         }
     });
 
     bindCollapse(cy);
     const _leafPref = collapsePref();
     const _leafAuto = _leafPref === null && leafCandidates(cy).length >= COLLAPSE_SCHWELLE;
-    if (_leafPref === true || _leafAuto) {
+    if (!pilotReadOnly && (_leafPref === true || _leafAuto)) {
         const _eingeklappt = collapseLeaves(cy);
         if (_eingeklappt) {
             // Neu anordnen, sonst steht die geschrumpfte Karte in den Luecken
@@ -716,7 +737,7 @@ export function render(wrap, nodes, edges, dataUrl) {
     setTimeout(function() { applyTrafficHeatmap(cy); applyPortLabels(cy); }, 1800);
 
     setupMinimap(cy, wrap);
-    applyManualLinks(cy);
+    if (!pilotReadOnly) applyManualLinks(cy);
     showMinimap();
 
     // Build the focus banner AFTER the wrap cleanup above (which also swept
@@ -750,7 +771,7 @@ export function render(wrap, nodes, edges, dataUrl) {
     // the stored positions of every other host of the view. The focus
     // arrangement is deliberately ephemeral.
     cy.on('dragfree', 'node[!isGroup]', function() {
-        if (isFocusActive()) return;
+        if (skipPositionSave || isFocusActive()) return;
         clearTimeout(_posSaveTimer);
         _posSaveTimer = setTimeout(function() { savePositions(cy); }, 400);
     });
@@ -775,7 +796,7 @@ export function render(wrap, nodes, edges, dataUrl) {
     cy.one('layoutstop', function() {
         setTimeout(function() {
             if (window._ntCy) {
-                if (!isFocusActive()) savePositions(window._ntCy);
+                if (!skipPositionSave && !isFocusActive()) savePositions(window._ntCy);
                 window._ntCy.fit(window._ntCy.nodes(), 40);
                 applyTrafficHeatmap(window._ntCy);
                 applyPortLabels(window._ntCy);
@@ -826,13 +847,24 @@ export function render(wrap, nodes, edges, dataUrl) {
                 window._ntLastData.nodes = data.nodes;
                 window._ntLastData.edges = data.edges || [];
                 window._ntLastData.lldp_quality = data.lldp_quality || [];
-                notifyTopoChanges(data.topo_changes);
+                const pilot = applyVerifiedTrunkPilot(data.nodes,
+                    data.edges || [], window.NT_CONFIG);
+                if (pilotReadOnly && !pilot.active) {
+                    // The LLDP report expired or an endpoint is no longer
+                    // monitored/visible; restore the standard backend graph.
+                    toastTruncatedOnce('verified-pilot-expired',
+                        'Preview trunk scaduta: topologia standard ripristinata.');
+                    render(wrap, data.nodes.slice(), (data.edges || []).slice(), dataUrl);
+                    return;
+                }
+                if (!pilotReadOnly) notifyTopoChanges(data.topo_changes);
                 // In Group-View komplett re-rendern (Aggregate können sich
                 // strukturell ändern, In-Place-Update wäre fragil)
                 let inGroupView = false;
                 try { inGroupView = localStorage.getItem(NT_GROUP_VIEW_KEY) === '1'; } catch (e) {}
                 if (inGroupView) {
-                    render(wrap, data.nodes.slice(), (data.edges || []).slice(), dataUrl);
+                    renderWithVerifiedPilot(wrap, data.nodes.slice(),
+                        (data.edges || []).slice(), dataUrl);
                     return;
                 }
                 const map = {};
