@@ -397,7 +397,7 @@ if (!window.NT_CONFIG || ((!window.NT_CONFIG.selected_groupids || !window.NT_CON
       // JS-Aenderungen `npm run build` (deploy.sh baut ausserdem selbst). ?>
 <?php // Extra read-only validator only for the super-admin pilot. No network requests. ?>
 <?php if (!empty($data['user']['is_super_admin'])): ?>
-<script defer src="modules/network_topology/tools/verified-trunk-preview-model.js?v=<?= $_nt_v ?>"></script>
+<script defer src="modules/network_topology/assets/js/nt-verified-trunk-model.js?v=<?= $_nt_v ?>"></script>
 <?php endif; ?>
 <script defer src="modules/network_topology/assets/js/dist/nt-bundle.js?v=<?= $_nt_v ?>"></script>
 <script>window.addEventListener("load", function(){
