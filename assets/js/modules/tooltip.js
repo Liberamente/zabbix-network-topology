@@ -228,6 +228,29 @@ function _sumArrays(a, b) {
 }
 
 export function showEdgeTip(evt, edgeData, srcLabel, tgtLabel) {
+    if (edgeData.kind === 'fdb') {
+        // DOM/textContent rather than HTML: SNMP port and host names are
+        // untrusted. This is not a directly measured Ethernet cable.
+        _syncTheme();
+        _tip.replaceChildren();
+        const head = el('div', 'font-weight:700;margin-bottom:5px',
+            srcLabel + ' - ' + tgtLabel);
+        _tip.appendChild(head);
+        _tip.appendChild(el('div', 'color:#b45309;font-weight:700',
+            t('fdb.association')));
+        _tip.appendChild(el('div', 'margin-top:5px;font-size:11px',
+            t('fdb.port') + ': ' + (edgeData.portSrc || t('wifi.unknown'))));
+        if (edgeData.fdbSharedPort) {
+            _tip.appendChild(el('div', 'margin-top:5px;font-size:10px',
+                t('fdb.shared')));
+        }
+        _tip.appendChild(el('div', 'margin-top:5px;font-size:10px',
+            t('fdb.note')));
+        _tip.style.width = '255px';
+        _tip.style.display = 'block';
+        moveTip(evt);
+        return;
+    }
     if (edgeData.kind === 'wifi') {
         // Association data are not link traffic. Do not fetch host traffic
         // histories, infer Ethernet capacity or display interface errors.
