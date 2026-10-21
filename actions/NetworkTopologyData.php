@@ -8,6 +8,7 @@ namespace Modules\NetworkTopology\Actions;
 use Modules\NetworkTopology\Topology\HostMetadata;
 use Modules\NetworkTopology\Topology\MetricExtractor;
 use Modules\NetworkTopology\Topology\LldpEdgeBuilder;
+use Modules\NetworkTopology\Topology\FdbEdgeBuilder;
 use Modules\NetworkTopology\Topology\HostTagParser;
 use Modules\NetworkTopology\Topology\HopScope;
 use Modules\NetworkTopology\Topology\ManualLinks;
@@ -409,7 +410,7 @@ class NetworkTopologyData extends NetworkTopologyController {
             'selectMacros'          => ['macro', 'value'],
             // Seit Zabbix 7.0 verfuegbar — spart einen zweiten HostGroup.get
             // Roundtrip plus N×M-Loop fuers Hostid→Groups-Mapping.
-            'selectHostGroups'      => ['name'],
+            'selectHostGroups'      => ['groupid', 'name'],
             'monitored_hosts'       => true,
             'preservekeys'          => true
         ];
@@ -550,6 +551,7 @@ class NetworkTopologyData extends NetworkTopologyController {
         // Stuecks das Maximum bildet. MetricExtractorTest haelt genau diese
         // Zusicherung fest.
         $metrics         = [];
+        $fdb_items       = []; // only existing read-only Zabbix item values
         $host_last_seen  = [];
         $this->item_zahl = 0;
 
@@ -631,6 +633,10 @@ class NetworkTopologyData extends NetworkTopologyController {
                     'vm.memory.size', 'hrStorageUsed', 'hrStorageSize', 'hrStorageType',
                     // Ping
                     'icmppingsec',
+                    // Optional native ARP -> MAC -> bridge-FDB access-port links.
+                    // All four values are already collected by Zabbix SNMP items;
+                    // no new collector and no direct SNMP queries from PHP.
+                    'nt.arp', 'nt.fdb.dot1q', 'nt.fdb.baseport', 'nt.fdb.ifname',
                 ]],
                 'searchByAny'  => true,
                 'monitored'    => true,
@@ -672,6 +678,20 @@ class NetworkTopologyData extends NetworkTopologyController {
 
             foreach ($chunk as $iid => &$item) {
                 $item['lastvalue'] = $lv['values'][$iid] ?? null;
+                // Preserve the real sample clock ONLY for relevant raw
+                // ARP/FDB evidence: Zabbix's lastvalue alone is not proof of
+                // freshness (missing samples can be months old).
+                if (isset($lv['clocks'][$iid]) && in_array($item['key_'], [
+                        'nt.arp', 'nt.fdb.dot1q',
+                        'nt.fdb.baseport', 'nt.fdb.ifname'
+                    ], true)) {
+                    $fdb_items[] = [
+                        'hostid' => (string) $item['hostid'],
+                        'key_' => $item['key_'],
+                        'lastvalue' => $item['lastvalue'],
+                        'lastclock' => (int) $lv['clocks'][$iid],
+                    ];
+                }
             }
             unset($item);
 
@@ -742,6 +762,13 @@ class NetworkTopologyData extends NetworkTopologyController {
                 $metrics['port_errors'] ?? [], $metrics['port_discards'] ?? [],
                 $metrics['port_names'] ?? []);
         }
+        // Optional inferred endpoint attachments: no LLDP link is removed
+        // or modified. This operates strictly within selected visible groups.
+        // Host+hop scope is handled by LLDP only to avoid widening its graph.
+        if (!$host_mode && $fdb_items) {
+            $edges = FdbEdgeBuilder::augment($hosts, $edges, $fdb_items, $groupids);
+        }
+        unset($fdb_items);
         $lldp_quality   = $lldp['quality'];
         $lldp_unmatched = $lldp['unmatched'];
         $lldp_host_caps = $lldp['host_caps'] ?? [];
