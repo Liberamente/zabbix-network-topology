@@ -1028,8 +1028,15 @@ class NetworkTopologyData extends NetworkTopologyController {
         // removed — 'moved', wenn dasselbe Paar an einem anderen Port haengt.
         // Vorher fiel genau dieser Fall durchs Raster, weil der Schluessel nur
         // aus dem Host-Paar bestand und sich beim Umstecken nicht aendert.
-        $current  = TopoDiff::snapshot($edges, $host_label);
-        $baseline = NtCache::get('topo_baseline', $cache_parts);
+        // MAC-learning and client Wi-Fi associations are dynamic and not
+        // proof of a physical cable move. Keep them OUT of the persistent
+        // LLDP/CDP topology-change baseline and warning notifications.
+        // A new baseline namespace avoids replaying old pilot FDB entries.
+        $physical_edges = array_values(array_filter($edges,
+            static fn($e): bool => !in_array((string) ($e['match'] ?? ''),
+                ['fdb', 'wifi'], true)));
+        $current  = TopoDiff::snapshot($physical_edges, $host_label);
+        $baseline = NtCache::get('topo_baseline_physical_v1', $cache_parts);
         $base_arr = is_array($baseline) ? $baseline : null;
 
         // Datenschutz (Review #11): die Baseline speichert Hostnamen. Verliert
@@ -1093,7 +1100,7 @@ class NetworkTopologyData extends NetworkTopologyController {
         // Neustart, eine ausgefallene Discovery, ein zu frueher Poll —, und
         // ohne diese Frist sprang die Karte bei jedem davon.
         $aged = TopoDiff::ageOut($base_arr, $current, time(), self::STALE_TTL);
-        NtCache::set('topo_baseline', $cache_parts, $aged['store'], 7 * 86400);
+        NtCache::set('topo_baseline_physical_v1', $cache_parts, $aged['store'], 7 * 86400);
 
         // Neu aufgetauchte Kanten markieren — Gegenstueck zur Alterung.
         // Same keys as the snapshot — with parallel links "a|b" alone no
@@ -1101,7 +1108,8 @@ class NetworkTopologyData extends NetworkTopologyController {
         $jetzt = time();
         $_keys = TopoDiff::keys($edges);
         foreach ($edges as $_i => &$_ne) {
-            if ($_keys[$_i] === null) {
+            if (in_array((string) ($_ne['match'] ?? ''), ['fdb', 'wifi'], true)
+                    || $_keys[$_i] === null) {
                 continue;
             }
             $st = $aged['store'][$_keys[$_i]] ?? null;
