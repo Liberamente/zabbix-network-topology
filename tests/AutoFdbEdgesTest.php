@@ -32,11 +32,11 @@ function t(string $label, $got, $want): void {
 
 $now = 1792354000;
 $hosts = [
-    '11' => ['host' => 'sw15', 'name' => 'Cudy .15', 'proxyid' => '100', 'inventory'=>[], 'interfaces'=>[]],
-    '12' => ['host' => 'sw16', 'name' => 'Cudy .16', 'proxyid' => '100', 'inventory'=>[], 'interfaces'=>[]],
-    '13' => ['host' => 'qnap', 'name' => 'QNAP', 'proxyid' => '100', 'inventory'=>[],
-        'interfaces'=>[['ip'=>'192.168.2.8']],
-        'tags' => [['tag'=>'nt:lldp','value'=>'24:5E:BE:40:F5:3F']]],
+    '11' => ['host' => 'sw15', 'name' => 'Synthetic switch 1', 'proxyid' => '100', 'inventory'=>[], 'interfaces'=>[]],
+    '12' => ['host' => 'sw16', 'name' => 'Synthetic switch 2', 'proxyid' => '100', 'inventory'=>[], 'interfaces'=>[]],
+    '13' => ['host' => 'storage', 'name' => 'NAS', 'proxyid' => '100', 'inventory'=>[],
+        'interfaces'=>[['ip'=>'192.0.2.8']],
+        'tags' => [['tag'=>'nt:lldp','value'=>'02:10:20:30:40:50']]],
 ];
 function row($host, $key, $value, $ts=null): array {
     global $now;
@@ -48,7 +48,7 @@ function fdb($mac, $port, $vlan=1): string {
     return '.1.3.6.1.2.1.17.7.1.2.2.1.2.' . $vlan . '.' . implode('.', $oct) . ' = INTEGER: ' . $port . "\n";
 }
 function sourceRows(): array {
-    $mac='24:5e:be:40:f5:3f';
+    $mac='02:10:20:30:40:50';
     $out=[];
     foreach (['11'=>24,'12'=>3] as $hid=>$port) {
         $out[] = row($hid, 'nt.fdb.dot1q', fdb($mac,$port));
@@ -69,15 +69,15 @@ function runCase($hosts,$rows,$caps,$edges=[],$manual=[],$metrics=[]): array {
 }
 
 $got = runCase($hosts, sourceRows(), $caps);
-t('QNAP: one inferred edge', count($got), 1);
-t('QNAP: switch is .16', (string)($got[0]['from'] ?? ''), '12');
-t('QNAP: target QNAP', (string)($got[0]['to'] ?? ''), '13');
-t('QNAP: port GE3', $got[0]['ports']['12'] ?? null, 'GigabitEthernet3');
-t('QNAP: source FDB', $got[0]['src'] ?? null, ['fdb']);
-t('QNAP: unconfirmed inference', $got[0]['confirmed'] ?? null, false);
-t('QNAP: from original VLAN', $got[0]['vlan'] ?? null, 1);
+t('NAS: one inferred edge', count($got), 1);
+t('NAS: switch is .16', (string)($got[0]['from'] ?? ''), '12');
+t('NAS: target NAS', (string)($got[0]['to'] ?? ''), '13');
+t('NAS: port GE3', $got[0]['ports']['12'] ?? null, 'GigabitEthernet3');
+t('NAS: source FDB', $got[0]['src'] ?? null, ['fdb']);
+t('NAS: unconfirmed inference', $got[0]['confirmed'] ?? null, false);
+t('NAS: from original VLAN', $got[0]['vlan'] ?? null, 1);
 
-// Actual Cudy behavior: the neighbor capabilities are 14 00 (no Bridge
+// Actual Synthetic switch behavior: the neighbor capabilities are 14 00 (no Bridge
 // bit), but the physical switch-to-switch LLDP edge identifies GE24 as uplink.
 $cudyCaps = [
     row('11','lldpRemSysCapEnabled[0.24.10]','14 00'),
@@ -87,24 +87,24 @@ $switchLink = [['id'=>'lldp_switches','from'=>'11','to'=>'12','src'=>['lldp'],
     'ports'=>['11'=>'GigabitEthernet24','12'=>'GigabitEthernet24'],
     'port_idx'=>['11'=>'24','12'=>'24']]];
 $cudyEdges=runCase($hosts,sourceRows(),$cudyCaps,$switchLink);
-t('Real Cudy caps 14 00: edge added',count($cudyEdges),2);
-t('Real Cudy caps: QNAP attached to switch .16',
+t('Real Synthetic switch caps 14 00: edge added',count($cudyEdges),2);
+t('Real Synthetic switch caps: NAS attached to switch .16',
     (string)($cudyEdges[1]['from'] ?? ''),'12');
-t('Real Cudy caps: QNAP on GE3',
+t('Real Synthetic switch caps: NAS on GE3',
     $cudyEdges[1]['ports']['12'] ?? null,'GigabitEthernet3');
-// Regression: real Cudy LLDP reports numeric port labels ("24"),
+// Regression: real Synthetic switch LLDP reports numeric port labels ("24"),
 // while FDB resolves the same ifIndex to "GigabitEthernet24".
 $switchLinkNumeric = $switchLink;
 $switchLinkNumeric[0]['ports'] = ['11'=>'24', '12'=>'24'];
 
 $cudyNumeric = runCase($hosts, sourceRows(), $cudyCaps, $switchLinkNumeric);
 
-t('Real Cudy numeric LLDP: QNAP edge created',
+t('Real Synthetic switch numeric LLDP: NAS edge created',
     count($cudyNumeric), 2);
-t('Real Cudy numeric LLDP: QNAP on GE3',
+t('Real Synthetic switch numeric LLDP: NAS on GE3',
     $cudyNumeric[1]['ports']['12'] ?? null, 'GigabitEthernet3');
 
-t('Real Cudy caps without LLDP switch edge: no guess',
+t('Real Synthetic switch caps without LLDP switch edge: no guess',
     count(runCase($hosts,sourceRows(),$cudyCaps)),0);
 
 $manual=['13'=>['host'=>'sw16','port'=>'GigabitEthernet3']];
@@ -120,7 +120,7 @@ t('Stale walks: no edge', count(runCase($hosts,$stale,$caps)), 0);
 t('Missing capabilities: no guess', count(runCase($hosts,sourceRows(),[])),0);
 $second=sourceRows();
 $second[]=row('12','nt.fdb.dot1d',
-    '.1.3.6.1.2.1.17.4.3.1.2.36.94.190.64.245.63 = INTEGER: 4');
+    '.1.3.6.1.2.1.17.4.3.1.2.2.16.32.48.64.80 = INTEGER: 4');
 $second[]=row('12','nt.fdb.baseport',
     '.1.3.6.1.2.1.17.1.4.1.2.3 = INTEGER: 3' . "\n" .
     '.1.3.6.1.2.1.17.1.4.1.2.4 = INTEGER: 4', $now-1);
@@ -130,18 +130,18 @@ $second[]=row('12','nt.fdb.ifname',
 t('Same MAC on two access ports: ambiguous', count(runCase($hosts,$second,$caps)),0);
 
 $duplicate=$hosts;
-$duplicate['14']=['host'=>'qnap2','name'=>'Duplicate','proxyid'=>'100',
-    'inventory'=>['macaddress_a'=>'24:5E:BE:40:F5:3F'], 'interfaces'=>[]];
+$duplicate['14']=['host'=>'storage2','name'=>'Duplicate','proxyid'=>'100',
+    'inventory'=>['macaddress_a'=>'02:10:20:30:40:50'], 'interfaces'=>[]];
 t('Duplicate MAC identities: no edge',count(runCase($duplicate,sourceRows(),$caps)),0);
 $alien=$hosts;
 $alien['13']['proxyid']='200';
 t('Different proxy: no cross-client edge',count(runCase($alien,sourceRows(),$caps)),0);
 $inventory=$hosts;
 $inventory['13']['tags']=[];
-$inventory['13']['inventory']=['macaddress_a'=>'24:5E:BE:40:F5:3F'];
+$inventory['13']['inventory']=['macaddress_a'=>'02:10:20:30:40:50'];
 t('Inventory MAC without tag',count(runCase($inventory,sourceRows(),$caps)),1);
 $badname=$hosts;
-$badname['13']['tags']=[['tag'=>'nt:lldp','value'=>'Cudy - 192.168.2.16']];
+$badname['13']['tags']=[['tag'=>'nt:lldp','value'=>'Synthetic switch B']];
 t('LLDP name not parsed as MAC',count(runCase($badname,sourceRows(),$caps)),0);
 
 // ARP fallback, still constrained to same proxy and unique IP.
@@ -150,15 +150,62 @@ $arp['13']['tags']=[];
 $arp['14']=['host'=>'router','name'=>'Router', 'proxyid'=>'100','interfaces'=>[]];
 $rows=sourceRows();
 $rows[]=row('14','nt.arp',
-    '.1.3.6.1.2.1.4.22.1.2.1.192.168.2.8 = Hex-STRING: 24 5E BE 40 F5 3F');
+    '.1.3.6.1.2.1.4.22.1.2.1.192.0.2.8 = Hex-STRING: 02 10 20 30 40 50');
 t('ARP auto MAC discovery (same proxy)',count(runCase($arp,$rows,$caps)),1);
 $arp['15']=['host'=>'dupip','name'=>'Duplicate IP', 'proxyid'=>'100',
-    'interfaces'=>[['ip'=>'192.168.2.8']]];
+    'interfaces'=>[['ip'=>'192.0.2.8']]];
 t('Ambiguous IP: no ARP inference',count(runCase($arp,$rows,$caps)),0);
 
 // Never synthesize a new edge when a switch does not classify its port.
 $partialCaps=[$caps[0]];
 t('Unclassified reporting switch: no edge',count(runCase($hosts,sourceRows(),$partialCaps)),0);
+
+// HPE/Aruba aggregated trunks have a logical FDB ifName such as Trk1;
+// the existing LLDP inter-switch edges know physical member 45/46.
+// A learned MAC on Trk1 must never turn into a false access cable.
+$lagHosts = $hosts;
+$lagHosts['14'] = ['host'=>'extra','name'=>'Extra device','proxyid'=>'100',
+    'inventory'=>['macaddress_a'=>'02:10:20:30:40:55'], 'interfaces'=>[]];
+$lagRows = sourceRows();
+$lagRows[] = row('12','nt.fdb.dot1q',
+    fdb('02:10:20:30:40:50', 3) . fdb('02:10:20:30:40:55', 532), $now-1);
+$lagRows[] = row('12','nt.fdb.baseport',
+    '.1.3.6.1.2.1.17.1.4.1.2.3 = INTEGER: 3' . "\n" .
+    '.1.3.6.1.2.1.17.1.4.1.2.532 = INTEGER: 532', $now-1);
+$lagRows[] = row('12','nt.fdb.ifname',
+    '.1.3.6.1.2.1.31.1.1.1.1.3 = STRING: "GigabitEthernet3"' . "\n" .
+    '.1.3.6.1.2.1.31.1.1.1.1.532 = STRING: "Trk1"', $now-1);
+$lagResult = runCase($lagHosts,$lagRows,$caps);
+t('Logical HPE Trk1 FDB is NOT an access link',count($lagResult),1);
+t('Only physical access port survives aggregate filtering',
+    $lagResult[0]['ports']['12'] ?? null, 'GigabitEthernet3');
+
+// If two distinct monitored MACs share one switch access port, show two
+// INFERRED associations with an explicit shared-port warning. Do not guess
+// whether an IP phone, unmanaged switch or wireless AP lies between them.
+$sharedHosts = $hosts;
+$sharedHosts['14'] = ['host'=>'extra','name'=>'Additional endpoint','proxyid'=>'100',
+    'inventory'=>['macaddress_a'=>'02:10:20:30:40:51'], 'interfaces'=>[]];
+$sharedRows=sourceRows();
+$sharedRows[]=row('12','nt.fdb.dot1q',
+    fdb('02:10:20:30:40:50',3) . fdb('02:10:20:30:40:51',3), $now-1);
+$sharedResult=runCase($sharedHosts,$sharedRows,$caps);
+t('Two MACs on shared physical port both appear as inferred',count($sharedResult),2);
+t('Shared port annotated for both inferred edges',
+    count(array_filter($sharedResult, static fn($e) => $e['fdb_shared_port'] ?? false)),2);
+
+$withMetrics = runCase($hosts,sourceRows(),$caps,[],[],[
+    'port_names'=>['12'=>['3'=>'GigabitEthernet3']],
+    'port_traffic'=>['12'=>['3'=>['in'=>2400,'out'=>1800]]],
+]);
+t('Measured switch port counters do not become individual MAC traffic',
+    $withMetrics[0]['port_metrics'] ?? 'missing', []);
+
+// A host with an existing parent edge is not genuinely disconnected;
+// normal controller attaches FDB only after parent/containment edges.
+$withParent = [['id'=>'hosts_1','from'=>'12','to'=>'13','_type'=>'hosts']];
+t('Containment edge prevents redundant FDB link',
+    count(runCase($hosts,sourceRows(),$caps,$withParent)),1);
 
 if ($failed) {
     fwrite(STDERR,"FAILURES: $failed\n");
