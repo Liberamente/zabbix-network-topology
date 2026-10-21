@@ -129,6 +129,7 @@ final class AutoFdbEdges {
         }
 
         $byMac = [];
+        $learnedOnPort = [];
         foreach ($hits as $hit) {
             // Some switch vendors expose every aggregate as an IF-MIB
             // logical interface (e.g. HPE Trk1). LLDP knows its PHYSICAL
@@ -136,6 +137,11 @@ final class AutoFdbEdges {
             // mistake the unpaired aggregate label for an access port.
             if (self::isAggregatePort((string) ($hit['port'] ?? ''))) continue;
             $byMac[$hit['mac']][] = $hit;
+            // Count distinct learned MACs, including devices not monitored
+            // as Zabbix hosts. A single monitored client behind a phone/AP
+            // can still be on a shared physical switch access port.
+            $portKey = (string) $hit['hostid'] . '|' . (string) $hit['port'];
+            $learnedOnPort[$portKey][(string) $hit['mac']] = true;
         }
         $identity = self::macsByHost($hosts, $arpRows, $now);
         $macOwners = [];
@@ -246,7 +252,9 @@ final class AutoFdbEdges {
             if (($e['match'] ?? '') !== 'fdb') continue;
             $sw = (string) ($e['from'] ?? '');
             $port = (string) ($e['ports'][$sw] ?? '');
-            $e['fdb_shared_port'] = ($occupancy[$sw . '|' . $port] ?? 0) > 1;
+            $key = $sw . '|' . $port;
+            $e['fdb_shared_port'] = ($occupancy[$key] ?? 0) > 1
+                || count($learnedOnPort[$key] ?? []) > 1;
         }
         unset($e);
         return $edges;
