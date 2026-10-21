@@ -130,6 +130,11 @@ final class AutoFdbEdges {
 
         $byMac = [];
         foreach ($hits as $hit) {
+            // Some switch vendors expose every aggregate as an IF-MIB
+            // logical interface (e.g. HPE Trk1). LLDP knows its PHYSICAL
+            // member ports, while the FDB records the logical Trk1. Never
+            // mistake the unpaired aggregate label for an access port.
+            if (self::isAggregatePort((string) ($hit['port'] ?? ''))) continue;
             $byMac[$hit['mac']][] = $hit;
         }
         $identity = self::macsByHost($hosts, $arpRows, $now);
@@ -212,6 +217,10 @@ final class AutoFdbEdges {
             $updated[$i]['match'] = 'fdb';
             $updated[$i]['confidence'] = 60; // inferred; never "confirmed"
             $updated[$i]['confirmed'] = false;
+            // A learned destination can be behind a phone, VM host, AP or
+            // unmanaged switch. Metrics of its switch port do NOT describe
+            // the individual device or direct cable. Keep them unknown.
+            $updated[$i]['port_metrics'] = [];
             $updated[$i]['last_seen'] = (int) $a['ts'];
             $updated[$i]['vlan'] = $a['vlan'];
             $edges = $updated;
@@ -220,7 +229,33 @@ final class AutoFdbEdges {
                 break;
             }
         }
+        // Multiple destinations learned on one physical switch port are
+        // common (e.g. IP phone with downstream PC). Flag, never assume
+        // direct cabling or silently discard either monitored endpoint.
+        $occupancy = [];
+        foreach ($edges as $e) {
+            if (($e['match'] ?? '') !== 'fdb') continue;
+            $sw = (string) ($e['from'] ?? '');
+            $port = (string) ($e['ports'][$sw] ?? '');
+            if ($port !== '') {
+                $key = $sw . '|' . $port;
+                $occupancy[$key] = ($occupancy[$key] ?? 0) + 1;
+            }
+        }
+        foreach ($edges as &$e) {
+            if (($e['match'] ?? '') !== 'fdb') continue;
+            $sw = (string) ($e['from'] ?? '');
+            $port = (string) ($e['ports'][$sw] ?? '');
+            $e['fdb_shared_port'] = ($occupancy[$sw . '|' . $port] ?? 0) > 1;
+        }
+        unset($e);
         return $edges;
+    }
+
+    private static function isAggregatePort(string $port): bool {
+        return preg_match('/^(?:Trk\d+|LAG\d+|Po\d+|Port[- ]?channel\d+|'
+            . 'Bond\d+|ae\d+|Eth[- ]?Trunk\d+|Bridge\d+)$/i',
+            trim($port)) === 1;
     }
 
     private static function fresh(int $ts, int $now, int $ttl = self::MAX_AGE): bool {
