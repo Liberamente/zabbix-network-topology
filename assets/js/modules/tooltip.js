@@ -228,6 +228,33 @@ function _sumArrays(a, b) {
 }
 
 export function showEdgeTip(evt, edgeData, srcLabel, tgtLabel) {
+    if (edgeData._isFdbEdge) {
+        // DOM textContent only: all labels are untrusted SNMP/Zabbix data.
+        _syncTheme();
+        _tip.replaceChildren();
+        const title = document.createElement('div');
+        title.style.cssText = 'font-weight:700;margin-bottom:5px';
+        title.textContent = srcLabel + ' - ' + tgtLabel;
+        _tip.appendChild(title);
+        const evidence = document.createElement('div');
+        evidence.style.cssText = 'color:#d97706;font-weight:700';
+        evidence.textContent = 'ARP + FDB (inferred)';
+        _tip.appendChild(evidence);
+        const port = document.createElement('div');
+        port.style.cssText = 'margin-top:4px;font-size:11px';
+        port.textContent = 'MAC learned on switch port ' + (edgeData.portSrc || '?');
+        _tip.appendChild(port);
+        const warning = document.createElement('div');
+        warning.style.cssText = 'margin-top:5px;font-size:10px';
+        warning.textContent = edgeData.fdbSharedPort
+            ? 'Shared port: multiple MACs; physical order unknown.'
+            : 'Not proof of a direct cable; no per-link traffic measured.';
+        _tip.appendChild(warning);
+        _tip.style.width = '240px';
+        _tip.style.display = 'block';
+        moveTip(evt);
+        return;
+    }
     const tIn  = edgeData.trafficIn  || 0;
     const tOut = edgeData.trafficOut || 0;
     const srcId = edgeData.source || edgeData.from || '';
