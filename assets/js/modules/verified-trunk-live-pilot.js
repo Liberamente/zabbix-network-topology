@@ -4,6 +4,7 @@
 // No API writes, uploads, cookies, storage, persistence or backend file reads.
 // The ordinary hostgroup graph remains untouched when the pilot is off.
 let active = null;
+let syncControl = null;
 const MAX_AGE_SECONDS = 900;
 const MAX_BYTES = 8 * 1024 * 1024;
 
@@ -15,7 +16,7 @@ export function canOfferVerifiedTrunkPilot(cfg) {
         && /^[1-9][0-9]*$/.test(String(cfg.selected_groupids[0])));
 }
 
-export function clearVerifiedTrunkPilot() { active = null; }
+export function clearVerifiedTrunkPilot() { active = null; if (syncControl) syncControl(); }
 
 export function loadVerifiedTrunkPilot(text, cfg, liveNodes, nowSeconds) {
     if (!canOfferVerifiedTrunkPilot(cfg)) {
@@ -72,14 +73,14 @@ export function applyVerifiedTrunkPilot(nodes, edges, cfg, nowSeconds) {
         || String(cfg.selected_groupids[0]) !== active.summary.groupid
         || active.summary.captured > now + 30
         || active.summary.captured < now - MAX_AGE_SECONDS) {
-        active = null;
+        clearVerifiedTrunkPilot();
         return {active: false, expired: true, nodes: nodes, edges: edges};
     }
     const byId = new Map((nodes || []).map(function (n) {
         return [String(n.id), n];
     }));
     if (!active.nodes.every(function (n) { return byId.has(n.id); })) {
-        active = null;  // permissions changed or host no longer monitored
+        clearVerifiedTrunkPilot();  // permission or monitor state changed
         return {active: false, expired: true, nodes: nodes, edges: edges};
     }
     // Live state (ping/severity/problems/CPU/availability) is EXCLUSIVELY
@@ -174,6 +175,7 @@ export function installVerifiedTrunkPilot(cfg, getLive, redraw, notify) {
         redraw();
     });
     topbar.appendChild(host);
+    syncControl = sync;
     // A changing backend scope or an expired raw report must never leave an
     // old UI badge claiming the pilot is still active.
     return sync;
