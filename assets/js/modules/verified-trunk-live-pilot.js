@@ -5,6 +5,12 @@
 // The ordinary hostgroup graph remains untouched when the pilot is off.
 let active = null;
 let syncControl = null;
+let skipNextPositionSave = false;
+export function consumeVerifiedPilotPositionGuard() {
+    const result = skipNextPositionSave;
+    skipNextPositionSave = false;
+    return result;
+}
 const MAX_AGE_SECONDS = 900;
 const MAX_BYTES = 8 * 1024 * 1024;
 
@@ -16,7 +22,11 @@ export function canOfferVerifiedTrunkPilot(cfg) {
         && /^[1-9][0-9]*$/.test(String(cfg.selected_groupids[0])));
 }
 
-export function clearVerifiedTrunkPilot() { active = null; if (syncControl) syncControl(); }
+export function clearVerifiedTrunkPilot() {
+    if (active) skipNextPositionSave = true;
+    active = null;
+    if (syncControl) syncControl();
+}
 
 export function loadVerifiedTrunkPilot(text, cfg, liveNodes, nowSeconds) {
     if (!canOfferVerifiedTrunkPilot(cfg)) {
@@ -59,6 +69,7 @@ export function loadVerifiedTrunkPilot(text, cfg, liveNodes, nowSeconds) {
     })) {
         throw new Error('Uno o più switch del report non sono visibili in Zabbix live.');
     }
+    skipNextPositionSave = true;
     active = model;  // only after every validation passed
     return model.summary;
 }
@@ -170,6 +181,7 @@ export function installVerifiedTrunkPilot(cfg, getLive, redraw, notify) {
         }
     });
     off.addEventListener('click', function () {
+        skipNextPositionSave = true;
         clearVerifiedTrunkPilot();
         sync();
         redraw();
