@@ -191,6 +191,19 @@ $bad = fixtureReport(); $bad['logical_link_summary']['complete_static_trunk_link
 expectReject('contradictory count summary', $bad);
 $bad = fixtureReport(); $bad['logical_links'][0]['physical_member_links'][0]['endpoints'][0]['source_itemids'] = [];
 expectReject('missing LLDP evidence item ID', $bad);
+$bad = fixtureReport();
+$bad['freshness_policy'] = ['general_max_age_seconds' => 30,
+                           'correlation_max_skew_seconds' => 120];
+expectReject('strict collector age policy cannot be relaxed', $bad);
+$bad = fixtureReport();
+$bad['freshness_policy'] = ['general_max_age_seconds' => 1800,
+                           'correlation_max_skew_seconds' => 15];
+expectReject('strict collector skew policy cannot be relaxed', $bad);
+$bad = fixtureReport(); $bad['logical_links'][0]['endpoints'][0]['source_itemids'] = ['90010', '90010'];
+expectReject('duplicate HPE source rows are insufficient', $bad);
+$bad = fixtureReport(); $bad['logical_links'][0]['endpoints'][0]['member_port_labels']['100123'] = '24';
+expectReject('duplicate physical SNMP port labels', $bad);
+
 $bad = fixtureReport(); $bad['logical_links'][0]['link_id'] = 'manually-edited';
 expectReject('noncanonical duplicate-prone link ID', $bad);
 
