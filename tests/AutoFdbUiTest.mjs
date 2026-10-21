@@ -87,7 +87,7 @@ showEdgeDetail(panel, fakeEdge);
 assert.match(text(panel), /ARP.*FDB/i);
 assert.match(text(panel), /GigabitEthernet3/);
 assert.match(text(panel), /multiple/i);
-assert.doesNotMatch(text(panel), /Utilization|Gb\/s|Errors\/s|Traffic/i);
+assert.doesNotMatch(text(panel), /Utilization|Gb\/s|Errors\/s|link utilization/i);
 
 const styles = buildCytoscapeStyle(false, 32);
 const fdb = styles.find(s => s.selector === 'edge[kind = "fdb"]').style;
