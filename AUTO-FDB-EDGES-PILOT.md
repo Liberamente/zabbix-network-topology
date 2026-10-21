@@ -48,7 +48,7 @@ is added. Without the optional items, the original topology remains.
 - Wi-Fi precedes FDB so a wireless client is never mislabeled as a
   physical Ethernet cable. LLDP/CDP, explicitly declared uplinks and
   host/parent relationships take precedence over both inferences.
-- When multiple monitored MACs are learned on one switch access port,
+- When multiple MACs, monitored or not, are learned on one switch access port,
   mark every association **shared port**, because an intervening phone,
   bridge, hypervisor or unmanaged switch might exist.
 - An FDB match does not establish individual link traffic, port state,
