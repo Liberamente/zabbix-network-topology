@@ -121,6 +121,7 @@ export function runRootCause(cy, verbose) {
                 comp.problems += node.data('problems') || 0;
             }
             node.connectedEdges().forEach(function(e) {
+                if (e.data('kind') === 'fdb') return;
                 const nb = e.source().id() === cur ? e.target().id() : e.source().id();
                 if (deadZone[nb] && compOf[nb] === undefined) {
                     compOf[nb] = ci;
