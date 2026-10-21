@@ -395,6 +395,10 @@ if (!window.NT_CONFIG || ((!window.NT_CONFIG.selected_groupids || !window.NT_CON
       // echte Stacktraces, kein Import-Rewriting-Regex. defer = Modul-
       // defer-Semantik (DOM fertig, cytoscape davor geladen). Nach
       // JS-Aenderungen `npm run build` (deploy.sh baut ausserdem selbst). ?>
+<?php // Extra read-only validator only for the super-admin pilot. No network requests. ?>
+<?php if (!empty($data['user']['is_super_admin'])): ?>
+<script defer src="modules/network_topology/tools/verified-trunk-preview-model.js?v=<?= $_nt_v ?>"></script>
+<?php endif; ?>
 <script defer src="modules/network_topology/assets/js/dist/nt-bundle.js?v=<?= $_nt_v ?>"></script>
 <script>window.addEventListener("load", function(){
     // Wallboard-Mode: Body-Klasse setzen damit CSS Header/Filter ausblendet,
