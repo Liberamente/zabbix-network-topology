@@ -21,9 +21,10 @@
     }
 
     function canonicalHostPair(a, b) {
+        // Match VerifiedTrunkAdapter.php's strcmp() canonical ordering,
+        // including host IDs of different decimal string lengths.
         return [a, b].sort(function (x, y) {
-            const ai = BigInt(x), bi = BigInt(y);
-            return ai < bi ? -1 : (ai > bi ? 1 : 0);
+            return x < y ? -1 : (x > y ? 1 : 0);
         });
     }
 
