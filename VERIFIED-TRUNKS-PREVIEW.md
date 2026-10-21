@@ -113,7 +113,7 @@ or "health green".
 
 ### From the proxy to the Mac
 
-**On the proxy** (`ubuntu-cardinale`), use the existing checkout; do not
+**On the operator-controlled monitoring proxy**, use the existing checkout; do not
 re-clone or touch the deployed module:
 
 ```sh
@@ -140,19 +140,19 @@ git clone --depth 1 --single-branch \
 umask 077
 mkdir -p "$HOME/nt-preview-private"
 
-scp zabbix@ubuntu-cardinale:/home/zabbix/nt-preview/cardinale-module-payload.json \
+scp zabbix@PROXY_HOST:/home/zabbix/nt-preview/PRIVATE_MODULE_PAYLOAD.json \
   "$HOME/nt-preview-private/"
 
 open "$HOME/nt-verified-cytoscape-preview/tools/verified-trunk-preview.html"
 ```
 
-If `ubuntu-cardinale` is not resolvable from the Mac, use the usual
-SSH-resolvable proxy hostname/IP. This is only an encrypted local copy from
+Replace `PROXY_HOST` with the operator's SSH-resolvable monitoring proxy
+and `PRIVATE_MODULE_PAYLOAD.json` with the actual private preview filename. This is only an encrypted local copy from
 the operator-controlled host to the Mac; do not share the JSON publicly.
 
 In the browser, click **Apri JSON della preview** and select:
 
-`~/nt-preview-private/cardinale-module-payload.json`
+`~/nt-preview-private/PRIVATE_MODULE_PAYLOAD.json`
 
 Click any arc to view the **two physical port pairs**. Zoom/pan or press
 **Centra topologia**. The browser loads the local file directly, the local
