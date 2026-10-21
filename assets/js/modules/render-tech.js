@@ -782,7 +782,11 @@ export function render(wrap, nodes, edges, dataUrl) {
     cy.on('dragfree', 'node[!isGroup]', function() {
         if (skipPositionSave || isFocusActive()) return;
         clearTimeout(_posSaveTimer);
-        _posSaveTimer = setTimeout(function() { savePositions(cy); }, 400);
+        _posSaveTimer = setTimeout(function() {
+            // A previous live-graph timer must not save the newly opened
+            // read-only pilot graph after a render replaced this Cytoscape.
+            if (window._ntCy === cy && !cy.destroyed()) savePositions(cy);
+        }, 400);
     });
 
     // ── Auto-Refresh-Pause waehrend User-Aktion ────────────────────────────
@@ -804,11 +808,14 @@ export function render(wrap, nodes, edges, dataUrl) {
     // skipped in focus mode (same reasoning as the dragfree save above).
     cy.one('layoutstop', function() {
         setTimeout(function() {
-            if (window._ntCy) {
-                if (!skipPositionSave && !isFocusActive()) savePositions(window._ntCy);
-                window._ntCy.fit(window._ntCy.nodes(), 40);
-                applyTrafficHeatmap(window._ntCy);
-                applyPortLabels(window._ntCy);
+            // The old graph can still have a pending layoutstop timer when
+            // the pilot replaces it. NEVER operate on a different graph, and
+            // never save verified-pilot coordinates to Zabbix module config.
+            if (window._ntCy === cy && !cy.destroyed()) {
+                if (!skipPositionSave && !isFocusActive()) savePositions(cy);
+                cy.fit(cy.nodes(), 40);
+                applyTrafficHeatmap(cy);
+                applyPortLabels(cy);
             }
         }, 800);
     });
