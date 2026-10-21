@@ -70,7 +70,11 @@ export function highestDegree(cy, excludeSimulated) {
     let best = null, bestDeg = -1;
     cy.nodes('[!isGroup]').forEach(function(n) {
         if (excludeSimulated && _simulated.has(n.id())) return;
-        const d = n.degree(false);
+        // A hundred MACs learned by one access switch do not make that
+        // switch a better upstream root than its actual LLDP links.
+        const d = n.connectedEdges().filter(function(e) {
+            return e.data('kind') !== 'fdb';
+        }).length;
         if (d > bestDeg) { bestDeg = d; best = n; }
     });
     return best;
