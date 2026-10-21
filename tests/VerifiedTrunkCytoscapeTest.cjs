@@ -6,7 +6,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fixture = require('./fixtures/verified-trunks-synthetic.json');
-const { prepare } = require('../tools/verified-trunk-preview-model.js');
+const { prepare } = require('../assets/js/nt-verified-trunk-model.js');
 
 function makePayload() {
     const hosts = new Map();
