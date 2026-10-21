@@ -189,6 +189,16 @@ export function buildCytoscapeStyle(dark, knotenzahl) {
             'opacity': 0.45, 'curve-style': 'straight',
             'label': '', 'source-text-offset': 0, 'target-text-offset': 0,
         }},
+        // ARP+FDB MAC learning (NOT LLDP): the switch saw this MAC on
+        // a port. A downstream phone/bridge may be present, so use a
+        // distinctive dotted amber edge, never a healthy-green cable.
+        { selector: 'edge[?_isFdbEdge]', style: {
+            'width': 1.8, 'line-color': dark ? '#fbbf24' : '#b45309',
+            'line-style': 'dotted', 'line-dash-pattern': [2, 6],
+            'opacity': 0.73, 'curve-style': 'straight',
+            'label': '', 'source-text-offset': 25,
+            'target-text-offset': 0,
+        }},
         // Manuell gezogene Kanten. Seit 5.0.1 gibt es zwei Ebenen, und man muss
         // ihnen ansehen, welche man vor sich hat: eine geteilte Kante ist eine
         // Aussage ueber das Netz, die alle sehen — eine persoenliche nur die
