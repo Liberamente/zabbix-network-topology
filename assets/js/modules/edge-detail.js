@@ -221,6 +221,27 @@ export function showEdgeDetail(panel, ed, asMember) {
     head.appendChild(close);
     panel.appendChild(head);
 
+    // ARP+FDB reports where a MAC was learned, not a physical cable.
+    // An intervening IP phone or bridge may share this exact switch port.
+    // Avoid standard LLDP confirmation and traffic sections.
+    if (d._isFdbEdge) {
+        const notice = el('div',
+            'font-size:11px;line-height:1.55;margin:10px 0;padding:10px;'
+            + 'border:1px solid #d97706;border-radius:6px',
+            'ARP + FDB: learned MAC, not an LLDP-confirmed cable. '
+            + 'An intermediate device (phone, bridge or hub) may exist.');
+        panel.appendChild(notice);
+        section(panel, 'MAC learned on switch port');
+        row(panel, sLbl, d.portSrc || 'Unknown');
+        if (d.fdbSharedPort) {
+            hint(panel, 'Shared access port: multiple monitored MACs '
+                + 'were learned here. Their physical order is unknown.');
+        }
+        hint(panel, 'No per-device port traffic, link state or direct '
+            + 'cabling has been verified for this association.');
+        return;
+    }
+
     // ── Herkunft ────────────────────────────────────────────────────────────
     // Die Protokollnamen stehen als Literale da, statt d.src durchzureichen:
     // der Satz ist geschlossen, das Backend meldet 'lldp' und 'cdp'. Ein
