@@ -221,6 +221,39 @@ export function showEdgeDetail(panel, ed, asMember) {
     head.appendChild(close);
     panel.appendChild(head);
 
+    // Isolated verified-trunk pilot: reveal both native LLDP/IF-MIB member
+    // pairs without presenting absent performance counters as measured zero.
+    // All values are added via textContent through el(), never innerHTML.
+    if (d.ntVerified) {
+        const intro = el('div',
+            'font-size:11px;color:var(--nt-text-2,#475569);line-height:1.55;'
+            + 'margin:9px 0;padding:9px;border:1px solid var(--nt-line,#e2e8f0);'
+            + 'border-radius:7px',
+            'COLLAUDO LIVE · LLDP reciproco e appartenenza a trunk HPE. '
+            + 'Le condizioni operative dei membri non sono ancora misurate.');
+        panel.appendChild(intro);
+        section(panel, 'Aggregazioni statiche');
+        row(panel, sLbl, d.portSrc || '?');
+        row(panel, tLbl, d.portTgt || '?');
+        row(panel, 'Porte fisiche', d.ntMemberCount || 0);
+        section(panel, 'Coppie fisiche verificate');
+        (d.ntMembers || []).forEach(function(m, i) {
+            const card = el('div', 'border:1px solid var(--nt-line,#e2e8f0);'
+                + 'padding:8px 9px;border-radius:7px;margin-bottom:8px');
+            card.appendChild(el('b', 'font-size:11px',
+                'Coppia ' + (i + 1) + ': ' + m.portA + ' ↔ ' + m.portB));
+            row(card, 'ifIndex', m.ifindexA + ' ↔ ' + m.ifindexB);
+            row(card, 'LLDP index', m.nativeA + ' ↔ ' + m.nativeB);
+            row(card, 'Scarto', m.skew + ' s');
+            panel.appendChild(card);
+        });
+        hint(panel, 'Blu = collegamento topologico verificato, NON stato UP. '
+            + 'Ping e allarmi dei nodi provengono da Zabbix live; '
+            + 'i contatori di traffico e lo stato delle porte di questo trunk '
+            + 'non sono ancora integrati.');
+        return;
+    }
+
     // ── Herkunft ────────────────────────────────────────────────────────────
     // Die Protokollnamen stehen als Literale da, statt d.src durchzureichen:
     // der Satz ist geschlossen, das Backend meldet 'lldp' und 'cdp'. Ein
