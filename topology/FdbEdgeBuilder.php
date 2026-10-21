@@ -188,10 +188,22 @@ final class FdbEdgeBuilder {
             ];
         }
 
+        // Multi-homed or multi-IP hosts: at most ONE unambiguous
+        // learned attachment per host. Multiple physical placements are
+        // not grounds to choose the first reported cable.
+        $targetLocations = [];
+        foreach ($candidates as $c) {
+            $targetLocations[$c['target']][$c['switch'] . '/' . $c['ifindex']] = true;
+        }
         $allowed = [];
         $perPort = [];
+        $usedTargets = [];
         foreach ($candidates as $c) {
-            if (count($macHosts[$c['mac']]) !== 1) continue;
+            $tgt = $c['target'];
+            if (count($macHosts[$c['mac']]) !== 1
+                    || count($targetLocations[$tgt]) !== 1
+                    || isset($usedTargets[$tgt])) continue;
+            $usedTargets[$tgt] = true;
             $allowed[] = $c;
             $perPort[$c['switch'] . '/' . $c['ifindex']] =
                 ($perPort[$c['switch'] . '/' . $c['ifindex']] ?? 0) + 1;
