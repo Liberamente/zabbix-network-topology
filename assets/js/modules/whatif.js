@@ -70,7 +70,11 @@ export function highestDegree(cy, excludeSimulated) {
     let best = null, bestDeg = -1;
     cy.nodes('[!isGroup]').forEach(function(n) {
         if (excludeSimulated && _simulated.has(n.id())) return;
-        const d = n.degree(false);
+        // A hundred MACs learned by one access switch do not make that
+        // switch a better upstream root than its actual LLDP links.
+        const d = n.connectedEdges().filter(function(e) {
+            return e.data('kind') !== 'fdb';
+        }).length;
         if (d > bestDeg) { bestDeg = d; best = n; }
     });
     return best;
@@ -117,6 +121,9 @@ export function reachable(cy, roots, blocked, ohneManuelle) {
             // sie ein gueltiger Weg — laeuft der Hypervisor, ist die VM
             // erreichbar. Vom Gast zum Wirt nicht. Genau diese eine Richtung
             // war der Fehler, nicht die Kante an sich.
+            // MAC learned on a switch port is a placement observation,
+            // not proof of a direct network path or a hard dependency.
+            if (edge.data('kind') === 'fdb') return;
             if (edge.data('kind') === 'hosts' && edge.source().id() !== cur) return;
             if (ohneManuelle && String(edge.id() || '').indexOf('ml_') === 0) return;
             const s = edge.source().id();

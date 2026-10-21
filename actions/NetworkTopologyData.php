@@ -8,6 +8,8 @@ namespace Modules\NetworkTopology\Actions;
 use Modules\NetworkTopology\Topology\HostMetadata;
 use Modules\NetworkTopology\Topology\MetricExtractor;
 use Modules\NetworkTopology\Topology\LldpEdgeBuilder;
+use Modules\NetworkTopology\Topology\AutoFdbEdges;
+use Modules\NetworkTopology\Topology\AutoWifiEdges;
 use Modules\NetworkTopology\Topology\HostTagParser;
 use Modules\NetworkTopology\Topology\HopScope;
 use Modules\NetworkTopology\Topology\ManualLinks;
@@ -18,6 +20,10 @@ use CControllerResponseFatal;
 use API;
 
 class NetworkTopologyData extends NetworkTopologyController {
+
+    // Native read-only endpoint association. Effective only if the
+    // selected group exposes suitable Zabbix SNMP walk items.
+    private const AUTO_DISCOVER_ACCESS_LINKS = true;
 
     /**
      * Wie lange eine nicht mehr gemeldete Kante auf der Karte bleibt, bevor
@@ -401,7 +407,7 @@ class NetworkTopologyData extends NetworkTopologyController {
             // Probleme gibt (= last_seen-Aequivalent fuer "down since").
             'selectInterfaces'      => ['ip', 'type', 'main', 'available', 'errors_from', 'error'],
             'selectParentTemplates' => ['name'],
-            'selectInventory'       => ['location_lat', 'location_lon', 'location'],
+            'selectInventory'       => ['location_lat', 'location_lon', 'location', 'macaddress_a', 'macaddress_b'],
             'selectTags'            => ['tag', 'value'],
             // Fuer das {$NT_PARENT}-Macro (Traeger-Beziehung als Macro statt Tag,
             // damit sie per Template/LLD massenhaft setzbar ist — eine VM je
@@ -766,6 +772,60 @@ class NetworkTopologyData extends NetworkTopologyController {
             $edges = array_merge($edges, self::parentEdges($hosts, $host_parent));
         }
 
+        // ── 5a1. NATIVE ARP/FDB + WIFI ACCESS ASSOCIATIONS ──────────────
+        // Strictly scope reads to the visible hostids (including proxy/group
+        // boundaries); do not use the install-wide interactive Finder query.
+        if (
+           self::AUTO_DISCOVER_ACCESS_LINKS
+           && !$host_mode
+           && count($groupids) === 1
+        ) {
+            $fdb_items = API::Item()->get([
+                'output'    => ['hostid', 'key_', 'lastclock', 'lastvalue', 'status', 'state'],
+                'hostids'   => $hostids,
+                'filter'    => ['key_' => [
+                    'nt.fdb.dot1d', 'nt.fdb.dot1q',
+                    'nt.fdb.baseport', 'nt.fdb.ifname', 'nt.arp',
+                ]],
+                'monitored' => true,
+            ]);
+            // WLAN association comes before FDB inference: never describe an
+            // associated wireless client as a direct copper switch link.
+            // Only read items of the already visible hosts in this group.
+            $wifi_items = API::Item()->get([
+                'output'    => ['hostid', 'key_', 'lastclock', 'lastvalue', 'status', 'state'],
+                'hostids'   => $hostids,
+                'filter'    => ['key_' => ['nt.wifi.clients']],
+                'monitored' => true,
+            ]);
+            if (is_array($wifi_items) && $wifi_items) {
+                $edges = AutoWifiEdges::append($hosts, $wifi_items,
+                    is_array($fdb_items) ? $fdb_items : [], $edges, $host_uplink, time());
+            }
+            if (is_array($fdb_items) && $fdb_items) {
+                $fdb_switches = [];
+                foreach ($fdb_items as $fi) {
+                    if (strpos((string) ($fi['key_'] ?? ''), 'nt.fdb.') === 0) {
+                        $fdb_switches[(string) $fi['hostid']] = true;
+                    }
+                }
+                $caps = [];
+                if ($fdb_switches) {
+                    $caps_result = API::Item()->get([
+                        'output'    => ['hostid', 'key_', 'lastclock', 'lastvalue', 'status', 'state'],
+                        'hostids'   => array_keys($fdb_switches),
+                        'search'    => ['key_' => 'lldpRemSysCapEnabled'],
+                        'monitored' => true,
+                    ]);
+                    if (is_array($caps_result)) {
+                        $caps = $caps_result;
+                    }
+                }
+                $edges = AutoFdbEdges::append($hosts, $fdb_items, $caps, $edges,
+                    $host_uplink, $metrics, time());
+            }
+        }
+
         // ── 5b. PROXY + PROXY-GROUP LOOKUP ────────────────────────────────
         // Hosts können via Proxy oder Proxy-Group (Zabbix 7+) monitored werden.
         // Wir sammeln die unique Proxy-IDs und Proxy-Group-IDs aus den Hosts
@@ -968,8 +1028,15 @@ class NetworkTopologyData extends NetworkTopologyController {
         // removed — 'moved', wenn dasselbe Paar an einem anderen Port haengt.
         // Vorher fiel genau dieser Fall durchs Raster, weil der Schluessel nur
         // aus dem Host-Paar bestand und sich beim Umstecken nicht aendert.
-        $current  = TopoDiff::snapshot($edges, $host_label);
-        $baseline = NtCache::get('topo_baseline', $cache_parts);
+        // MAC-learning and client Wi-Fi associations are dynamic and not
+        // proof of a physical cable move. Keep them OUT of the persistent
+        // LLDP/CDP topology-change baseline and warning notifications.
+        // A new baseline namespace avoids replaying old pilot FDB entries.
+        $physical_edges = array_values(array_filter($edges,
+            static fn($e): bool => !in_array((string) ($e['match'] ?? ''),
+                ['fdb', 'wifi'], true)));
+        $current  = TopoDiff::snapshot($physical_edges, $host_label);
+        $baseline = NtCache::get('topo_baseline_physical_v1', $cache_parts);
         $base_arr = is_array($baseline) ? $baseline : null;
 
         // Datenschutz (Review #11): die Baseline speichert Hostnamen. Verliert
@@ -1033,7 +1100,7 @@ class NetworkTopologyData extends NetworkTopologyController {
         // Neustart, eine ausgefallene Discovery, ein zu frueher Poll —, und
         // ohne diese Frist sprang die Karte bei jedem davon.
         $aged = TopoDiff::ageOut($base_arr, $current, time(), self::STALE_TTL);
-        NtCache::set('topo_baseline', $cache_parts, $aged['store'], 7 * 86400);
+        NtCache::set('topo_baseline_physical_v1', $cache_parts, $aged['store'], 7 * 86400);
 
         // Neu aufgetauchte Kanten markieren — Gegenstueck zur Alterung.
         // Same keys as the snapshot — with parallel links "a|b" alone no
@@ -1041,7 +1108,8 @@ class NetworkTopologyData extends NetworkTopologyController {
         $jetzt = time();
         $_keys = TopoDiff::keys($edges);
         foreach ($edges as $_i => &$_ne) {
-            if ($_keys[$_i] === null) {
+            if (in_array((string) ($_ne['match'] ?? ''), ['fdb', 'wifi'], true)
+                    || $_keys[$_i] === null) {
                 continue;
             }
             $st = $aged['store'][$_keys[$_i]] ?? null;

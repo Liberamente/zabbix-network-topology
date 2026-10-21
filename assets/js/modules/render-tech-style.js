@@ -109,6 +109,14 @@ export function buildCytoscapeStyle(dark, knotenzahl) {
         // bleibt, die Box verdeckt also keine Knoten. Path-Highlight (999)
         // liegt weiterhin darüber.
         { selector: 'edge[?tLabel]', style: { 'z-index': 10 }},
+        // Measured radio association: not an Ethernet cable.
+        { selector: 'edge[kind = "wifi"]', style: {
+            'width': 2, 'line-color': '#0891b2', 'line-style': 'dashed',
+            'line-dash-pattern': [3, 7], 'opacity': 0.82,
+            'target-arrow-shape': 'none',
+            'color': dark ? '#67e8f9' : '#0e7490',
+            'font-size': 9,
+        }},
         // Hosting/Containment-Kante (nt:parent → build-elements kind=hosts):
         // gerichtet Parent→Child (Pfeil zeigt auf den gehosteten Host), violett
         // + fein gestrichelt, klar abgesetzt von gruenem LLDP und blauem Uplink.
@@ -188,6 +196,15 @@ export function buildCytoscapeStyle(dark, knotenzahl) {
             'line-style': 'dashed', 'line-dash-pattern': [2, 5],
             'opacity': 0.45, 'curve-style': 'straight',
             'label': '', 'source-text-offset': 0, 'target-text-offset': 0,
+        }},
+        // ARP+FDB is evidence of MAC learning on a switch port, not
+        // a confirmed direct cable. Amber/dotted never means link UP.
+        { selector: 'edge[kind = "fdb"]', style: {
+            'width': 2, 'line-color': dark ? '#fbbf24' : '#b45309',
+            'line-style': 'dotted', 'line-dash-pattern': [2, 6],
+            'opacity': 0.85, 'curve-style': 'straight',
+            'target-arrow-shape': 'none', 'label': '',
+            'source-text-offset': 26, 'target-text-offset': 0,
         }},
         // Manuell gezogene Kanten. Seit 5.0.1 gibt es zwei Ebenen, und man muss
         // ihnen ansehen, welche man vor sich hat: eine geteilte Kante ist eine

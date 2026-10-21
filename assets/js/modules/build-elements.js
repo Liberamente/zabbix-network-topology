@@ -347,6 +347,57 @@ export function buildEdgeElements(edges, nodes) {
             return;
         }
 
+        // A Wi-Fi association is NOT a physical cable. Never estimate traffic,
+        // interface errors, link state or per-port Ethernet metrics for it.
+        if (e.match === 'wifi' || (Array.isArray(e.src) && e.src.includes('wifi'))) {
+            const signal = Number(e.signal_dbm);
+            const hasSignal = e.signal_dbm !== undefined && e.signal_dbm !== null
+                           && Number.isFinite(signal) && signal < 0 && signal >= -150;
+            elements.push({
+                data: {
+                    id: e.id || ('wifi_' + src + '_' + tgt),
+                    source: src, target: tgt,
+                    kind: 'wifi', isLLDP: false,
+                    src: ['wifi'], reporters: e.reporters || [],
+                    matchKind: 'wifi', portMatch: e.port_match || 'association',
+                    confirmed: false,
+                    confidence: (typeof e.confidence === 'number') ? e.confidence : null,
+                    signalDbm: hasSignal ? signal : null,
+                    radioIfIndex: (e.port_idx && e.port_idx[src]) || '',
+                    trafficIn: 0, trafficOut: 0, trafficCap: 0,
+                    portSrc: '', portTgt: '', portSrcIdx: '', portTgtIdx: '',
+                    ifaceDown: 0, ifaceErr: 0, ifaceDrop: 0, ifaceDownRatio: 0,
+                    tLabel: hasSignal ? (signal + ' dBm') : ''
+                }
+            });
+            return;
+        }
+
+        // Native FDB + ARP MAC-learning association. Evidence establishes
+        // the switch port that learned this MAC, NOT a direct Ethernet cable.
+        // Keep inferred links distinct from LLDP and avoid borrowed host
+        // traffic/health values, which would assert a measurement never made.
+        if (e.match === 'fdb' || (Array.isArray(e.src) && e.src.includes('fdb'))) {
+            elements.push({
+                data: {
+                    id: e.id || ('fdb_' + src + '_' + tgt),
+                    source: src, target: tgt, kind: 'fdb', isLLDP: false,
+                    src: ['fdb'], confirmed: false,
+                    confidence: (typeof e.confidence === 'number') ? e.confidence : null,
+                    matchKind: 'fdb', portMatch: 'learned',
+                    portSrc: (e.ports && e.ports[src]) || '',
+                    portTgt: '', portSrcIdx: (e.port_idx && e.port_idx[src]) || '',
+                    portTgtIdx: '', fdbSharedPort: e.fdb_shared_port === true,
+                    lastSeen: e.last_seen || 0, vlan: e.vlan || null,
+                    trafficIn: 0, trafficOut: 0, capBps: 0,
+                    perLink: false, portDown: null, portErr: null, portDrop: null,
+                    ifaceDown: 0, ifaceErr: 0, ifaceDrop: 0, ifaceDownRatio: 0,
+                    tLabel: ''
+                }
+            });
+            return;
+        }
+
         // §9 Ghost-Kanten: KEINE Traffic-Berechnung. Sonst erbt die Kante den
         // Node-Summen-Traffic des meldenden Hosts (der Ghost selbst hat 0) und
         // die Weathermap faerbt sie als hoch ausgelastet — voellig irrefuehrend
