@@ -37,8 +37,8 @@ const { applyTrafficHeatmap, markDisasterState, setWeathermapMode } = await impo
 const { buildCytoscapeStyle } = await import('../assets/js/modules/render-tech-style.js');
 const { buildEdgeElements } = await import('../assets/js/modules/build-elements.js');
 
-const apiEdge = { id: 'wifi_11385_15977', from: '11385', to: '15977', match: 'wifi', src: ['wifi'], signal_dbm: -71, port_idx: { '11385': '3' }, confidence: 75 };
-const nodes = [{ id: '11385' }, { id: '15977' }];
+const apiEdge = { id: 'wifi_21_22', from: '21', to: '22', match: 'wifi', src: ['wifi'], signal_dbm: -71, port_idx: { '21': '3' }, confidence: 75 };
+const nodes = [{ id: '21' }, { id: '22' }];
 const data = buildEdgeElements([apiEdge], nodes)[0].data;
 assert.equal(data.kind, 'wifi');
 assert.equal(data.signalDbm, -71);
@@ -59,8 +59,8 @@ const fakeNode = (id, label) => ({ id: () => id, data: k => ({ label })[k] });
 const fakeEdge = {
     data: k => k === undefined ? data : data[k],
     hasClass: () => false,
-    source: () => fakeNode('11385', 'AP1'),
-    target: () => fakeNode('15977', 'Client'),
+    source: () => fakeNode('21', 'Test AP'),
+    target: () => fakeNode('22', 'Client'),
 };
 showEdgeDetail(panel, fakeEdge);
 const visibleText = (e) => [e.textContent || '', ...(e.children || []).flatMap(visibleText)].join(' ');
@@ -95,14 +95,14 @@ function collection(items) {
     items.style = function(k, v) { this.forEach(e => e.style(k, v)); };
     return items;
 }
-const wifi = mockEdge('wifi', '11385', '15977');
-const wired = mockEdge('ethernet', '11385', '99');
+const wifi = mockEdge('wifi', '21', '22');
+const wired = mockEdge('ethernet', '21', '99');
 wifi.classes.clear(); wired.classes.clear();
 const cy = {
     edges: () => collection([wifi, wired]),
     nodes: () => collection([
-        { id: () => '11385', data: k => k === 'severity' ? 5 : null },
-        { id: () => '15977', data: k => k === 'severity' ? 0 : null },
+        { id: () => '21', data: k => k === 'severity' ? 5 : null },
+        { id: () => '22', data: k => k === 'severity' ? 0 : null },
         { id: () => '99', data: k => k === 'severity' ? 0 : null },
     ]),
 };
