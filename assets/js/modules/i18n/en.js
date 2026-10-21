@@ -478,6 +478,11 @@ export default {
     'path.link_trouble': 'This link reports ports down, errors or discards \u2014 open it for the numbers.',
     // Kanten-Detailpanel (edge-detail.js)
     'edge.port.uptime': 'up for {t}',
+    'fdb.association': 'ARP + FDB: inferred association',
+    'fdb.learned': 'MAC learned on switch port',
+    'fdb.port': 'Switch port',
+    'fdb.shared': 'Other monitored MACs were also learned on this port. The actual physical order is unknown.',
+    'fdb.note': 'A learned MAC is not proof of a direct cable: a phone, bridge or Wi-Fi AP may be between the devices. Per-client link traffic and operational status are not measured.',
     'wifi.association': 'Wireless association',
     'wifi.registered': 'Associated via SNMP',
     'wifi.radio': 'Wi-Fi radio',
