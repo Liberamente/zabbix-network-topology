@@ -306,6 +306,15 @@ export function render(wrap, nodes, edges, dataUrl) {
     cyDiv.style.cssText = 'width:100%;height:100%;position:absolute;top:0;left:0';
     wrap.style.position = 'relative';
     wrap.appendChild(cyDiv);
+    if (pilotReadOnly) {
+        const notice = document.createElement('div');
+        notice.textContent = 'COLLAUDO TRUNK · 5 SWITCH · 4 ARCHI · NODI LIVE · TOPOLOGIA NON PUBBLICATA';
+        notice.style.cssText = 'position:absolute;top:8px;left:12px;z-index:12;'
+            + 'pointer-events:none;padding:6px 11px;border-radius:6px;'
+            + 'font:700 10px sans-serif;letter-spacing:.04em;'
+            + 'background:#16364bee;color:#c9eafb;border:1px solid #3684ab';
+        wrap.appendChild(notice);
+    }
 
     const useLayout = 'cose';
     const dark = isDark();
