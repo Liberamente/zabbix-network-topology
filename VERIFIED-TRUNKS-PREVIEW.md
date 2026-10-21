@@ -92,7 +92,7 @@ This branch also includes:
 - `tools/verified-trunk-preview.html`: a standalone, visually faithful
   technical network view based on the module's **vendored Cytoscape.js**,
   without importing or changing the production module's bundled frontend.
-- `tools/verified-trunk-preview-model.js`: deterministic node/edge layout and
+- `assets/js/nt-verified-trunk-model.js`: deterministic node/edge layout and
   fail-closed validation of the **adapter output schema 1** (not the earlier
   zabbix-tools raw report schema 2). Four logical arcs; member pairs remain
   nested in the edge details.
