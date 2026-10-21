@@ -77,35 +77,35 @@ t('NAS: source FDB', $got[0]['src'] ?? null, ['fdb']);
 t('NAS: unconfirmed inference', $got[0]['confirmed'] ?? null, false);
 t('NAS: from original VLAN', $got[0]['vlan'] ?? null, 1);
 
-// Actual Synthetic switch behavior: the neighbor capabilities are 14 00 (no Bridge
+// Synthetic switch behavior: the neighbor capabilities are 14 00 (no Bridge
 // bit), but the physical switch-to-switch LLDP edge identifies GE24 as uplink.
-$cudyCaps = [
+$syntheticCaps = [
     row('11','lldpRemSysCapEnabled[0.24.10]','14 00'),
     row('12','lldpRemSysCapEnabled[0.24.20]','14 00'),
 ];
 $switchLink = [['id'=>'lldp_switches','from'=>'11','to'=>'12','src'=>['lldp'],
     'ports'=>['11'=>'GigabitEthernet24','12'=>'GigabitEthernet24'],
     'port_idx'=>['11'=>'24','12'=>'24']]];
-$cudyEdges=runCase($hosts,sourceRows(),$cudyCaps,$switchLink);
-t('Real Synthetic switch caps 14 00: edge added',count($cudyEdges),2);
-t('Real Synthetic switch caps: NAS attached to switch .16',
-    (string)($cudyEdges[1]['from'] ?? ''),'12');
-t('Real Synthetic switch caps: NAS on GE3',
-    $cudyEdges[1]['ports']['12'] ?? null,'GigabitEthernet3');
+$syntheticEdges=runCase($hosts,sourceRows(),$syntheticCaps,$switchLink);
+t('Synthetic switch caps 14 00: edge added',count($syntheticEdges),2);
+t('Synthetic switch caps: NAS attached to switch .16',
+    (string)($syntheticEdges[1]['from'] ?? ''),'12');
+t('Synthetic switch caps: NAS on GE3',
+    $syntheticEdges[1]['ports']['12'] ?? null,'GigabitEthernet3');
 // Regression: real Synthetic switch LLDP reports numeric port labels ("24"),
 // while FDB resolves the same ifIndex to "GigabitEthernet24".
 $switchLinkNumeric = $switchLink;
 $switchLinkNumeric[0]['ports'] = ['11'=>'24', '12'=>'24'];
 
-$cudyNumeric = runCase($hosts, sourceRows(), $cudyCaps, $switchLinkNumeric);
+$syntheticNumeric = runCase($hosts, sourceRows(), $syntheticCaps, $switchLinkNumeric);
 
-t('Real Synthetic switch numeric LLDP: NAS edge created',
-    count($cudyNumeric), 2);
-t('Real Synthetic switch numeric LLDP: NAS on GE3',
-    $cudyNumeric[1]['ports']['12'] ?? null, 'GigabitEthernet3');
+t('Synthetic switch numeric LLDP: NAS edge created',
+    count($syntheticNumeric), 2);
+t('Synthetic switch numeric LLDP: NAS on GE3',
+    $syntheticNumeric[1]['ports']['12'] ?? null, 'GigabitEthernet3');
 
-t('Real Synthetic switch caps without LLDP switch edge: no guess',
-    count(runCase($hosts,sourceRows(),$cudyCaps)),0);
+t('Synthetic switch caps without LLDP switch edge: no guess',
+    count(runCase($hosts,sourceRows(),$syntheticCaps)),0);
 
 $manual=['13'=>['host'=>'sw16','port'=>'GigabitEthernet3']];
 t('Manual tag: override wins', count(runCase($hosts,sourceRows(),$caps,[], $manual)), 0);
