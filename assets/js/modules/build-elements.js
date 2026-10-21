@@ -373,6 +373,31 @@ export function buildEdgeElements(edges, nodes) {
             return;
         }
 
+        // Native FDB + ARP MAC-learning association. Evidence establishes
+        // the switch port that learned this MAC, NOT a direct Ethernet cable.
+        // Keep inferred links distinct from LLDP and avoid borrowed host
+        // traffic/health values, which would assert a measurement never made.
+        if (e.match === 'fdb' || (Array.isArray(e.src) && e.src.includes('fdb'))) {
+            elements.push({
+                data: {
+                    id: e.id || ('fdb_' + src + '_' + tgt),
+                    source: src, target: tgt, kind: 'fdb', isLLDP: false,
+                    src: ['fdb'], confirmed: false,
+                    confidence: (typeof e.confidence === 'number') ? e.confidence : null,
+                    matchKind: 'fdb', portMatch: 'learned',
+                    portSrc: (e.ports && e.ports[src]) || '',
+                    portTgt: '', portSrcIdx: (e.port_idx && e.port_idx[src]) || '',
+                    portTgtIdx: '', fdbSharedPort: e.fdb_shared_port === true,
+                    lastSeen: e.last_seen || 0, vlan: e.vlan || null,
+                    trafficIn: 0, trafficOut: 0, capBps: 0,
+                    perLink: false, portDown: null, portErr: null, portDrop: null,
+                    ifaceDown: 0, ifaceErr: 0, ifaceDrop: 0, ifaceDownRatio: 0,
+                    tLabel: ''
+                }
+            });
+            return;
+        }
+
         // §9 Ghost-Kanten: KEINE Traffic-Berechnung. Sonst erbt die Kante den
         // Node-Summen-Traffic des meldenden Hosts (der Ghost selbst hat 0) und
         // die Weathermap faerbt sie als hoch ausgelastet — voellig irrefuehrend
