@@ -21,8 +21,9 @@ use API;
 
 class NetworkTopologyData extends NetworkTopologyController {
 
-    // Pilot: Auto FDB enabled only for the Techsigno group view.
-    private const AUTO_FDB_EDGES = true;
+    // Native read-only endpoint association. Effective only if the
+    // selected group exposes suitable Zabbix SNMP walk items.
+    private const AUTO_DISCOVER_ACCESS_LINKS = true;
 
     /**
      * Wie lange eine nicht mehr gemeldete Kante auf der Karte bleibt, bevor
@@ -747,14 +748,37 @@ class NetworkTopologyData extends NetworkTopologyController {
                 $metrics['port_errors'] ?? [], $metrics['port_discards'] ?? [],
                 $metrics['port_names'] ?? []);
         }
-        // ── 5a0b. OPTIONAL FDB AUTO-LINKS (read-only, disabled by default) ──
+        $lldp_quality   = $lldp['quality'];
+        $lldp_unmatched = $lldp['unmatched'];
+        $lldp_host_caps = $lldp['host_caps'] ?? [];
+
+        // Wer selbst eine Nachbartabelle fuehrt, ist ein Netzwerkgeraet — ein
+        // Server tut das nicht. Die Auswahl steht in HostMetadata, damit sie
+        // testbar ist; sie war frueher hier inline und deshalb von keinem Test
+        // erreichbar (siehe tests/DeviceTypeTest.php).
+        $lldp_speakers = HostMetadata::speakers($lldp_raw);
+        // ── 5a. HOSTING/CONTAINMENT-KANTEN (nt:parent-Tag) ────────────────
+        // Ein Host deklariert via Tag  nt:parent = <Hostname>  seinen Traeger
+        // (VM → Hypervisor, Container → Node, ...). Ergibt eine GERICHTETE
+        // hosts-Kante Parent→Child. Anders als LLDP ist das eine harte
+        // Abhaengigkeit: faellt der Parent, ist der Child weg — What-if/
+        // Root-Cause werten _type=hosts entsprechend aus. Aufloesung nach
+        // technischem Namen (host) ODER Anzeigename (name), case-insensitiv;
+        // technischer Name gewinnt. Referenzen auf nicht sichtbare/unbekannte
+        // Hosts werden still verworfen (Kante zu Nicht-Knoten faellt eh weg).
+        // (Aufloesung extracted to parentEdges() — the host+hops discovery
+        // builds the same edges so a VM is reachable via its hypervisor.)
+        if ($host_parent) {
+            $edges = array_merge($edges, self::parentEdges($hosts, $host_parent));
+        }
+
+        // ── 5a1. NATIVE ARP/FDB + WIFI ACCESS ASSOCIATIONS ──────────────
         // Strictly scope reads to the visible hostids (including proxy/group
         // boundaries); do not use the install-wide interactive Finder query.
         if (
-           self::AUTO_FDB_EDGES
+           self::AUTO_DISCOVER_ACCESS_LINKS
            && !$host_mode
            && count($groupids) === 1
-           && (string) reset($groupids) === '25'
         ) {
             $fdb_items = API::Item()->get([
                 'output'    => ['hostid', 'key_', 'lastclock', 'lastvalue', 'status', 'state'],
@@ -767,7 +791,7 @@ class NetworkTopologyData extends NetworkTopologyController {
             ]);
             // WLAN association comes before FDB inference: never describe an
             // associated wireless client as a direct copper switch link.
-            // Only read items of the already visible hosts in this pilot.
+            // Only read items of the already visible hosts in this group.
             $wifi_items = API::Item()->get([
                 'output'    => ['hostid', 'key_', 'lastclock', 'lastvalue', 'status', 'state'],
                 'hostids'   => $hostids,
@@ -800,29 +824,6 @@ class NetworkTopologyData extends NetworkTopologyController {
                 $edges = AutoFdbEdges::append($hosts, $fdb_items, $caps, $edges,
                     $host_uplink, $metrics, time());
             }
-        }
-        $lldp_quality   = $lldp['quality'];
-        $lldp_unmatched = $lldp['unmatched'];
-        $lldp_host_caps = $lldp['host_caps'] ?? [];
-
-        // Wer selbst eine Nachbartabelle fuehrt, ist ein Netzwerkgeraet — ein
-        // Server tut das nicht. Die Auswahl steht in HostMetadata, damit sie
-        // testbar ist; sie war frueher hier inline und deshalb von keinem Test
-        // erreichbar (siehe tests/DeviceTypeTest.php).
-        $lldp_speakers = HostMetadata::speakers($lldp_raw);
-        // ── 5a. HOSTING/CONTAINMENT-KANTEN (nt:parent-Tag) ────────────────
-        // Ein Host deklariert via Tag  nt:parent = <Hostname>  seinen Traeger
-        // (VM → Hypervisor, Container → Node, ...). Ergibt eine GERICHTETE
-        // hosts-Kante Parent→Child. Anders als LLDP ist das eine harte
-        // Abhaengigkeit: faellt der Parent, ist der Child weg — What-if/
-        // Root-Cause werten _type=hosts entsprechend aus. Aufloesung nach
-        // technischem Namen (host) ODER Anzeigename (name), case-insensitiv;
-        // technischer Name gewinnt. Referenzen auf nicht sichtbare/unbekannte
-        // Hosts werden still verworfen (Kante zu Nicht-Knoten faellt eh weg).
-        // (Aufloesung extracted to parentEdges() — the host+hops discovery
-        // builds the same edges so a VM is reachable via its hypervisor.)
-        if ($host_parent) {
-            $edges = array_merge($edges, self::parentEdges($hosts, $host_parent));
         }
 
         // ── 5b. PROXY + PROXY-GROUP LOOKUP ────────────────────────────────
