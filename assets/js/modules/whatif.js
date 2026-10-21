@@ -117,6 +117,9 @@ export function reachable(cy, roots, blocked, ohneManuelle) {
             // sie ein gueltiger Weg — laeuft der Hypervisor, ist die VM
             // erreichbar. Vom Gast zum Wirt nicht. Genau diese eine Richtung
             // war der Fehler, nicht die Kante an sich.
+            // MAC learned on a switch port is a placement observation,
+            // not proof of a direct network path or a hard dependency.
+            if (edge.data('kind') === 'fdb') return;
             if (edge.data('kind') === 'hosts' && edge.source().id() !== cur) return;
             if (ohneManuelle && String(edge.id() || '').indexOf('ml_') === 0) return;
             const s = edge.source().id();
