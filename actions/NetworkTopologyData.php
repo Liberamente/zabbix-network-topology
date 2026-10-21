@@ -762,13 +762,6 @@ class NetworkTopologyData extends NetworkTopologyController {
                 $metrics['port_errors'] ?? [], $metrics['port_discards'] ?? [],
                 $metrics['port_names'] ?? []);
         }
-        // Optional inferred endpoint attachments: no LLDP link is removed
-        // or modified. This operates strictly within selected visible groups.
-        // Host+hop scope is handled by LLDP only to avoid widening its graph.
-        if (!$host_mode && $fdb_items) {
-            $edges = FdbEdgeBuilder::augment($hosts, $edges, $fdb_items, $groupids);
-        }
-        unset($fdb_items);
         $lldp_quality   = $lldp['quality'];
         $lldp_unmatched = $lldp['unmatched'];
         $lldp_host_caps = $lldp['host_caps'] ?? [];
@@ -792,6 +785,14 @@ class NetworkTopologyData extends NetworkTopologyController {
         if ($host_parent) {
             $edges = array_merge($edges, self::parentEdges($hosts, $host_parent));
         }
+
+        // Infer an access-port attachment only for STILL ISOLATED nodes:
+        // LLDP/CDP, declared uplinks AND containment links take precedence.
+        // Host+hop scope keeps its original discovery semantics.
+        if (!$host_mode && $fdb_items) {
+            $edges = FdbEdgeBuilder::augment($hosts, $edges, $fdb_items, $groupids);
+        }
+        unset($fdb_items);
 
         // ── 5b. PROXY + PROXY-GROUP LOOKUP ────────────────────────────────
         // Hosts können via Proxy oder Proxy-Group (Zabbix 7+) monitored werden.
@@ -995,7 +996,12 @@ class NetworkTopologyData extends NetworkTopologyController {
         // removed — 'moved', wenn dasselbe Paar an einem anderen Port haengt.
         // Vorher fiel genau dieser Fall durchs Raster, weil der Schluessel nur
         // aus dem Host-Paar bestand und sich beim Umstecken nicht aendert.
-        $current  = TopoDiff::snapshot($edges, $host_label);
+        // ARP+FDB only reports MAC learning, not a confirmed cable move.
+        // It must not create notifications, history baselines or ageing LLDP
+        // links when the MAC-learning cache changes between poll cycles.
+        $physical_edges = array_values(array_filter($edges,
+            static fn($e) => empty($e['fdb_learned'])));
+        $current  = TopoDiff::snapshot($physical_edges, $host_label);
         $baseline = NtCache::get('topo_baseline', $cache_parts);
         $base_arr = is_array($baseline) ? $baseline : null;
 
@@ -1068,6 +1074,7 @@ class NetworkTopologyData extends NetworkTopologyController {
         $jetzt = time();
         $_keys = TopoDiff::keys($edges);
         foreach ($edges as $_i => &$_ne) {
+            if (!empty($_ne['fdb_learned'])) continue;
             if ($_keys[$_i] === null) {
                 continue;
             }
