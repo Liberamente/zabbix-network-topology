@@ -150,6 +150,14 @@ function renderTechnicalWithPilot(wrap, nodes, edges, url) {
     if (p.expired) {
         if (_verifiedTrunkSync) _verifiedTrunkSync();
         toast('Collaudo trunk terminato: prova scaduta o host non più visibili.', 'warn', 8000);
+        // Toolbar/preset callbacks may have been passed the five-node pilot
+        // subset. Never display its stale four arcs after the validator
+        // cancels the pilot: restore the original permission-scoped API graph.
+        const original = window._ntLastData || {};
+        if (Array.isArray(original.nodes)) {
+            return render(wrap, original.nodes.slice(),
+                (original.edges || []).slice(), original.url || url);
+        }
     }
     return render(wrap, p.nodes, p.edges, url);
 }
