@@ -221,6 +221,21 @@ export function showEdgeDetail(panel, ed, asMember) {
     head.appendChild(close);
     panel.appendChild(head);
 
+    if (d.kind === 'fdb') {
+        // The bridge FDB says only where a MAC was learned.
+        // Never display LLDP confirmation or fictitious per-link traffic.
+        const badge = el('div', 'display:flex;gap:4px;margin-bottom:3px');
+        badge.appendChild(pill('ARP + FDB', '#b45309', t('fdb.association')));
+        panel.appendChild(badge);
+        section(panel, t('fdb.learned'));
+        row(panel, sLbl, d.portSrc || t('wifi.unknown'));
+        if (d.fdbSharedPort) hint(panel, t('fdb.shared'));
+        panel.appendChild(el('div',
+            'font-size:10px;color:var(--nt-muted,#94a3b8);line-height:1.5;margin-top:8px',
+            t('fdb.note')));
+        return;
+    }
+
     if (d.kind === 'wifi') {
         // Radio association: never attribute host aggregate traffic, Ethernet
         // interface state, capacity or per-port sparklines to this edge.
