@@ -1811,6 +1811,17 @@ final class LldpEdgeBuilder {
      * Bit-Reihenfolge nach lldpRemSysCapEnabled, hoechstwertiges Bit zuerst.
      */
     private static function decodeCaps(string $raw): array {
+        // LLDP capabilities may arrive as raw binary octets.
+        // Normalize before trim(), which would discard space (0x20)
+        // and NUL (0x00). Preserve printable hex and text forms.
+        $length = strlen($raw);
+        if ($length === 1
+                || ($length === 2
+                    && (ord($raw[0]) < 0x21 || ord($raw[0]) > 0x7e
+                        || ord($raw[1]) < 0x21 || ord($raw[1]) > 0x7e))) {
+            $raw = sprintf('%02X 00', ord($raw[0]));
+        }
+
         $raw = trim($raw);
         if ($raw === '') {
             return [];

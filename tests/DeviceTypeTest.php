@@ -102,6 +102,17 @@ if (PHP_VERSION_ID < 80100) {
 }
 $caps = static fn(string $in): array => $dc->invoke(null, $in);
 
+// Regression: LLDP capabilities delivered as raw binary octets.
+// Synthetic data only, no customer network samples.
+check('Binary 0x20 -> Bridge',
+      $caps("\x20"), ['Bridge']);
+check('Binary 0x24 -> Bridge+Telephone',
+      $caps("\x24"), ['Bridge', 'Telephone']);
+check('Binary 0x20 0x00 -> Bridge',
+      $caps("\x20\x00"), ['Bridge']);
+check('Binary 0x24 0x00 -> Bridge+Telephone',
+      $caps("\x24\x00"), ['Bridge', 'Telephone']);
+
 check('Hex "20 00" -> Bridge',        $caps('20 00'),             ['Bridge']);
 check('Hex "28 00" -> Bridge+Router', $caps('28 00'),             ['Bridge', 'Router']);
 check('Hex "10 00" -> WLAN AP',       $caps('10 00'),             ['WLAN AP']);
