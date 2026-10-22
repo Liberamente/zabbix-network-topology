@@ -101,6 +101,15 @@ export function buildCytoscapeStyle(dark, knotenzahl) {
             // target-label inline; hier nur die Offsets weg vom Node)
             'source-text-offset': 26, 'target-text-offset': 26,
         }},
+        // Isolated, manually enabled static-trunk preview. Blue means
+        // independent LLDP topology evidence, never link health or ping.
+        { selector: 'edge[?ntVerified]', style: {
+            'width': 4.5, 'line-color': '#278fc5', 'line-style': 'solid',
+            'line-cap': 'round', 'opacity': 0.95,
+            'font-size': 11, 'font-weight': 'bold',
+            'color': dark ? '#a0d6f6' : '#155f8b',
+            'source-text-offset': 31, 'target-text-offset': 31,
+        }},
         // Beschriftete Kante über die unbeschrifteten legen: in einem Bündel
         // trägt nur der Lead ein tLabel, die Geschwister werden aber NACH ihm
         // gezeichnet (Einfügereihenfolge) und ihre gestrichelte Linie lief

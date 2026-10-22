@@ -13,6 +13,11 @@ class MockElement {
         this.offsetHeight = 120;
     }
     appendChild(n) { this.children.push(n); return n; }
+    replaceChildren(...nodes) {
+        this.children = nodes;
+        this.textContent = '';
+        this.innerHTML = '';
+    }
     addEventListener() {}
 }
 const root = new MockElement('root');
@@ -47,11 +52,15 @@ assert.equal(data.trafficIn, 0);
 assert.equal(data.trafficOut, 0);
 
 showEdgeTip({ clientX: 200, clientY: 150 }, data, 'Access Point', '<client>');
-assert.match(tip.innerHTML, /-71 dBm/);
-assert.match(tip.innerHTML, /ifIndex 3/);
-assert.match(tip.innerHTML, /SNMP MikroTik/);
-assert.match(tip.innerHTML, /&lt;client&gt;/);
-assert.doesNotMatch(tip.innerHTML, /Loading history|Gb\/s|Mb\/s|K[bB]\/s|In<\/span>|Out<\/span>/);
+const visibleText = (e) =>
+    [e.textContent || '', ...(e.children || []).flatMap(visibleText)].join(' ');
+const tipText = visibleText(tip);
+assert.match(tipText, /-71 dBm/);
+assert.match(tipText, /ifIndex 3/);
+assert.match(tipText, /SNMP MikroTik/);
+assert.match(tipText, /<client>/);
+assert.equal(tip.innerHTML, '', 'Wi-Fi tooltip must not use innerHTML');
+assert.doesNotMatch(tipText, /Loading history|Gb\/s|Mb\/s|K[bB]\/s/);
 assert.equal(fetchCount, 0);
 
 const panel = new MockElement('panel');
@@ -63,7 +72,7 @@ const fakeEdge = {
     target: () => fakeNode('22', 'Client'),
 };
 showEdgeDetail(panel, fakeEdge);
-const visibleText = (e) => [e.textContent || '', ...(e.children || []).flatMap(visibleText)].join(' ');
+
 const panelText = visibleText(panel);
 assert.match(panelText, /-71 dBm/);
 assert.match(panelText, /ifIndex 3/);

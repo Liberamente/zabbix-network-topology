@@ -102,6 +102,7 @@ import { setupToolbar, setRenderCallback as setToolbarRenderCallback } from './m
 import { applyColorScales } from './modules/traffic.js';
 import { setRenderCallback as setPresetsRenderCallback } from './modules/presets-ui.js';
 import { setHistoryRenderCallback, getHistorySeverities, isHistoryActive, setLiveRefreshHooks } from './modules/history-mode.js';
+import { applyVerifiedTrunkPilot, installVerifiedTrunkPilot } from './modules/verified-trunk-live-pilot.js';
 
 // ── Tab-State ──────────────────────────────────────────────────────────────
 // Lebt im Hauptmodul, wird via Getter an tabs.js gereicht. Persistenz im
@@ -140,6 +141,27 @@ try {
     } catch (e) {}
 } catch (e) {}
 
+// No backend edge injection: only a Super Admin with a locally chosen,
+// fresh, strictly scoped verified JSON can switch the Technical tab to an
+// isolated five-switch pilot. Other tabs always use the original API data.
+let _verifiedTrunkSync = null;
+function renderTechnicalWithPilot(wrap, nodes, edges, url) {
+    const p = applyVerifiedTrunkPilot(nodes, edges, window.NT_CONFIG);
+    if (p.expired) {
+        if (_verifiedTrunkSync) _verifiedTrunkSync();
+        toast('Collaudo trunk terminato: prova scaduta o host non più visibili.', 'warn', 8000);
+        // Toolbar/preset callbacks may have been passed the five-node pilot
+        // subset. Never display its stale four arcs after the validator
+        // cancels the pilot: restore the original permission-scoped API graph.
+        const original = window._ntLastData || {};
+        if (Array.isArray(original.nodes)) {
+            return render(wrap, original.nodes.slice(),
+                (original.edges || []).slice(), original.url || url);
+        }
+    }
+    return render(wrap, p.nodes, p.edges, url);
+}
+
 // ── Cross-Module-Glue (Callback-Registrierung) ─────────────────────────────
 // Diese Callbacks vermeiden zirkuläre Imports: das jeweils tiefere Modul ruft
 // nicht direkt das höhere, sondern bekommt die Referenz hier injiziert.
@@ -148,7 +170,7 @@ try {
 setResolveAggregateCallback(function() {
     const dd = window._ntLastData || {};
     const wrap = document.getElementById('nt-canvas-wrap');
-    if (wrap && dd.nodes) render(wrap, dd.nodes.slice(), (dd.edges || []).slice(), dd.url || '');
+    if (wrap && dd.nodes) renderTechnicalWithPilot(wrap, dd.nodes.slice(), (dd.edges || []).slice(), dd.url || '');
 });
 
 // Per-host focus (set/change/end) → full re-render; the filter itself runs
@@ -159,7 +181,7 @@ setFocusRenderCallback(function() {
     if (_activeTab !== 'tech') return;
     const dd = window._ntLastData || {};
     const wrap = document.getElementById('nt-canvas-wrap');
-    if (wrap && dd.nodes) render(wrap, dd.nodes.slice(), (dd.edges || []).slice(), dd.url || '');
+    if (wrap && dd.nodes) renderTechnicalWithPilot(wrap, dd.nodes.slice(), (dd.edges || []).slice(), dd.url || '');
 });
 
 // tabs.js braucht den aktiven Tab
@@ -178,9 +200,9 @@ setSetupToolbarCallback(function(cy, wrap, nodes, groupNames, isDark, useLayout)
 });
 
 // toolbar.js (Group-View-Toggle) → render() (ebenfalls zirkulär)
-setToolbarRenderCallback(render);
+setToolbarRenderCallback(renderTechnicalWithPilot);
 // presets-ui.js (Preset-Wechsel) → render() (ebenfalls zirkulär)
-setPresetsRenderCallback(render);
+setPresetsRenderCallback(renderTechnicalWithPilot);
 
 // ── Globaler State ─────────────────────────────────────────────────────────
 // Auto-Refresh-On wird zwischen render-tech.js (Loop) und toolbar.js (Toggle)
@@ -267,7 +289,7 @@ function switchTab(tab, wrap, nodes, edges, dataUrl) {
     else if (tab === 'compliance') renderCompliance(wrap);
     else if (tab === 'services')   renderServices(wrap);
     else if (tab === 'lldpq')      renderLldpQuality(wrap);
-    else                           render(wrap, nodes, edges, dataUrl);
+    else                           renderTechnicalWithPilot(wrap, nodes, edges, dataUrl);
     ensureBaseToolbar(wrap);
     // Graph-spezifische Toolbar-Buttons (Layout/Cluster/Zoom/Fit/Hide-Labels/
     // LLDP/Link/Presets/Sev-Filter/Suche) nur im Tech-Tab anzeigen — andere
@@ -336,6 +358,17 @@ function init() {
 
     // Basis-Toolbar (Tabs) initial bauen — idempotent.
     ensureBaseToolbar(wrap);
+    _verifiedTrunkSync = installVerifiedTrunkPilot(
+        cfg,
+        function () { return window._ntLastData || {}; },
+        function () {
+            const d = window._ntLastData || {};
+            if (!Array.isArray(d.nodes)) return;
+            const q = document.getElementById('nt-canvas-wrap');
+            if (q) switchTab('tech', q, d.nodes, d.edges || [], d.url || '');
+        },
+        function (msg, kind) { toast(msg, kind, 8000); }
+    );
 
     // Host+hops mode: a selected host replaces the group selection as the
     // data scope. Guard the group auto-restore below — it would redirect and

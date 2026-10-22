@@ -480,7 +480,7 @@ export default {
     'edge.port.uptime': 'up for {t}',
     'fdb.association': 'ARP + FDB: inferred association',
     'fdb.learned': 'MAC learned on switch port',
-    'fdb.port': 'Switch port',
+    'fdb.edge.port': 'Switch port',
     'fdb.shared': 'Multiple MACs were learned on this port (including possibly unmonitored devices). Their physical order is unknown.',
     'fdb.note': 'A learned MAC is not proof of a direct cable: a phone, bridge or Wi-Fi AP may be between the devices. Per-client link traffic and operational status are not measured.',
     'wifi.association': 'Wireless association',

@@ -185,6 +185,10 @@ export function applyTrafficHeatmap(cy) {
         // inline heatmap styles override edge[kind="wifi"] from the stylesheet.
         // Skip these edges in both traffic and weathermap modes.
         if (edge.data('kind') === 'wifi' || edge.data('kind') === 'fdb') return;
+        // A verified aggregate is STRUCTURAL evidence. Without measured
+        // member traffic / operational status the weathermap must not
+        // recolor it idle-green, down-red, or attach fabricated utilization.
+        if (edge.data('ntVerified')) return;
         if (edge.hasClass('dead-edge')) return;
         // §9 Ghost-Kanten haben keine gemessenen Daten — die Heatmap wuerde ihre
         // Inline-Styles ueber den (bewusst dezenten) Ghost-Style aus dem

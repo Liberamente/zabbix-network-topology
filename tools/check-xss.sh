@@ -51,7 +51,10 @@ UNTRUSTED='\.(label|host|name|proxy_name|proxy_group_name|note|raw|ip|iftype|des
 # Template-Literale, aber der Tripwire sah nur '+'. eslint no-unsanitized fing
 # es ueber den AST, der Grep-Tripwire nicht. Jetzt beide. Sichere Nicht-HTML-
 # Senken (textContent/.style/.title/dataset/…) werden ausgefiltert.
-mapfile -t hits < <(
+hits=()
+while IFS= read -r hit; do
+    hits+=("$hit")
+done < <(
   grep -rnE "(innerHTML|insertAdjacentHTML|document\.write|<[a-zA-Z/]|>['\"])" "${JS_DIRS[@]}" --include='*.js' 2>/dev/null \
     | grep -vE '/(leaflet|cytoscape|cola|dagre|dist)' \
     | grep -E '\+[^+]*('"$UNTRUSTED"')|\$\{[^}]*('"$UNTRUSTED"')[^}]*\}' \
