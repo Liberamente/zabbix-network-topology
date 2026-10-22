@@ -203,6 +203,61 @@ d = discover('.1.0.8802.1.1.2.1.4.1.1.9.10.25.1 = STRING: "old"\n'
 check('dieselbe Zeile unter zwei TimeMarks: die hoechste gewinnt',
       d.map((r) => r['{#NT_SYSNAME}']), ['new']);
 
+
+// Optional LLDP local-port mapping: inspect the actual exported template.
+console.log('\n  LLDP local-port optional template');
+
+let localTemplate = '';
+try {
+    localTemplate = readFileSync(
+        join(ROOT, 'templates', 'nt_lldp_local_ports_template.yaml'),
+        'utf8'
+    );
+} catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+}
+
+check('LLDP local template available',
+    localTemplate !== '', true);
+
+check('Separate opt-in template',
+    localTemplate.includes(
+        "template: 'NT LLDP Local Ports by SNMP'"
+    ), true);
+
+check('Explicit FDB ifName prerequisite',
+    localTemplate.includes('nt.fdb.ifname'), true);
+
+const localBlocks = localTemplate.split(/(?=^ {8}- uuid: )/m);
+const localSpecs = [
+    ['nt.lldp.local.portid',
+     'walk[1.0.8802.1.1.2.1.3.7.1.3]'],
+    ['nt.lldp.local.portdesc',
+     'walk[1.0.8802.1.1.2.1.3.7.1.4]']
+];
+
+for (const [key, oid] of localSpecs) {
+    const matching = localBlocks.filter(block =>
+        block.split('\n').some(line => line.trim() === `key: ${key}`)
+    );
+
+    check(`${key}: unique item`, matching.length, 1);
+
+    if (matching.length !== 1) continue;
+
+    const block = matching[0];
+
+    check(`${key}: SNMP agent`,
+        block.includes('type: SNMP_AGENT'), true);
+    check(`${key}: correct SNMP walk`,
+        block.includes(`snmp_oid: '${oid}'`), true);
+    check(`${key}: text value`,
+        block.includes('value_type: TEXT'), true);
+    check(`${key}: controlled interval`,
+        block.includes("delay: '{$NT.LLDP.LOCAL.INTERVAL}'"),
+        true);
+}
+
 if (failures > 0) {
     console.log(`\ncheck-template-logic: ${failures} Fehler.`);
     process.exit(1);

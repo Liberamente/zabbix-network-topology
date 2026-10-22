@@ -187,6 +187,78 @@ and, like every neighbour string, never trusted.
   preferred — PortId may be a MAC). More under
   [port-to-port](#port-to-port--per-link-weathermap).
 
+
+### Optional LLDP Port-ID reconciliation (pilot)
+
+Network Topology can reconcile a one-sided LLDP observation with
+independent ARP and FDB evidence. The resulting association is
+**inferred**, never a confirmed physical cable.
+
+This feature is currently disabled by default in the PHP controller:
+
+`AUTO_LLDP_PORTID_EDGES = false`
+
+The optional template
+`templates/nt_lldp_local_ports_template.yaml`
+must be linked only to suitable SNMP switch hosts during an
+approved pilot. It does not replace the existing LLDP neighbour
+template and does not enable the PHP resolver by itself.
+
+#### Required Zabbix items
+
+| Device | Item key | Requirement |
+|---|---|---|
+| Reporting switch | `lldpRemPortId[...]` | Fresh remote Port-ID observation |
+| Reporting switch | `lldpRemSysName[...]` | Same neighbour index, when available |
+| Reporting switch | `nt.lldp.local.portid` | Explicit local port identity walk |
+| Reporting switch | `nt.lldp.local.portdesc` | Optional description fallback |
+| Reporting switch | `nt.fdb.dot1d` or `nt.fdb.dot1q` | FDB MAC-to-bridge-port walk |
+| Reporting switch | `nt.fdb.baseport` | Bridge port to ifIndex mapping |
+| Reporting switch | `nt.fdb.ifname` | ifIndex to interface-name mapping |
+| Router or Layer-3 device | `nt.arp` | Independent IPv4-to-MAC evidence |
+
+The two local LLDP items use these SNMP walks:
+
+- `nt.lldp.local.portid`:
+  `walk[1.0.8802.1.1.2.1.3.7.1.3]`
+- `nt.lldp.local.portdesc`:
+  `walk[1.0.8802.1.1.2.1.3.7.1.4]`
+
+The existing FDB setup provides `nt.fdb.ifname`. Reuse it:
+do not create a duplicate item with the same key.
+
+#### Safety and matching rules
+
+- LLDP local port numbers are not assumed to equal IF-MIB ifIndex.
+- ARP and FDB evidence must be fresh, unique and consistent.
+- Hosts must belong to the already selected visibility scope.
+- Reporter and target must share the same nonzero Zabbix proxy.
+- Existing LLDP/CDP, manual uplinks and Wi-Fi edges have priority.
+- Conflicting, ambiguous or unsupported observations are rejected.
+- A resulting edge has `match=lldp_portid` and `confirmed=false`.
+- No traffic measurement is attributed to an endpoint from
+  its switch port merely because a MAC was learned there.
+- These inferred edges are excluded from the physical topology
+  change baseline and physical-link KPI.
+
+#### Read-only readiness checklist
+
+Before importing the optional template, inspect the switch and
+router hosts in Zabbix Latest data:
+
+1. Check existing `lldpRemPortId[...]` and
+   `lldpRemSysName[...]` item values and timestamps.
+2. Check the FDB walks and `nt.fdb.ifname` on the switch.
+3. Check recent `nt.arp` data on a router within the same proxy.
+4. Check whether the switch exposes both local LLDP port
+   columns over its SNMP interface.
+5. Record unsupported items and ambiguous mappings without
+   creating automatic physical links.
+
+Template import, linking, feature activation and production
+deployment require separate approval and validation.
+
+
 ---
 
 ## Vendor matrix — what produces edges?
