@@ -440,6 +440,9 @@ $resolvedEdges = LldpPortIdIdentity::appendEdges(
 ntCheck('One reconciled LLDP edge',
         count($resolvedEdges), 1);
 
+ntCheck('Destination hostid has string type',
+        is_string($resolvedEdges[0]['to'] ?? null), true);
+
 ntCheck('Correct switch and endpoint',
         [
             (string) ($resolvedEdges[0]['from'] ?? ''),

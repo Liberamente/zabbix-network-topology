@@ -582,7 +582,7 @@ final class LldpPortIdIdentity {
             $edges[] = [
                 'id' => $id,
                 'from' => $reporter,
-                'to' => $target,
+                'to' => (string) $target,
                 'iface' => 'lldpRemPortId',
                 'src' => ['lldp'],
                 'reporters' => [$reporter],
