@@ -373,6 +373,37 @@ export function buildEdgeElements(edges, nodes) {
             return;
         }
 
+        // One-sided LLDP observation reconciled with ARP and FDB.
+        // This is not a reciprocally confirmed physical cable.
+        // Never borrow aggregate host traffic, speed or health.
+        if (e.match === 'lldp_portid') {
+            elements.push({
+                data: {
+                    id: e.id || ('lldp_portid_' + src + '_' + tgt),
+                    source: src, target: tgt,
+                    kind: 'lldp_portid', isLLDP: true,
+                    src: ['lldp'], reporters: e.reporters || [],
+                    matchKind: 'lldp_portid',
+                    evidence: Array.isArray(e.evidence) ? e.evidence : [],
+                    portMatch: e.port_match || 'lldp_local_fdb',
+                    confirmed: false,
+                    confidence: typeof e.confidence === 'number'
+                        ? e.confidence : null,
+                    portSrc: (e.ports && e.ports[src]) || '',
+                    portTgt: '',
+                    portSrcIdx: '', portTgtIdx: '',
+                    fdbSharedPort: e.fdb_shared_port === true,
+                    trafficIn: 0, trafficOut: 0, capBps: 0,
+                    perLink: false,
+                    portDown: null, portErr: null, portDrop: null,
+                    ifaceDown: 0, ifaceErr: 0, ifaceDrop: 0,
+                    ifaceDownRatio: 0,
+                    tLabel: ''
+                }
+            });
+            return;
+        }
+
         // Native FDB + ARP MAC-learning association. Evidence establishes
         // the switch port that learned this MAC, NOT a direct Ethernet cable.
         // Keep inferred links distinct from LLDP and avoid borrowed host

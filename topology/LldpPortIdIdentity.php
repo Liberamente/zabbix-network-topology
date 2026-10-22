@@ -434,6 +434,184 @@ final class LldpPortIdIdentity {
         return (string) reset($matches);
     }
 
+    /**
+     * Append conservatively reconciled LLDP endpoint edges.
+     *
+     * Existing edges always win. A candidate is not proof of a
+     * reciprocal or independently confirmed physical connection.
+     *
+     * This method is pure: no Zabbix API, database or writes.
+     */
+    public static function appendEdges(
+        array $hosts, array $candidates, array $edges
+    ): array {
+        if (!$hosts || !$candidates) {
+            return $edges;
+        }
+
+        $alreadyLinked = [];
+        $occupiedPorts = [];
+        $existingIds = [];
+
+        foreach ($edges as $edge) {
+            if (!is_array($edge)) continue;
+
+            foreach (['from', 'to'] as $side) {
+                $hid = (string) ($edge[$side] ?? '');
+                if ($hid !== '') {
+                    $alreadyLinked[$hid] = true;
+                }
+            }
+
+            $id = (string) ($edge['id'] ?? '');
+            if ($id !== '') {
+                $existingIds[$id] = true;
+            }
+
+            foreach (($edge['ports'] ?? []) as $hid => $port) {
+                $normalized = strtolower(trim((string) $port));
+                if ($normalized !== '') {
+                    $occupiedPorts[(string) $hid][$normalized] = true;
+                }
+            }
+        }
+
+        $byTarget = [];
+
+        foreach ($candidates as $candidate) {
+            if (!is_array($candidate)) continue;
+
+            $reporter = (string)
+                ($candidate['reporter_hostid'] ?? '');
+            $target = (string)
+                ($candidate['target_hostid'] ?? '');
+            $port = trim((string)
+                ($candidate['switch_port'] ?? ''));
+
+            if ($reporter === '' || $target === ''
+                    || $reporter === $target || $port === ''
+                    || !isset($hosts[$reporter], $hosts[$target])
+                    || isset($alreadyLinked[$target])) {
+                continue;
+            }
+
+            // Require exactly the evidence provided by the
+            // reconciler, never an arbitrary FDB-only candidate.
+            if (($candidate['evidence'] ?? null)
+                    !== ['lldp_portid', 'arp', 'fdb']
+                    || ($candidate['confirmed'] ?? null) !== false) {
+                continue;
+            }
+
+            // FDB learning on a logical LAG/trunk is not
+            // independent evidence for a physical access port.
+            if (preg_match(
+                '/^(?:Trk\d+|LAG\d+|Po\d+|Port[- ]?channel\d+|'
+                . 'Bond\d+|ae\d+|Eth[- ]?Trunk\d+|Bridge\d+)$/i',
+                $port
+            )) {
+                continue;
+            }
+
+            $proxy = (string)
+                ($hosts[$reporter]['proxyid'] ?? '0');
+
+            if ($proxy === '0'
+                    || (string) ($hosts[$target]['proxyid'] ?? '0')
+                        !== $proxy) {
+                continue;
+            }
+
+            // Never replace an administrator-defined uplink.
+            $manual = false;
+            foreach (($hosts[$target]['tags'] ?? []) as $tag) {
+                if (($tag['tag'] ?? '') === 'nt:uplink'
+                        && trim((string) ($tag['value'] ?? '')) !== '') {
+                    $manual = true;
+                    break;
+                }
+            }
+
+            if ($manual) continue;
+
+            // Do not reuse an existing physical switch port.
+            $normalizedPort = strtolower($port);
+            if (isset($occupiedPorts[$reporter][$normalizedPort])) {
+                continue;
+            }
+
+            $shared = ($candidate['fdb_shared_port'] ?? false) === true;
+
+            // Identical observations collapse; different reporters,
+            // ports or shared-port evidence remain conflicting claims.
+            $fingerprint = $reporter . '|' . $normalizedPort
+                . '|' . ($shared ? 'shared' : 'single');
+
+            $byTarget[$target][$fingerprint] = [
+                'reporter' => $reporter,
+                'target' => $target,
+                'port' => $port,
+                'shared' => $shared,
+            ];
+        }
+
+        $added = 0;
+
+        foreach ($byTarget as $target => $claims) {
+            // More than one distinct claim: no arbitrary winner.
+            if (count($claims) !== 1
+                    || isset($alreadyLinked[$target])) {
+                continue;
+            }
+
+            $claim = reset($claims);
+            $reporter = $claim['reporter'];
+            $port = $claim['port'];
+            $normalizedPort = strtolower($port);
+
+            if (isset($occupiedPorts[$reporter][$normalizedPort])) {
+                continue;
+            }
+
+            $id = 'lldp_portid_' . $reporter . '_' . $target;
+
+            if (isset($existingIds[$id])) {
+                continue;
+            }
+
+            $edges[] = [
+                'id' => $id,
+                'from' => $reporter,
+                'to' => $target,
+                'iface' => 'lldpRemPortId',
+                'src' => ['lldp'],
+                'reporters' => [$reporter],
+                'match' => 'lldp_portid',
+                'port_match' => 'lldp_local_fdb',
+                'confirmed' => false,
+                'confidence' => $claim['shared'] ? 70 : 78,
+                'evidence' => ['lldp_portid', 'arp', 'fdb'],
+                'ports' => [$reporter => $port],
+                'port_idx' => [],
+                // Shared switch traffic must not be attributed
+                // to an individual endpoint.
+                'port_metrics' => [],
+                'fdb_shared_port' => $claim['shared'],
+            ];
+
+            $alreadyLinked[$target] = true;
+            $occupiedPorts[$reporter][$normalizedPort] = true;
+            $existingIds[$id] = true;
+
+            // Same conservative bound as AutoFdbEdges.
+            if (++$added >= 500) {
+                break;
+            }
+        }
+
+        return $edges;
+    }
+
     private static function invert(array $byHost): array {
         $owners = [];
         foreach ($byHost as $id => $macs) {

@@ -4,6 +4,7 @@ Thumbs.db
 .idea/
 .claude/
 *.log
+*.bak
 .env
 *.swp
 *.swo

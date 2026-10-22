@@ -126,6 +126,14 @@ const HEALTH_DROP_THRESHOLD = 5;
 // Traffic. 51 Mbps sind auf einem 1G-Link 5% (gruen), auf einem 100M-Link
 // 51% (gelb) — genau die Info die absolute Faerbung verschluckt.
 // Kapazitaet kommt als edge.data('capBps') aus min(ifSpeed beider Endpunkte).
+const UNMEASURED_EDGE_KINDS = new Set([
+    'wifi', 'fdb', 'lldp_portid'
+]);
+
+function isUnmeasuredAccessEdge(edge) {
+    return UNMEASURED_EDGE_KINDS.has(edge.data('kind'));
+}
+
 let _weathermap = false;
 export function setWeathermapMode(on) { _weathermap = !!on; }
 export function isWeathermapMode() { return _weathermap; }
@@ -184,7 +192,7 @@ export function applyTrafficHeatmap(cy) {
         // Wi-Fi associations carry RSSI, NOT Ethernet throughput. In Cytoscape
         // inline heatmap styles override edge[kind="wifi"] from the stylesheet.
         // Skip these edges in both traffic and weathermap modes.
-        if (edge.data('kind') === 'wifi' || edge.data('kind') === 'fdb') return;
+        if (isUnmeasuredAccessEdge(edge)) return;
         // A verified aggregate is STRUCTURAL evidence. Without measured
         // member traffic / operational status the weathermap must not
         // recolor it idle-green, down-red, or attach fabricated utilization.
@@ -336,7 +344,7 @@ export function markDisasterState(c) {
     c.edges().forEach(function(e) {
         // A host's severity does not measure the state of its radio association.
         // Preserve the dedicated cyan Wi-Fi appearance even if a host is down.
-        if (e.data('kind') === 'wifi' || e.data('kind') === 'fdb') { e.removeClass('dead-edge'); return; }
+        if (isUnmeasuredAccessEdge(e)) { e.removeClass('dead-edge'); return; }
         if (ids[e.source().id()] || ids[e.target().id()]) e.addClass('dead-edge');
         else e.removeClass('dead-edge');
     });
@@ -407,7 +415,7 @@ export function startEdgeAnimation(cy) {
         // Animated dashes imply measured traffic. A Wi-Fi association only
         // reports presence and signal strength, so its dashes stay static.
         c.edges().filter(function(e) {
-            return e.data('kind') !== 'wifi' && e.data('kind') !== 'fdb' && !e.hasClass('dead-edge');
+            return !isUnmeasuredAccessEdge(e) && !e.hasClass('dead-edge');
         }).style('line-dash-offset', -offset);
 
         // Disaster-Knoten pulsieren lassen.

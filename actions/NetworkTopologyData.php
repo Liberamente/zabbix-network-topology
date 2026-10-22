@@ -1032,9 +1032,7 @@ class NetworkTopologyData extends NetworkTopologyController {
         // proof of a physical cable move. Keep them OUT of the persistent
         // LLDP/CDP topology-change baseline and warning notifications.
         // A new baseline namespace avoids replaying old pilot FDB entries.
-        $physical_edges = array_values(array_filter($edges,
-            static fn($e): bool => !in_array((string) ($e['match'] ?? ''),
-                ['fdb', 'wifi'], true)));
+        $physical_edges = TopoDiff::physicalBaselineEdges($edges);
         $current  = TopoDiff::snapshot($physical_edges, $host_label);
         $baseline = NtCache::get('topo_baseline_physical_v1', $cache_parts);
         $base_arr = is_array($baseline) ? $baseline : null;
@@ -1106,10 +1104,13 @@ class NetworkTopologyData extends NetworkTopologyController {
         // Same keys as the snapshot — with parallel links "a|b" alone no
         // longer names one edge.
         $jetzt = time();
-        $_keys = TopoDiff::keys($edges);
+        $_keys = TopoDiff::keys(array_filter(
+            $edges,
+            [TopoDiff::class, 'isPhysicalBaselineEdge']
+        ));
         foreach ($edges as $_i => &$_ne) {
-            if (in_array((string) ($_ne['match'] ?? ''), ['fdb', 'wifi'], true)
-                    || $_keys[$_i] === null) {
+            if (!TopoDiff::isPhysicalBaselineEdge($_ne)
+                    || ($_keys[$_i] ?? null) === null) {
                 continue;
             }
             $st = $aged['store'][$_keys[$_i]] ?? null;

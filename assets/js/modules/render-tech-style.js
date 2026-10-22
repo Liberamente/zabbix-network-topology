@@ -206,6 +206,20 @@ export function buildCytoscapeStyle(dark, knotenzahl) {
             'opacity': 0.45, 'curve-style': 'straight',
             'label': '', 'source-text-offset': 0, 'target-text-offset': 0,
         }},
+        // One-sided LLDP + corroborating ARP/FDB.
+        // Amber dashed: observed association, not confirmed cable.
+        { selector: 'edge[kind = "lldp_portid"]', style: {
+            'width': 2.5,
+            'line-color': dark ? '#fbbf24' : '#b45309',
+            'line-style': 'dashed',
+            'line-dash-pattern': [6, 5],
+            'opacity': 0.9,
+            'curve-style': 'straight',
+            'target-arrow-shape': 'none',
+            'label': '',
+            'source-text-offset': 26,
+            'target-text-offset': 0,
+        }},
         // ARP+FDB is evidence of MAC learning on a switch port, not
         // a confirmed direct cable. Amber/dotted never means link UP.
         { selector: 'edge[kind = "fdb"]', style: {

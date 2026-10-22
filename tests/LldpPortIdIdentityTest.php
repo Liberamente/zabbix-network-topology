@@ -423,6 +423,147 @@ ntCheck('Invisible switch: no mapping',
             ['102' => $hosts['102']], $localItems, $now
         ), []);
 
+
+// Edge integration: preserve existing topology and distinguish
+// one-sided LLDP+ARP+FDB evidence from confirmed physical links.
+
+if (!method_exists(LldpPortIdIdentity::class, 'appendEdges')) {
+    fwrite(STDERR,
+        "[EXPECTED RED] appendEdges not implemented yet\n");
+    exit(1);
+}
+
+$resolvedEdges = LldpPortIdIdentity::appendEdges(
+    $hosts, $found, []
+);
+
+ntCheck('One reconciled LLDP edge',
+        count($resolvedEdges), 1);
+
+ntCheck('Correct switch and endpoint',
+        [
+            (string) ($resolvedEdges[0]['from'] ?? ''),
+            (string) ($resolvedEdges[0]['to'] ?? ''),
+        ], ['101', '102']);
+
+ntCheck('Distinct LLDP Port-ID match kind',
+        $resolvedEdges[0]['match'] ?? null,
+        'lldp_portid');
+
+ntCheck('One-sided LLDP remains unconfirmed',
+        $resolvedEdges[0]['confirmed'] ?? null,
+        false);
+
+ntCheck('Only actual switch reports LLDP',
+        $resolvedEdges[0]['reporters'] ?? null,
+        ['101']);
+
+ntCheck('Preserve evidence provenance',
+        $resolvedEdges[0]['evidence'] ?? null,
+        ['lldp_portid', 'arp', 'fdb']);
+
+ntCheck('Preserve shared-port warning',
+        $resolvedEdges[0]['fdb_shared_port'] ?? null,
+        true);
+
+ntCheck('No per-endpoint traffic attribution',
+        $resolvedEdges[0]['port_metrics'] ?? null,
+        []);
+
+// Already existing LLDP connection must remain untouched.
+$existing = [[
+    'id' => 'e_existing',
+    'from' => '101',
+    'to' => '102',
+    'match' => 'exact',
+    'src' => ['lldp'],
+    'ports' => ['101' => 'Gi1/0/5'],
+]];
+
+ntCheck('Existing LLDP edge not duplicated',
+        LldpPortIdIdentity::appendEdges(
+            $hosts, $found, $existing
+        ), $existing);
+
+// A wireless association must not turn into a wired edge.
+$wifiExisting = [[
+    'id' => 'wifi_existing',
+    'from' => '101',
+    'to' => '102',
+    'match' => 'wifi',
+    'src' => ['wifi'],
+]];
+
+ntCheck('Existing Wi-Fi edge preserved',
+        LldpPortIdIdentity::appendEdges(
+            $hosts, $found, $wifiExisting
+        ), $wifiExisting);
+
+// An unrelated infrastructure edge remains unchanged.
+$infrastructure = [[
+    'id' => 'e_trunk',
+    'from' => '101',
+    'to' => '104',
+    'match' => 'exact',
+    'src' => ['lldp'],
+]];
+
+$combined = LldpPortIdIdentity::appendEdges(
+    $hosts, $found, $infrastructure
+);
+
+ntCheck('Infrastructure link preserved',
+        $combined[0] ?? null, $infrastructure[0]);
+
+ntCheck('Endpoint added without replacing infrastructure',
+        count($combined), 2);
+
+// Respect manual uplink regardless of candidate provenance.
+$manualEndpoint = $hosts;
+$manualEndpoint['102']['tags'] = [
+    ['tag' => 'nt:uplink', 'value' => 'lab-switch:Gi1/0/8'],
+];
+
+ntCheck('Manual uplink blocks automatic edge',
+        count(LldpPortIdIdentity::appendEdges(
+            $manualEndpoint, $found, []
+        )), 0);
+
+// Repeated identical candidates must not duplicate edges.
+ntCheck('Duplicate candidate is idempotent',
+        count(LldpPortIdIdentity::appendEdges(
+            $hosts, [$found[0], $found[0]], []
+        )), 1);
+
+// Conflicting reporters must not produce arbitrary links.
+$conflictingCandidate = $found[0];
+$conflictingCandidate['reporter_hostid'] = '104';
+
+ntCheck('Conflicting switch candidates rejected',
+        count(LldpPortIdIdentity::appendEdges(
+            $hosts,
+            [$found[0], $conflictingCandidate],
+            []
+        )), 0);
+
+// Never allow a forged candidate to cross proxy boundaries.
+$crossProxyEdge = $hosts;
+$crossProxyEdge['102']['proxyid'] = '202';
+
+ntCheck('Cross-proxy edge rejected',
+        count(LldpPortIdIdentity::appendEdges(
+            $crossProxyEdge, $found, []
+        )), 0);
+
+// A target outside the visible scope is not a valid endpoint.
+$hiddenTarget = $hosts;
+unset($hiddenTarget['102']);
+
+ntCheck('Invisible target rejected',
+        count(LldpPortIdIdentity::appendEdges(
+            $hiddenTarget, $found, []
+        )), 0);
+
 echo $failures === 0
     ? "All LLDP Port-ID identity tests passed.\n"
     : "FAILURES: {$failures}\n";

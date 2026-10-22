@@ -367,6 +367,56 @@ check('#11: Member des sichtbaren Paars bleibt', isset($fv['10|20#i3']),   true)
 check('#11: Ghost-Endpunkt bleibt',              isset($fv['10|ghost_x']), true);
 check('#11: Host ohne Sichtbarkeit faellt raus', isset($fv['10|30']),      false);
 
+
+// Physical baseline must not record dynamic associations.
+if (!method_exists(TopoDiff::class, 'physicalBaselineEdges')) {
+    fwrite(STDERR,
+        "[EXPECTED RED] physicalBaselineEdges not implemented yet\n");
+    exit(1);
+}
+
+$physicalA = $edge('h1', 'h2', 'p1', 'p2');
+$physicalB = $edge('h1', 'h3', 'p3', 'p4');
+
+$allKinds = [
+    $physicalA,
+    ['from' => 'h1', 'to' => 'h4', 'match' => 'fdb'],
+    ['from' => 'h1', 'to' => 'h5', 'match' => 'wifi'],
+    ['from' => 'h1', 'to' => 'h6', 'match' => 'lldp_portid'],
+    $physicalB,
+];
+
+check(
+    'Physical baseline excludes inferred access evidence',
+    TopoDiff::physicalBaselineEdges($allKinds),
+    [$physicalA, $physicalB]
+);
+
+$before = TopoDiff::snapshot([$physicalA], $label);
+$after = TopoDiff::snapshot(
+    TopoDiff::physicalBaselineEdges([
+        $physicalA,
+        [
+            'from' => 'h1',
+            'to' => 'h6',
+            'match' => 'lldp_portid',
+        ],
+    ]),
+    $label
+);
+
+$changes = TopoDiff::compare($before, $after);
+
+check(
+    'One-sided association causes no physical new-cable alert',
+    count($changes['added']), 0
+);
+
+check(
+    'One-sided association causes no physical removal alert',
+    count($changes['removed']), 0
+);
+
 echo "\n", $failures === 0
     ? "=== ALLE TESTS PASS ===\n"
     : "=== {$failures} TEST(S) FEHLGESCHLAGEN ===\n";

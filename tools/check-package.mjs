@@ -72,6 +72,7 @@ const files = [];
 // Was NICHT ins Paket darf. Jede Regel steht fuer einen konkreten Schaden,
 // nicht fuer Ordnungsliebe.
 const forbidden = [
+    [/\.bak$/i, 'Backup file under public web root'],
     [/\.sh$/,                 'Shell-Skript unter dem Web-Root'],
     [/^tools\//,              'tools/ — enthaelt das Sender-Skript fuer Zugangsdaten'],
     [/^templates\//,          'templates/ — gehoert nicht in den Docroot'],
@@ -99,6 +100,38 @@ const required = [
 ];
 
 let problems = 0;
+
+// A clean CI checkout might contain no backup files.
+// Synthetic paths must still be excluded by the actual
+// rsync patterns read from deploy.sh.
+for (const name of [
+    'assets/js/modules/edge-detail.js.pre-merge.bak',
+    'nested/directory/private.bak',
+    'temporary.bak',
+]) {
+    if (!excluded(name)) {
+        console.log(`  [FAIL] Backup not excluded: ${name}`);
+        problems++;
+    }
+}
+
+// Widget ZIPs do not use the main-module rsync filters.
+const widgetZipLines = deploy.split('\n').filter(line =>
+    /zip -rq "\$TMP_(WIDGET|HEALTH|TABLE|KPI|ITEMS)"/.test(line)
+);
+
+if (widgetZipLines.length !== 5) {
+    console.log('  [FAIL] Expected five widget ZIP commands');
+    problems++;
+}
+
+for (const line of widgetZipLines) {
+    if (!line.includes(" -x '*.bak'")) {
+        console.log(`  [FAIL] Widget backup exclusion missing: ${line.trim()}`);
+        problems++;
+    }
+}
+
 
 console.log(`  ${patterns.length} Ausschlussmuster aus deploy.sh gelesen`);
 console.log(`  ${files.length} Dateien im simulierten Paket\n`);

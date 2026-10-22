@@ -251,6 +251,52 @@ export function showEdgeTip(evt, edgeData, srcLabel, tgtLabel) {
         moveTip(evt);
         return;
     }
+    if (edgeData.kind === 'lldp_portid') {
+        // One-sided LLDP identity, corroborated by ARP/FDB.
+        // Use safe DOM nodes and never fetch host traffic history.
+        _syncTheme();
+        _tip.replaceChildren();
+
+        _tip.appendChild(el(
+            'div', 'font-weight:700;margin-bottom:5px',
+            srcLabel + ' - ' + tgtLabel
+        ));
+        _tip.appendChild(el(
+            'div', 'color:#b45309;font-weight:700',
+            t('lldp_portid.association')
+        ));
+        _tip.appendChild(el(
+            'div', 'margin-top:5px;font-size:11px',
+            t('fdb.edge.port') + ': '
+                + (edgeData.portSrc || t('wifi.unknown'))
+        ));
+        _tip.appendChild(el(
+            'div', 'margin-top:5px;font-size:10px',
+            t('lldp_portid.onesided')
+        ));
+
+        if (edgeData.fdbSharedPort) {
+            _tip.appendChild(el(
+                'div', 'margin-top:5px;font-size:10px',
+                t('fdb.shared')
+            ));
+        }
+
+        _tip.appendChild(el(
+            'div', 'margin-top:5px;font-size:10px',
+            t('lldp_portid.note')
+        ));
+        _tip.appendChild(el(
+            'div', 'margin-top:5px;font-size:10px',
+            t('lldp_portid.metrics')
+        ));
+
+        _tip.style.width = '280px';
+        _tip.style.display = 'block';
+        moveTip(evt);
+        return;
+    }
+
     if (edgeData.kind === 'wifi') {
         // Association data are not link traffic. Do not fetch host traffic
         // histories, infer Ethernet capacity or display interface errors.
