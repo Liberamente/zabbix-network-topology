@@ -252,6 +252,188 @@ final class LldpPortIdIdentity {
         return $result;
     }
 
+    /**
+     * Map LLDP local port numbers to actual IF-MIB interface names.
+     *
+     * Uses explicit LLDP Port-ID/PortDesc values and ifName walks.
+     * Never assumes LLDP local port number equals ifIndex.
+     *
+     * @return array<string, array<string, string>>
+     */
+    public static function localPortMap(
+        array $hosts, array $walkItems, int $now
+    ): array {
+        $keys = [
+            'nt.lldp.local.portid',
+            'nt.lldp.local.portdesc',
+            'nt.fdb.ifname',
+        ];
+
+        $walks = [];
+        $conflicts = [];
+
+        foreach ($walkItems as $item) {
+            $hid = (string) ($item['hostid'] ?? '');
+            $key = (string) ($item['key_'] ?? '');
+
+            if (!isset($hosts[$hid])
+                    || !in_array($key, $keys, true)) {
+                continue;
+            }
+
+            $ttl = $key === 'nt.fdb.ifname'
+                ? self::DATA_TTL : self::LLDP_TTL;
+
+            if (!self::validItem($item, $now, $ttl)) {
+                continue;
+            }
+
+            $value = (string) ($item['lastvalue'] ?? '');
+
+            if (isset($walks[$hid][$key])
+                    && $walks[$hid][$key] !== $value) {
+                $conflicts[$hid] = true;
+            }
+
+            $walks[$hid][$key] = $value;
+        }
+
+        $result = [];
+
+        foreach ($walks as $hid => $data) {
+            if (isset($conflicts[$hid])
+                    || !isset($data['nt.lldp.local.portid'])
+                    || !isset($data['nt.fdb.ifname'])) {
+                continue;
+            }
+
+            $ids = self::portWalkValues(
+                $data['nt.lldp.local.portid'],
+                '1.0.8802.1.1.2.1.3.7.1.3.'
+            );
+
+            $descs = self::portWalkValues(
+                $data['nt.lldp.local.portdesc'] ?? '',
+                '1.0.8802.1.1.2.1.3.7.1.4.'
+            );
+
+            $interfaces = self::portWalkValues(
+                $data['nt.fdb.ifname'],
+                '1.3.6.1.2.1.31.1.1.1.1.'
+            );
+
+            // Interface name must identify exactly one ifIndex.
+            $byName = [];
+
+            foreach ($interfaces as $ifIndex => $values) {
+                if (count($values) !== 1) continue;
+
+                $label = (string) array_key_first($values);
+                $normalized = strtolower(trim($label));
+
+                $byName[$normalized][(string) $ifIndex] = $label;
+            }
+
+            $candidates = [];
+
+            foreach ($ids as $lldpPort => $idValues) {
+                if (count($idValues) !== 1) continue;
+
+                if (isset($descs[$lldpPort])
+                        && count($descs[$lldpPort]) !== 1) {
+                    continue;
+                }
+
+                $fromId = self::uniqueInterfaceName(
+                    $idValues, $byName
+                );
+
+                $fromDesc = isset($descs[$lldpPort])
+                    ? self::uniqueInterfaceName(
+                        $descs[$lldpPort], $byName
+                    )
+                    : null;
+
+                // Two valid but different interface names:
+                // ambiguous physical port, therefore reject.
+                if ($fromId !== null && $fromDesc !== null
+                        && strcasecmp($fromId, $fromDesc) !== 0) {
+                    continue;
+                }
+
+                $name = $fromId ?? $fromDesc;
+                if ($name !== null) {
+                    $candidates[(string) $lldpPort] = $name;
+                }
+            }
+
+            // Two LLDP local ports must never claim the
+            // same physical IF-MIB interface.
+            $claims = [];
+
+            foreach ($candidates as $lldpPort => $name) {
+                $claims[strtolower($name)][] = $lldpPort;
+            }
+
+            foreach ($candidates as $lldpPort => $name) {
+                if (count($claims[strtolower($name)]) === 1) {
+                    $result[(string) $hid][(string) $lldpPort] = $name;
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Parse an exact numeric SNMP walk column.
+     * Keep all values for each index to detect conflicting rows.
+     */
+    private static function portWalkValues(
+        string $walk, string $prefix
+    ): array {
+        $result = [];
+
+        foreach (FdbParser::lines($walk) as [$oid, $value]) {
+            $oid = ltrim($oid, '.');
+
+            if (!str_starts_with($oid, $prefix)) {
+                continue;
+            }
+
+            $index = substr($oid, strlen($prefix));
+            $value = trim((string) $value);
+
+            if ($index === '' || !ctype_digit($index)
+                    || $value === '') {
+                continue;
+            }
+
+            $result[$index][$value] = true;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Resolve a label only if a single IF-MIB interface owns it.
+     */
+    private static function uniqueInterfaceName(
+        array $values, array $byName
+    ): ?string {
+        if (count($values) !== 1) return null;
+
+        $label = strtolower(trim(
+            (string) array_key_first($values)
+        ));
+
+        $matches = $byName[$label] ?? [];
+
+        if (count($matches) !== 1) return null;
+
+        return (string) reset($matches);
+    }
+
     private static function invert(array $byHost): array {
         $owners = [];
         foreach ($byHost as $id => $macs) {

@@ -327,6 +327,102 @@ ntCheck('Stale second reporter: first remains valid',
         count(candidates($twoSwitches, $oneStale,
                          $arp, $twoFdb, $twoPortMaps)), 1);
 
+
+// LLDP local port numbers and IF-MIB ifIndex are independent.
+// Resolve only through explicit, unique port names from fresh walks.
+
+$localIdWalk =
+    '.1.0.8802.1.1.2.1.3.7.1.3.501 = STRING: "Gi1/0/5"' . "\n"
+  . '.1.0.8802.1.1.2.1.3.7.1.3.502 = STRING: "unknown-port"' . "\n"
+  . '.1.0.8802.1.1.2.1.3.7.1.3.503 = STRING: "id-not-mapped"' . "\n";
+
+$localDescWalk =
+    '.1.0.8802.1.1.2.1.3.7.1.4.501 = STRING: "Gi1/0/5"' . "\n"
+  . '.1.0.8802.1.1.2.1.3.7.1.4.503 = STRING: "Gi1/0/7"' . "\n";
+
+$ifNameWalk =
+    '.1.3.6.1.2.1.31.1.1.1.1.17 = STRING: "Gi1/0/5"' . "\n"
+  . '.1.3.6.1.2.1.31.1.1.1.1.19 = STRING: "Gi1/0/7"' . "\n";
+
+$localItems = [
+    ntItem('101', 'nt.lldp.local.portid',
+           $localIdWalk, $now - 120),
+    ntItem('101', 'nt.lldp.local.portdesc',
+           $localDescWalk, $now - 120),
+    ntItem('101', 'nt.fdb.ifname',
+           $ifNameWalk, $now - 30),
+];
+
+if (!method_exists(LldpPortIdIdentity::class, 'localPortMap')) {
+    fwrite(STDERR,
+        "[EXPECTED RED] localPortMap not implemented yet\n");
+    exit(1);
+}
+
+$localMap = LldpPortIdIdentity::localPortMap(
+    $hosts, $localItems, $now
+);
+
+ntCheck('LLDP port 501 -> ifName index 17',
+        $localMap['101']['501'] ?? null, 'Gi1/0/5');
+
+ntCheck('PortDesc fallback -> ifName index 19',
+        $localMap['101']['503'] ?? null, 'Gi1/0/7');
+
+ntCheck('Unmatched port: no numerical guess',
+        isset($localMap['101']['502']), false);
+
+// Two IF-MIB interfaces claiming the same label.
+$duplicateIfName = $localItems;
+$duplicateIfName[2]['lastvalue'] .=
+    '.1.3.6.1.2.1.31.1.1.1.1.18 = STRING: "Gi1/0/5"' . "\n";
+
+$map = LldpPortIdIdentity::localPortMap(
+    $hosts, $duplicateIfName, $now
+);
+ntCheck('Duplicate ifName: reject port 501',
+        isset($map['101']['501']), false);
+
+// Two LLDP local ports claiming the same Port-ID.
+$duplicateLldp = $localItems;
+$duplicateLldp[0]['lastvalue'] .=
+    '.1.0.8802.1.1.2.1.3.7.1.3.504 = STRING: "Gi1/0/5"' . "\n";
+
+$map = LldpPortIdIdentity::localPortMap(
+    $hosts, $duplicateLldp, $now
+);
+ntCheck('Duplicate LLDP Port-ID: reject both',
+        isset($map['101']['501'])
+        || isset($map['101']['504']), false);
+
+// Conflicting Port-ID and PortDesc.
+$conflictingDesc = $localItems;
+$conflictingDesc[1]['lastvalue'] = str_replace(
+    '1.4.501 = STRING: "Gi1/0/5"',
+    '1.4.501 = STRING: "Gi1/0/7"',
+    $conflictingDesc[1]['lastvalue']
+);
+$map = LldpPortIdIdentity::localPortMap(
+    $hosts, $conflictingDesc, $now
+);
+ntCheck('Conflicting port descriptions: reject',
+        isset($map['101']['501']), false);
+
+// Stale interface names cannot validate current ports.
+$staleIfName = $localItems;
+$staleIfName[2]['lastclock'] = $now - 901;
+
+ntCheck('Stale ifName walk: no mapping',
+        LldpPortIdIdentity::localPortMap(
+            $hosts, $staleIfName, $now
+        ), []);
+
+// Only visible hosts may contribute mapping rows.
+ntCheck('Invisible switch: no mapping',
+        LldpPortIdIdentity::localPortMap(
+            ['102' => $hosts['102']], $localItems, $now
+        ), []);
+
 echo $failures === 0
     ? "All LLDP Port-ID identity tests passed.\n"
     : "FAILURES: {$failures}\n";
