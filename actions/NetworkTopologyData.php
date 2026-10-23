@@ -845,45 +845,47 @@ class NetworkTopologyData extends NetworkTopologyController {
                         static fn($id): bool => isset($pilotHosts[(string) $id])
                     ));
 
-                    $lldpPortIdItems = API::Item()->get([
-                        'output' => [
-                            'hostid', 'key_', 'lastclock', 'lastvalue',
-                            'status', 'state'
-                        ],
-                        'hostids' => $scopeSwitchIds,
-                        'search' => ['key_' => [
-                            'lldpRemSysName[', 'lldpRemPortId['
-                        ]],
-                        'searchByAny' => true,
-                        'monitored' => true,
-                    ]);
-
-                    $localPortItems = API::Item()->get([
-                        'output' => [
-                            'hostid', 'key_', 'lastclock', 'lastvalue',
-                            'status', 'state'
-                        ],
-                        'hostids' => $scopeSwitchIds,
-                        'filter' => ['key_' => [
-                            'nt.lldp.local.portid',
-                            'nt.lldp.local.portdesc',
-                        ]],
-                        'monitored' => true,
-                    ]);
-
-                    if ($scopeSwitchIds
-                            && is_array($lldpPortIdItems)
-                            && $lldpPortIdItems
-                            && is_array($localPortItems)
-                            && $localPortItems) {
-                        $edges = LldpPortIdFeed::append(
-                            $pilotHosts,
-                            $lldpPortIdItems,
-                            $fdb_items,
-                            $localPortItems,
-                            $edges,
-                            time()
-                        );
+                    if ($scopeSwitchIds) {
+                        $lldpPortIdItems = API::Item()->get([
+                            'output' => [
+                                'hostid', 'key_', 'lastclock', 'lastvalue',
+                                'status', 'state'
+                            ],
+                            'hostids' => $scopeSwitchIds,
+                            'search' => ['key_' => [
+                                'lldpRemSysName[', 'lldpRemPortId['
+                            ]],
+                            'searchByAny' => true,
+                            'monitored' => true,
+                        ]);
+    
+                        $localPortItems = API::Item()->get([
+                            'output' => [
+                                'hostid', 'key_', 'lastclock', 'lastvalue',
+                                'status', 'state'
+                            ],
+                            'hostids' => $scopeSwitchIds,
+                            'filter' => ['key_' => [
+                                'nt.lldp.local.portid',
+                                'nt.lldp.local.portdesc',
+                            ]],
+                            'monitored' => true,
+                        ]);
+    
+                        if ($scopeSwitchIds
+                                && is_array($lldpPortIdItems)
+                                && $lldpPortIdItems
+                                && is_array($localPortItems)
+                                && $localPortItems) {
+                            $edges = LldpPortIdFeed::append(
+                                $pilotHosts,
+                                $lldpPortIdItems,
+                                $fdb_items,
+                                $localPortItems,
+                                $edges,
+                                time()
+                            );
+                        }
                     }
                 }
 
