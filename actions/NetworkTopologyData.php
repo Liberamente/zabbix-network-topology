@@ -387,8 +387,10 @@ class NetworkTopologyData extends NetworkTopologyController {
         );
         // Separate cached OFF/ON payloads and baseline scopes. Changing the
         // runtime gate cannot reuse an unscoped payload from a prior request.
-        $cache_parts[] = 'portid_pilot';
-        $cache_parts[] = $pilotScope ?? 'off';
+        if ($pilotScope !== null) {
+            $cache_parts[] = 'portid_pilot';
+            $cache_parts[] = $pilotScope;
+        }
 
         // Response-Cache. Der Schluessel ist user- UND gruppengebunden (das
         // Scoping macht NtCache); ohne APCu ist der Aufruf ein No-Op und alles
