@@ -247,7 +247,7 @@ if [[ "$MODE" == "main" || "$MODE" == "all" ]]; then
         --exclude '.github' --exclude 'screenshots' --exclude 'dashboards' \
         --exclude 'tools' --exclude 'templates' \
         --exclude 'node_modules' --exclude 'package.json' --exclude 'package-lock.json' \
-        --exclude '.DS_Store' --exclude '*.zip' --exclude '*.map' \
+        --exclude '.DS_Store' --exclude '*.zip' --exclude '*.map' --exclude '*.bak' \
         --exclude 'nt_smtp_password' --exclude '.gitignore' --exclude 'deploy.sh' --exclude 'nt-*.sh' \
         --exclude 'tests' --exclude '.gitlab-ci.yml' \
         --exclude 'CLAUDE.md' --exclude 'ROADMAP.md' \
@@ -260,11 +260,11 @@ if [[ "$MODE" == "main" || "$MODE" == "all" ]]; then
 fi
 if [[ "$MODE" == "widgets" || "$MODE" == "all" ]]; then
     rm -f "$TMP_WIDGET" "$TMP_HEALTH" "$TMP_TABLE" "$TMP_KPI" "$TMP_ITEMS"
-    (cd "$SCRIPT_DIR/widget"        && zip -rq "$TMP_WIDGET" .)
-    (cd "$SCRIPT_DIR/widget_health" && zip -rq "$TMP_HEALTH" .)
-    (cd "$SCRIPT_DIR/widget_table"  && zip -rq "$TMP_TABLE" .)
-    (cd "$SCRIPT_DIR/widget_kpi"    && zip -rq "$TMP_KPI" .)
-    (cd "$SCRIPT_DIR/widget_items"  && zip -rq "$TMP_ITEMS" .)
+    (cd "$SCRIPT_DIR/widget"        && zip -rq "$TMP_WIDGET" . -x '*.bak')
+    (cd "$SCRIPT_DIR/widget_health" && zip -rq "$TMP_HEALTH" . -x '*.bak')
+    (cd "$SCRIPT_DIR/widget_table"  && zip -rq "$TMP_TABLE" . -x '*.bak')
+    (cd "$SCRIPT_DIR/widget_kpi"    && zip -rq "$TMP_KPI" . -x '*.bak')
+    (cd "$SCRIPT_DIR/widget_items"  && zip -rq "$TMP_ITEMS" . -x '*.bak')
     echo "  → $TMP_WIDGET ($(du -h "$TMP_WIDGET" | cut -f1))"
     echo "  → $TMP_HEALTH ($(du -h "$TMP_HEALTH" | cut -f1))"
     echo "  → $TMP_TABLE ($(du -h "$TMP_TABLE" | cut -f1))"

@@ -10,6 +10,7 @@ use Modules\NetworkTopology\Topology\MetricExtractor;
 use Modules\NetworkTopology\Topology\LldpEdgeBuilder;
 use Modules\NetworkTopology\Topology\AutoFdbEdges;
 use Modules\NetworkTopology\Topology\AutoWifiEdges;
+use Modules\NetworkTopology\Topology\LldpPortIdFeed;
 use Modules\NetworkTopology\Topology\HostTagParser;
 use Modules\NetworkTopology\Topology\HopScope;
 use Modules\NetworkTopology\Topology\ManualLinks;
@@ -24,6 +25,10 @@ class NetworkTopologyData extends NetworkTopologyController {
     // Native read-only endpoint association. Effective only if the
     // selected group exposes suitable Zabbix SNMP walk items.
     private const AUTO_DISCOVER_ACCESS_LINKS = true;
+
+    // One-sided LLDP Port-ID identity reconciliation.
+    // Pilot only: disabled until scoped staging validation.
+    private const AUTO_LLDP_PORTID_EDGES = false;
 
     /**
      * Wie lange eine nicht mehr gemeldete Kante auf der Karte bleibt, bevor
@@ -809,6 +814,55 @@ class NetworkTopologyData extends NetworkTopologyController {
                         $fdb_switches[(string) $fi['hostid']] = true;
                     }
                 }
+
+                // Optional, read-only LLDP Port-ID reconciliation.
+                // Existing LLDP, manual and Wi-Fi edges take priority.
+                // These host IDs originate from the already scoped
+                // nt.fdb item.get result. Never search installation-wide.
+                if (self::AUTO_LLDP_PORTID_EDGES && $fdb_switches) {
+                    $scopeSwitchIds = array_keys($fdb_switches);
+
+                    $lldpPortIdItems = API::Item()->get([
+                        'output' => [
+                            'hostid', 'key_', 'lastclock', 'lastvalue',
+                            'status', 'state'
+                        ],
+                        'hostids' => $scopeSwitchIds,
+                        'search' => ['key_' => [
+                            'lldpRemSysName[', 'lldpRemPortId['
+                        ]],
+                        'searchByAny' => true,
+                        'monitored' => true,
+                    ]);
+
+                    $localPortItems = API::Item()->get([
+                        'output' => [
+                            'hostid', 'key_', 'lastclock', 'lastvalue',
+                            'status', 'state'
+                        ],
+                        'hostids' => $scopeSwitchIds,
+                        'filter' => ['key_' => [
+                            'nt.lldp.local.portid',
+                            'nt.lldp.local.portdesc',
+                        ]],
+                        'monitored' => true,
+                    ]);
+
+                    if (is_array($lldpPortIdItems)
+                            && $lldpPortIdItems
+                            && is_array($localPortItems)
+                            && $localPortItems) {
+                        $edges = LldpPortIdFeed::append(
+                            $hosts,
+                            $lldpPortIdItems,
+                            $fdb_items,
+                            $localPortItems,
+                            $edges,
+                            time()
+                        );
+                    }
+                }
+
                 $caps = [];
                 if ($fdb_switches) {
                     $caps_result = API::Item()->get([
@@ -1032,9 +1086,7 @@ class NetworkTopologyData extends NetworkTopologyController {
         // proof of a physical cable move. Keep them OUT of the persistent
         // LLDP/CDP topology-change baseline and warning notifications.
         // A new baseline namespace avoids replaying old pilot FDB entries.
-        $physical_edges = array_values(array_filter($edges,
-            static fn($e): bool => !in_array((string) ($e['match'] ?? ''),
-                ['fdb', 'wifi'], true)));
+        $physical_edges = TopoDiff::physicalBaselineEdges($edges);
         $current  = TopoDiff::snapshot($physical_edges, $host_label);
         $baseline = NtCache::get('topo_baseline_physical_v1', $cache_parts);
         $base_arr = is_array($baseline) ? $baseline : null;
@@ -1106,10 +1158,13 @@ class NetworkTopologyData extends NetworkTopologyController {
         // Same keys as the snapshot — with parallel links "a|b" alone no
         // longer names one edge.
         $jetzt = time();
-        $_keys = TopoDiff::keys($edges);
+        $_keys = TopoDiff::keys(array_filter(
+            $edges,
+            [TopoDiff::class, 'isPhysicalBaselineEdge']
+        ));
         foreach ($edges as $_i => &$_ne) {
-            if (in_array((string) ($_ne['match'] ?? ''), ['fdb', 'wifi'], true)
-                    || $_keys[$_i] === null) {
+            if (!TopoDiff::isPhysicalBaselineEdge($_ne)
+                    || ($_keys[$_i] ?? null) === null) {
                 continue;
             }
             $st = $aged['store'][$_keys[$_i]] ?? null;

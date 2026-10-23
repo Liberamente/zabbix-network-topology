@@ -240,8 +240,15 @@ export function collect(nodes, cy) {
             // leitet lldp aus (edges - manual) ab und liest isLLDP nicht —
             // deshalb hier ausschliessen, nicht ueber isLLDP. (Der Review-Fix,
             // der isLLDP:false an die Buendel-Kante haengte, griff hier nie.)
+            // Inferred endpoint associations are not verified physical
+            // links. Keep them visible on the map, but exclude them
+            // from the physical link and LLDP KPI counters.
+            const kind = String(e.data('kind') || '');
             if (e.data('_isGhostEdge') || e.data('_isInternetEdge')
-                    || e.data('_isBundleEdge')) return;
+                    || e.data('_isBundleEdge')
+                    || kind === 'lldp_portid'
+                    || kind === 'fdb'
+                    || kind === 'wifi') return;
             edges++;
             if (String(e.id()).indexOf('ml_') === 0) manual++;
         });

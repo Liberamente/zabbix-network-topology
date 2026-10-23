@@ -53,6 +53,11 @@ export function clearSimulation(cy) {
 // Uplink-Referenz bestimmen (siehe Header). excludeSimulated=true filtert
 // tote Hosts raus (fuer die Sim-BFS); die Baseline nutzt die volle Menge.
 // Exportiert: root-cause.js nutzt dieselbe Referenz + BFS.
+export function isUnconfirmedAccessEvidenceEdge(edge) {
+    const kind = edge.data('kind');
+    return kind === 'fdb' || kind === 'lldp_portid';
+}
+
 export function findRoots(cy, excludeSimulated) {
     let roots = cy.nodes('[?_isInternet]');
     if (roots.length === 0) {
@@ -73,7 +78,7 @@ export function highestDegree(cy, excludeSimulated) {
         // A hundred MACs learned by one access switch do not make that
         // switch a better upstream root than its actual LLDP links.
         const d = n.connectedEdges().filter(function(e) {
-            return e.data('kind') !== 'fdb';
+            return !isUnconfirmedAccessEvidenceEdge(e);
         }).length;
         if (d > bestDeg) { bestDeg = d; best = n; }
     });
@@ -123,7 +128,7 @@ export function reachable(cy, roots, blocked, ohneManuelle) {
             // war der Fehler, nicht die Kante an sich.
             // MAC learned on a switch port is a placement observation,
             // not proof of a direct network path or a hard dependency.
-            if (edge.data('kind') === 'fdb') return;
+            if (isUnconfirmedAccessEvidenceEdge(edge)) return;
             if (edge.data('kind') === 'hosts' && edge.source().id() !== cur) return;
             if (ohneManuelle && String(edge.id() || '').indexOf('ml_') === 0) return;
             const s = edge.source().id();

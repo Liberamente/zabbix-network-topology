@@ -42,6 +42,33 @@ namespace Modules\NetworkTopology\Topology;
 class TopoDiff {
 
     /**
+     * Only established topology relationships belong in the
+     * physical baseline. Preserve all existing categories except
+     * the already excluded FDB/Wi-Fi associations and the new
+     * one-sided LLDP Port-ID reconciliation.
+     */
+    public static function isPhysicalBaselineEdge(array $edge): bool {
+        return !in_array(
+            (string) ($edge['match'] ?? ''),
+            ['fdb', 'wifi', 'lldp_portid'],
+            true
+        );
+    }
+
+    /**
+     * Reindex the filtered list for snapshot() and its parallel
+     * member tracking.
+     */
+    public static function physicalBaselineEdges(
+        array $edges
+    ): array {
+        return array_values(array_filter(
+            $edges,
+            [self::class, 'isPhysicalBaselineEdge']
+        ));
+    }
+
+    /**
      * Baut den Vergleichsstand aus den Kanten.
      *
      * @param array    $edges       Kanten wie von LldpEdgeBuilder

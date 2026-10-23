@@ -236,6 +236,39 @@ export function showEdgeDetail(panel, ed, asMember) {
         return;
     }
 
+    if (d.kind === 'lldp_portid') {
+        // Corroborated identity is not a confirmed physical cable.
+        const badges = el('div',
+            'display:flex;gap:4px;margin-bottom:3px');
+        badges.appendChild(pill(
+            t('lldp_portid.association'), '#b45309',
+            t('lldp_portid.onesided')
+        ));
+        panel.appendChild(badges);
+
+        section(panel, t('edge.sec.ports'));
+        row(panel, t('fdb.edge.port'),
+            d.portSrc || t('wifi.unknown'));
+
+        hint(panel, t('lldp_portid.onesided'));
+
+        if (d.fdbSharedPort) {
+            hint(panel, t('fdb.shared'));
+        }
+
+        panel.appendChild(el('div',
+            'font-size:10px;color:var(--nt-muted,#94a3b8);'
+            + 'line-height:1.5;margin-top:8px',
+            t('lldp_portid.note')));
+
+        panel.appendChild(el('div',
+            'font-size:10px;color:var(--nt-muted,#94a3b8);'
+            + 'line-height:1.5;margin-top:5px',
+            t('lldp_portid.metrics')));
+
+        return;
+    }
+
     if (d.kind === 'wifi') {
         // Radio association: never attribute host aggregate traffic, Ethernet
         // interface state, capacity or per-port sparklines to this edge.
