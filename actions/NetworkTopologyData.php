@@ -11,6 +11,7 @@ use Modules\NetworkTopology\Topology\LldpEdgeBuilder;
 use Modules\NetworkTopology\Topology\AutoFdbEdges;
 use Modules\NetworkTopology\Topology\AutoWifiEdges;
 use Modules\NetworkTopology\Topology\LldpPortIdFeed;
+use Modules\NetworkTopology\Topology\PortIdPilotScope;
 use Modules\NetworkTopology\Topology\HostTagParser;
 use Modules\NetworkTopology\Topology\HopScope;
 use Modules\NetworkTopology\Topology\ManualLinks;
@@ -374,6 +375,19 @@ class NetworkTopologyData extends NetworkTopologyController {
             }
             $cache_parts = [$groupids];
         }
+
+        // Pilot gate uses private runtime configuration; fail closed without
+        // an exact single-group match and an explicit nonzero proxy.
+        $pilotProxy = PortIdPilotScope::enabledProxy(
+            (string) (getenv('NT_LLDP_PORTID_PILOT_GROUP_ID') ?: ''),
+            (string) (getenv('NT_LLDP_PORTID_PILOT_PROXY_ID') ?: ''),
+            $groupids,
+            $host_mode
+        );
+        // Separate cached OFF/ON payloads and baseline scopes. Changing the
+        // runtime gate cannot reuse an unscoped payload from a prior request.
+        $cache_parts[] = 'portid_pilot';
+        $cache_parts[] = $pilotProxy ?? 'off';
 
         // Response-Cache. Der Schluessel ist user- UND gruppengebunden (das
         // Scoping macht NtCache); ohne APCu ist der Aufruf ein No-Op und alles
@@ -819,8 +833,14 @@ class NetworkTopologyData extends NetworkTopologyController {
                 // Existing LLDP, manual and Wi-Fi edges take priority.
                 // These host IDs originate from the already scoped
                 // nt.fdb item.get result. Never search installation-wide.
-                if (self::AUTO_LLDP_PORTID_EDGES && $fdb_switches) {
-                    $scopeSwitchIds = array_keys($fdb_switches);
+                if ($pilotProxy !== null && $fdb_switches) {
+                    $pilotHosts = PortIdPilotScope::eligibleHosts(
+                        $hosts, $pilotProxy
+                    );
+                    $scopeSwitchIds = array_values(array_filter(
+                        array_keys($fdb_switches),
+                        static fn($id): bool => isset($pilotHosts[(string) $id])
+                    ));
 
                     $lldpPortIdItems = API::Item()->get([
                         'output' => [
@@ -848,12 +868,13 @@ class NetworkTopologyData extends NetworkTopologyController {
                         'monitored' => true,
                     ]);
 
-                    if (is_array($lldpPortIdItems)
+                    if ($scopeSwitchIds
+                            && is_array($lldpPortIdItems)
                             && $lldpPortIdItems
                             && is_array($localPortItems)
                             && $localPortItems) {
                         $edges = LldpPortIdFeed::append(
-                            $hosts,
+                            $pilotHosts,
                             $lldpPortIdItems,
                             $fdb_items,
                             $localPortItems,
