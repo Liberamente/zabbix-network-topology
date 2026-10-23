@@ -37,7 +37,9 @@ const edges = [
 ];
 const graphEdges = buildEdgeElements(edges,nodes);
 const typeCount = kind => graphEdges.filter(e => e.data.kind === kind).length;
-const bundle = graphEdges.filter(e => e.data.id === 'cable-a' || e.data.id === 'cable-b');
+const bundle = graphEdges.filter(e =>
+  e.data.source === 'sw-a' && e.data.target === 'sw-b' &&
+  e.data.isLLDP === true && e.data.kind !== 'lldp_portid');
 if (typeCount('lldp_portid') !== 1 || typeCount('fdb') !== 1 ||
     typeCount('wifi') !== 1 || bundle.length !== 2 ||
     bundle.some(e => e.data.bundleSize !== 2)) {
