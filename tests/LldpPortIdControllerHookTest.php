@@ -23,40 +23,33 @@ function hookCheck(string $label, bool $condition): void {
         . $label . "\n";
 }
 
-$flag = 'private const AUTO_LLDP_PORTID_EDGES = false;';
-$guard = 'if (self::AUTO_LLDP_PORTID_EDGES && $fdb_switches) {';
-
-hookCheck('Flag OFF by default',
-    substr_count($source, $flag) === 1);
-
-hookCheck('Exactly one guarded hook',
-    substr_count($source, $guard) === 1);
-
+$guard = 'if ($pilotScope !== null && $fdb_switches) {';
+hookCheck('Default feature flag remains OFF',
+    strpos($source, 'private const AUTO_LLDP_PORTID_EDGES = false;') !== false);
+hookCheck('Explicit all-groups environment gate',
+    strpos($source, "getenv('NT_LLDP_PORTID_PILOT_ALL')") !== false);
+hookCheck('Generic fail-closed pilot gate',
+    strpos($source, 'PortIdPilotScope::mode(') !== false
+    && substr_count($source, $guard) === 1);
+hookCheck('Distinct pilot cache scope',
+    strpos($source, "$cache_parts[] = $pilotScope ?? 'off';") !== false);
 $pos = strpos($source, $guard);
-$end = $pos === false
-    ? false
-    : strpos($source, '                $caps = [];', $pos);
-
-$block = ($pos !== false && $end !== false)
-    ? substr($source, $pos, $end - $pos)
-    : '';
-
-hookCheck('Two API reads inside guard',
+$end = $pos === false ? false : strpos($source, '                $caps = [];', $pos);
+$block = ($pos !== false && $end !== false) ? substr($source, $pos, $end-$pos) : '';
+hookCheck('Two API reads inside scoped guard',
     substr_count($block, 'API::Item()->get(') === 2);
-
-hookCheck('Reads scoped to selected switch hostids',
+hookCheck('API reads restricted to selected switch IDs',
     substr_count($block, "'hostids'") === 2
     && substr_count($block, '=> $scopeSwitchIds') === 2);
-
-hookCheck('LLDP source includes Port-ID and SysName',
-    strpos($block, 'lldpRemPortId[') !== false
-    && strpos($block, 'lldpRemSysName[') !== false
-    && strpos($block, "'searchByAny' => true") !== false);
-
+hookCheck('Per-proxy filtering for restricted mode',
+    strpos($block, 'PortIdPilotScope::eligibleHosts(') !== false);
+hookCheck('Global mode uses already scoped host set',
+    strpos($block, "? $hosts") !== false);
+hookCheck('Scoped host set enters candidate builder',
+    strpos($block, 'LldpPortIdFeed::append(\n                            $pilotHosts,') !== false);
 hookCheck('Explicit local port walks included',
     strpos($block, 'nt.lldp.local.portid') !== false
     && strpos($block, 'nt.lldp.local.portdesc') !== false);
-
 hookCheck('Feed adapter called only inside guard',
     substr_count($source, 'LldpPortIdFeed::append(') === 1
     && strpos($block, 'LldpPortIdFeed::append(') !== false);
