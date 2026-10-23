@@ -1159,6 +1159,11 @@ final class LldpEdgeBuilder {
             $port_idx = $port;
             if ($port !== '' && isset($port_names[$rid][$port]) && $port_names[$rid][$port] !== '') {
                 $port = $port_names[$rid][$port];
+            } elseif ($port === '0' && preg_match('/^\\d+\\.0\\.\\d+$/', $idx)) {
+                // Some LLDP agents report LocalPortNum=0. It is an LLDP
+                // index, not proof of a physical interface named "0".
+                // Label only: preserve port_idx and evidence identity.
+                $port = 'LLDP index 0';
             }
             $port = self::capLabel($port);
         }
