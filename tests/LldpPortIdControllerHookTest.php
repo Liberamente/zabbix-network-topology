@@ -45,7 +45,7 @@ hookCheck('API reads restricted to selected switch IDs',
 hookCheck('Per-proxy filtering for restricted mode',
     strpos($block, 'PortIdPilotScope::eligibleHosts(') !== false);
 hookCheck('Global mode uses already scoped host set',
-    strpos($block, "? $hosts") !== false);
+    strpos($block, '? $hosts') !== false);
 hookCheck('Scoped host set enters candidate builder',
     strpos($block, 'LldpPortIdFeed::append(') !== false
     && strpos($block, '$pilotHosts,') !== false);
