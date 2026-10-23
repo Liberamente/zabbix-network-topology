@@ -378,7 +378,8 @@ class NetworkTopologyData extends NetworkTopologyController {
 
         // Pilot gate uses private runtime configuration; fail closed without
         // an exact single-group match and an explicit nonzero proxy.
-        $pilotProxy = PortIdPilotScope::enabledProxy(
+        $pilotScope = PortIdPilotScope::mode(
+            (string) (getenv('NT_LLDP_PORTID_PILOT_ALL') ?: ''),
             (string) (getenv('NT_LLDP_PORTID_PILOT_GROUP_ID') ?: ''),
             (string) (getenv('NT_LLDP_PORTID_PILOT_PROXY_ID') ?: ''),
             $groupids,
@@ -387,7 +388,7 @@ class NetworkTopologyData extends NetworkTopologyController {
         // Separate cached OFF/ON payloads and baseline scopes. Changing the
         // runtime gate cannot reuse an unscoped payload from a prior request.
         $cache_parts[] = 'portid_pilot';
-        $cache_parts[] = $pilotProxy ?? 'off';
+        $cache_parts[] = $pilotScope ?? 'off';
 
         // Response-Cache. Der Schluessel ist user- UND gruppengebunden (das
         // Scoping macht NtCache); ohne APCu ist der Aufruf ein No-Op und alles
@@ -833,10 +834,10 @@ class NetworkTopologyData extends NetworkTopologyController {
                 // Existing LLDP, manual and Wi-Fi edges take priority.
                 // These host IDs originate from the already scoped
                 // nt.fdb item.get result. Never search installation-wide.
-                if ($pilotProxy !== null && $fdb_switches) {
-                    $pilotHosts = PortIdPilotScope::eligibleHosts(
-                        $hosts, $pilotProxy
-                    );
+                if ($pilotScope !== null && $fdb_switches) {
+                    $pilotHosts = $pilotScope === 'all'
+                        ? $hosts
+                        : PortIdPilotScope::eligibleHosts($hosts, $pilotScope);
                     $scopeSwitchIds = array_values(array_filter(
                         array_keys($fdb_switches),
                         static fn($id): bool => isset($pilotHosts[(string) $id])
