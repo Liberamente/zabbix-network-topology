@@ -32,7 +32,7 @@ hookCheck('Generic fail-closed pilot gate',
     strpos($source, 'PortIdPilotScope::mode(') !== false
     && substr_count($source, $guard) === 1);
 hookCheck('Distinct pilot cache scope',
-    strpos($source, "$cache_parts[] = $pilotScope ?? 'off';") !== false);
+    strpos($source, '$cache_parts[] = $pilotScope ?? \'off\';') !== false);
 $pos = strpos($source, $guard);
 $end = $pos === false ? false : strpos($source, '                $caps = [];', $pos);
 $block = ($pos !== false && $end !== false) ? substr($source, $pos, $end-$pos) : '';
@@ -46,7 +46,8 @@ hookCheck('Per-proxy filtering for restricted mode',
 hookCheck('Global mode uses already scoped host set',
     strpos($block, "? $hosts") !== false);
 hookCheck('Scoped host set enters candidate builder',
-    strpos($block, 'LldpPortIdFeed::append(\n                            $pilotHosts,') !== false);
+    strpos($block, 'LldpPortIdFeed::append(') !== false
+    && strpos($block, '$pilotHosts,') !== false);
 hookCheck('Explicit local port walks included',
     strpos($block, 'nt.lldp.local.portid') !== false
     && strpos($block, 'nt.lldp.local.portdesc') !== false);
