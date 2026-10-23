@@ -32,7 +32,8 @@ hookCheck('Generic fail-closed pilot gate',
     strpos($source, 'PortIdPilotScope::mode(') !== false
     && substr_count($source, $guard) === 1);
 hookCheck('Distinct pilot cache scope',
-    strpos($source, '$cache_parts[] = $pilotScope ?? \'off\';') !== false);
+    strpos($source, 'if ($pilotScope !== null) {') !== false
+    && strpos($source, '$cache_parts[] = $pilotScope;') !== false);
 $pos = strpos($source, $guard);
 $end = $pos === false ? false : strpos($source, '                $caps = [];', $pos);
 $block = ($pos !== false && $end !== false) ? substr($source, $pos, $end-$pos) : '';
