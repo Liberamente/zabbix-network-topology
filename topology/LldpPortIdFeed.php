@@ -21,8 +21,13 @@ final class LldpPortIdFeed {
         array $fdbItems,
         array $localItems,
         array $edges,
-        int $now
+        int $now,
+        ?array &$validatedCandidates = null
     ): array {
+        if ($validatedCandidates !== null) {
+            $validatedCandidates = [];
+        }
+
         if (!$hosts || !$lldpItems || !$fdbItems || !$localItems) {
             return $edges;
         }
@@ -115,6 +120,10 @@ final class LldpPortIdFeed {
         $candidates = LldpPortIdIdentity::candidates(
             $hosts, $lldpItems, $arpRows, $hits, $portMap, $now
         );
+
+        if ($validatedCandidates !== null) {
+            $validatedCandidates = $candidates;
+        }
 
         return LldpPortIdIdentity::appendEdges(
             $hosts, $candidates, $edges
