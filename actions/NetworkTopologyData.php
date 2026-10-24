@@ -877,20 +877,34 @@ class NetworkTopologyData extends NetworkTopologyController {
                                 && $lldpPortIdItems
                                 && is_array($localPortItems)
                                 && $localPortItems) {
+                            $existingEdges = $edges;
                             $edgesBeforePortId = count($edges);
+                            $validatedCandidates = [];
+
                             $edges = LldpPortIdFeed::append(
                                 $pilotHosts,
                                 $lldpPortIdItems,
                                 $fdb_items,
                                 $localPortItems,
                                 $edges,
-                                time()
+                                time(),
+                                $validatedCandidates
                             );
+
                             [$lldp_quality, $lldp_unmatched] =
                                 \Modules\NetworkTopology\Topology\LldpReconciledQuality::apply(
                                     $lldp_quality,
                                     $lldp_unmatched,
                                     array_slice($edges, $edgesBeforePortId)
+                                );
+
+                            [$lldp_quality, $lldp_unmatched] =
+                                \Modules\NetworkTopology\Topology\LldpReconciledQuality::reconcileExisting(
+                                    $lldp_quality,
+                                    $lldp_unmatched,
+                                    $validatedCandidates,
+                                    $existingEdges,
+                                    $pilotHosts
                                 );
                         }
                     }
