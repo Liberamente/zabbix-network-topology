@@ -549,6 +549,18 @@ ntCheck('Conflicting switch candidates rejected',
             []
         )), 0);
 
+// Different LLDP observations on the same port must remain distinct.
+// Neither observation may be chosen arbitrarily.
+$secondObservation = $found[0];
+$secondObservation['lldp_index'] = '0.501.2';
+
+ntCheck('Distinct LLDP indices on same port rejected',
+        count(LldpPortIdIdentity::appendEdges(
+            $hosts,
+            [$found[0], $secondObservation],
+            []
+        )), 0);
+
 // Never allow a forged candidate to cross proxy boundaries.
 $crossProxyEdge = $hosts;
 $crossProxyEdge['102']['proxyid'] = '202';

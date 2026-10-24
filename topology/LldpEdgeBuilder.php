@@ -574,6 +574,11 @@ final class LldpEdgeBuilder {
                     // liefert. Ueber denselben SNMPINDEX wie der SysName —
                     // dieselbe Nachbar-Zeile in der lldpRemTable.
                     $entry = ['raw' => $neighbor_raw, 'src' => $src];
+                    if ($src === 'lldp') {
+                        $entry['index'] = HostMetadata::ifaceParam(
+                            (string) ($item['key_'] ?? '')
+                        );
+                    }
                     // DER PORT, AN DEM DER GEIST HAENGT.
                     //
                     // Das ist die Frage, wegen der ein Nutzer dieses Modul
