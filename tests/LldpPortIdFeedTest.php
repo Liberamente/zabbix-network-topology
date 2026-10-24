@@ -164,6 +164,78 @@ $conflicting[] = feedItem('101', 'nt.fdb.dot1q',
 feedCheck('Conflicting duplicate FDB walk rejected',
     count(runFeed($hosts, $lldp, $conflicting, $local)), 0);
 
+
+// Integrated Ghost reconciliation: actual feed output -> quality update.
+$quality = [
+    '101' => [
+        'matched' => 0,
+        'unmatched' => [
+            [
+                'raw' => 'OLD-PHONE',
+                'src' => 'lldp',
+                'index' => '0.501.1',
+                'port' => 'Gi1/0/5',
+            ],
+            [
+                'raw' => 'UNKNOWN-DEVICE',
+                'src' => 'lldp',
+                'index' => '0.502.2',
+                'port' => 'Gi1/0/6',
+            ],
+        ],
+    ],
+];
+
+$unmatched = [
+    'OLD-PHONE (from hostid=101, src=lldp)',
+    'UNKNOWN-DEVICE (from hostid=101, src=lldp)',
+];
+
+feedCheck(
+    'Integrated: actual edge retains LLDP index',
+    $result[0]['lldp_index'] ?? null,
+    '0.501.1'
+);
+
+[$qualityAfter, $unmatchedAfter] =
+    \Modules\NetworkTopology\Topology\LldpReconciledQuality::apply(
+        $quality, $unmatched, $result
+    );
+
+feedCheck(
+    'Integrated Ghost reconciliation',
+    array_column($qualityAfter['101']['unmatched'], 'raw'),
+    ['UNKNOWN-DEVICE']
+);
+
+feedCheck(
+    'Integrated matched counter',
+    $qualityAfter['101']['matched'],
+    1
+);
+
+feedCheck(
+    'Integrated unmatched summary',
+    $unmatchedAfter,
+    ['UNKNOWN-DEVICE (from hostid=101, src=lldp)']
+);
+
+// Rejected FDB evidence must never remove a Ghost.
+$rejectedFdb = $fdb;
+$rejectedFdb[1]['lastclock'] = $now - 901;
+$rejectedEdges = runFeed($hosts, $lldp, $rejectedFdb, $local);
+
+[$rejectedQuality, $rejectedUnmatched] =
+    \Modules\NetworkTopology\Topology\LldpReconciledQuality::apply(
+        $quality, $unmatched, $rejectedEdges
+    );
+
+feedCheck(
+    'Integrated rejected candidate preserves Ghosts',
+    [$rejectedQuality, $rejectedUnmatched],
+    [$quality, $unmatched]
+);
+
 echo $failures
     ? "FAIL: $failures checks\n"
     : "PASS: LLDP Port-ID feed integration\n";

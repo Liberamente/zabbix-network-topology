@@ -877,6 +877,7 @@ class NetworkTopologyData extends NetworkTopologyController {
                                 && $lldpPortIdItems
                                 && is_array($localPortItems)
                                 && $localPortItems) {
+                            $edgesBeforePortId = count($edges);
                             $edges = LldpPortIdFeed::append(
                                 $pilotHosts,
                                 $lldpPortIdItems,
@@ -885,6 +886,12 @@ class NetworkTopologyData extends NetworkTopologyController {
                                 $edges,
                                 time()
                             );
+                            [$lldp_quality, $lldp_unmatched] =
+                                \Modules\NetworkTopology\Topology\LldpReconciledQuality::apply(
+                                    $lldp_quality,
+                                    $lldp_unmatched,
+                                    array_slice($edges, $edgesBeforePortId)
+                                );
                         }
                     }
                 }

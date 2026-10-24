@@ -232,6 +232,7 @@ final class LldpPortIdIdentity {
             $byTarget[$target][] = [
                 'reporter_hostid' => $rid,
                 'target_hostid' => $target,
+                'lldp_index' => $observation['index'],
                 'switch_port' => $switchPort,
                 'fdb_shared_port' =>
                     count($occupancy[$rid][$switchPort] ?? []) > 1,
@@ -542,16 +543,23 @@ final class LldpPortIdIdentity {
 
             $shared = ($candidate['fdb_shared_port'] ?? false) === true;
 
-            // Identical observations collapse; different reporters,
-            // ports or shared-port evidence remain conflicting claims.
+            // Distinct LLDP observations must never collapse merely
+            // because reporter, switch port and FDB evidence agree.
+            $lldpIndex = (string) ($candidate['lldp_index'] ?? '');
+            if (!preg_match('/^\d+\.\d+\.\d+$/D', $lldpIndex)) {
+                continue;
+            }
+
             $fingerprint = $reporter . '|' . $normalizedPort
-                . '|' . ($shared ? 'shared' : 'single');
+                . '|' . ($shared ? 'shared' : 'single')
+                . '|' . $lldpIndex;
 
             $byTarget[$target][$fingerprint] = [
                 'reporter' => $reporter,
                 'target' => $target,
                 'port' => $port,
                 'shared' => $shared,
+                'lldp_index' => (string) ($candidate['lldp_index'] ?? ''),
             ];
         }
 
@@ -588,6 +596,7 @@ final class LldpPortIdIdentity {
                 'reporters' => [$reporter],
                 'match' => 'lldp_portid',
                 'port_match' => 'lldp_local_fdb',
+                'lldp_index' => $claim['lldp_index'],
                 'confirmed' => false,
                 'confidence' => $claim['shared'] ? 70 : 78,
                 'evidence' => ['lldp_portid', 'arp', 'fdb'],
