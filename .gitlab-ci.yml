@@ -146,7 +146,7 @@ frontend:
   stage: test
   image: node:22-alpine
   script:
-    - node tools/check-frontend.mjs
+    - npm run ci:frontend
 
 # Deutsche Texte, die im UI landen. Kommentare duerfen deutsch bleiben — das
 # Gate liest nur String-Literale, mit eigenem Scanner statt grep (Regex mit
