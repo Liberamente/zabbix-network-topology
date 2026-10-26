@@ -1,0 +1,78 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 7df96b18c230490a9a0a9e2307226338
+      name: Templates/Network devices
+  templates:
+    - uuid: e47b1a8c0d934a619cb31a7dff125b20
+      template: 'NT WiFi Ruckus ZoneDirector by SNMP'
+      name: 'NT WiFi Ruckus ZoneDirector by SNMP'
+      description: |
+        Optional read-only Ruckus ZoneDirector Wi-Fi association source.
+        Link ONLY to the controller host, not individual access points.
+        Requires a configured SNMP interface and working SNMP credentials.
+        The Network Topology backend resolves AP MAC -> AP IP -> visible host
+        and client MAC/IP -> visible host inside the selected group and proxy.
+        Does not create hosts or links on its own. Disabled until linked.
+        SNMP walks are intentionally separate columns: the PHP source parser
+        currently expects exactly these five nt.wifi.zd.* item keys.
+        All five values must be fresh (max 180s) and collected within 120s.
+        Controller/client scope restrictions remain enforced in the module.
+        Never interprets proprietary RSSI as dBm without verified semantics.
+      groups:
+        - name: Templates/Network devices
+      macros:
+        - macro: '{$NT.WIFI.ZD.INTERVAL}'
+          value: 1m
+          description: 'Polling cadence; must remain below the topology 180-second freshness TTL.'
+      items:
+        - uuid: 846abe0db8f04a7cbeca475aca530001
+          name: 'NT WiFi ZoneDirector: AP MAC mapping'
+          type: SNMP_AGENT
+          snmp_oid: 'walk[1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.1]'
+          key: nt.wifi.zd.ap.1
+          delay: '{$NT.WIFI.ZD.INTERVAL}'
+          history: 1d
+          trends: '0'
+          value_type: TEXT
+          description: 'AP MAC indexed by AP MAC; join on full SNMP index.'
+        - uuid: 846abe0db8f04a7cbeca475aca530002
+          name: 'NT WiFi ZoneDirector: AP state'
+          type: SNMP_AGENT
+          snmp_oid: 'walk[1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.3]'
+          key: nt.wifi.zd.ap.3
+          delay: '{$NT.WIFI.ZD.INTERVAL}'
+          history: 1d
+          trends: '0'
+          value_type: TEXT
+          description: 'Controller AP state. Adapter accepts only INTEGER: 1.'
+        - uuid: 846abe0db8f04a7cbeca475aca530003
+          name: 'NT WiFi ZoneDirector: AP IPv4'
+          type: SNMP_AGENT
+          snmp_oid: 'walk[1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.10]'
+          key: nt.wifi.zd.ap.10
+          delay: '{$NT.WIFI.ZD.INTERVAL}'
+          history: 1d
+          trends: '0'
+          value_type: TEXT
+          description: 'AP address reported by the controller, indexed by AP MAC.'
+        - uuid: 846abe0db8f04a7cbeca475aca530004
+          name: 'NT WiFi ZoneDirector: client-to-AP MAC'
+          type: SNMP_AGENT
+          snmp_oid: 'walk[1.3.6.1.4.1.25053.1.2.2.1.1.3.1.1.2]'
+          key: nt.wifi.zd.client.2
+          delay: '{$NT.WIFI.ZD.INTERVAL}'
+          history: 1d
+          trends: '0'
+          value_type: TEXT
+          description: 'Client association: AP MAC; client MAC from the SNMP table index.'
+        - uuid: 846abe0db8f04a7cbeca475aca530005
+          name: 'NT WiFi ZoneDirector: client IPv4'
+          type: SNMP_AGENT
+          snmp_oid: 'walk[1.3.6.1.4.1.25053.1.2.2.1.1.3.1.1.8]'
+          key: nt.wifi.zd.client.8
+          delay: '{$NT.WIFI.ZD.INTERVAL}'
+          history: 1d
+          trends: '0'
+          value_type: TEXT
+          description: 'Client IPv4 associated with client MAC in SNMP row index.'
