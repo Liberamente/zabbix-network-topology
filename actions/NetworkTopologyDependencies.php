@@ -56,7 +56,7 @@ class NetworkTopologyDependencies extends NetworkTopologyController {
         if (!is_array($rows) || !array_is_list($rows) || count($rows) > 2000) {
             $this->jsonResponse(['error' => 'Invalid dependency list']); return;
         }
-        $clean = ManualDependencies::sanitize($rows);
+        foreach ($rows as $row) {\n            if (!is_array($row) || array_keys($row) !== ['upstream', 'downstream', 'type', 'source']) {\n                $this->jsonResponse(['error' => 'Invalid dependency record']); return;\n            }\n        }\n        $clean = ManualDependencies::sanitize($rows);
         // Fail closed: never silently discard unauthorized or invalid records.
         if (count($clean) !== count($rows)) {
             $this->jsonResponse(['error' => 'Invalid or duplicate dependencies']); return;
@@ -90,7 +90,7 @@ class NetworkTopologyDependencies extends NetworkTopologyController {
         }
 
         $current = ManualDependencies::loadShared();
-        if (!Revision::matches((string) $this->getInput('base', ''), $current)) {
+        // This route requires an exact revision; Revision::matches('') is permissive\n        // for legacy callers and must not be used for dependency writes.\n        if (!hash_equals(Revision::of($current),\n                (string) $this->getInput('base', ''))) {
             $this->jsonResponse([
                 'error' => 'Dependencies changed concurrently',
                 'conflict' => true,
