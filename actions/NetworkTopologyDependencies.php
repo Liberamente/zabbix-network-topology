@@ -7,7 +7,7 @@ namespace Modules\NetworkTopology\Actions;
 use API;
 use CCsrfTokenHelper;
 use Modules\NetworkTopology\Topology\ManualDependencies;
-use Modules\NetworkTopology\Topology\DependencyResolver;
+use Modules\NetworkTopology\Topology\DependencyWriteValidator;
 use Modules\NetworkTopology\Topology\Revision;
 
 /**
@@ -29,7 +29,8 @@ class NetworkTopologyDependencies extends NetworkTopologyController {
         if (!$this->validateInput([
             'dependencies' => 'required|string',
             'base' => 'required|string',
-            'nt_csrf' => 'required|string'
+            'nt_csrf' => 'required|string',
+            'groupids' => 'required|array_id'
         ])) {
             $this->jsonResponse(['error' => 'Invalid input']);
             return false;
@@ -68,35 +69,51 @@ class NetworkTopologyDependencies extends NetworkTopologyController {
         if (count($clean) !== count($rows)) {
             $this->jsonResponse(['error' => 'Invalid or duplicate dependencies']); return;
         }
-        $ids = [];
-        foreach ($clean as $d) {
-            $ids[$d['upstream']] = true;
-            $ids[$d['downstream']] = true;
+        // Scope comes from Zabbix Host.get, never from client-provided host IDs.
+        // Multiple groups may be selected, but they must all be valid and
+        // visible to the current user; unknown IDs fail closed.
+        $groupids = array_values(array_unique(array_map('strval',
+            (array) $this->getInput('groupids', []))));
+        if (!$groupids || count($groupids) > 100) {
+            $this->jsonResponse(['error' => 'Invalid group scope']); return;
+        }
+        $groups = API::HostGroup()->get([
+            'groupids' => $groupids, 'output' => ['groupid']
+        ]);
+        if (!is_array($groups) || count($groups) !== count($groupids)) {
+            $this->jsonResponse(['error' => 'Unauthorized group scope']); return;
+        }
+        $found = API::Host()->get([
+            'groupids' => $groupids,
+            'output' => ['hostid', 'proxyid'],
+            'monitored_hosts' => true,
+            'preservekeys' => true
+        ]);
+        if (!is_array($found)) {
+            $this->jsonResponse(['error' => 'Host scope lookup failed']); return;
         }
         $hosts = [];
-        if ($ids) {
-            $found = API::Host()->get([
-                'hostids' => array_keys($ids),
-                'output' => ['hostid', 'proxyid'],
-                'preservekeys' => true
-            ]);
-            if (!is_array($found)) {
-                $this->jsonResponse(['error' => 'Host validation failed']); return;
-            }
-            foreach ($found as $id => $host) {
-                $hosts[(string) $id] = $host;
-            }
-            if (count($hosts) !== count($ids)) {
-                $this->jsonResponse(['error' => 'Unknown host in dependency']); return;
-            }
+        $scopeIds = [];
+        foreach ($found as $id => $host) {
+            $hosts[(string) $id] = $host;
+            $scopeIds[(string) $id] = true;
         }
-        $resolved = DependencyResolver::resolve($hosts, $clean);
-        if (count($resolved) !== count($clean)) {
-            $this->jsonResponse(['error' => 'Cycle, cross-proxy or invalid dependency']);
+        if (!DependencyWriteValidator::validate($rows, $hosts, $scopeIds)) {
+            $this->jsonResponse(['error' => 'Invalid dependency or unauthorized scope']);
             return;
         }
 
         $current = ManualDependencies::loadShared();
+        // Full-list replacement is only safe if this authorized scope contains
+        // every endpoint already stored. Otherwise a narrow group could erase
+        // relationships belonging to other groups.
+        foreach ($current as $d) {
+            if (!isset($scopeIds[(string) $d['upstream']],
+                    $scopeIds[(string) $d['downstream']])) {
+                $this->jsonResponse(['error' => 'Existing dependencies outside group scope']);
+                return;
+            }
+        }
         // This route requires an exact revision; Revision::matches('') is permissive
         // for legacy callers and must not be used for dependency writes.
         if (!hash_equals(Revision::of($current),
