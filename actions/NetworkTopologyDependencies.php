@@ -56,7 +56,14 @@ class NetworkTopologyDependencies extends NetworkTopologyController {
         if (!is_array($rows) || !array_is_list($rows) || count($rows) > 2000) {
             $this->jsonResponse(['error' => 'Invalid dependency list']); return;
         }
-        foreach ($rows as $row) {\n            if (!is_array($row) || count($row) !== 4\n                    || array_diff(array_keys($row), ['upstream', 'downstream', 'type', 'source'])\n                    || array_diff(['upstream', 'downstream', 'type', 'source'], array_keys($row))) {\n                $this->jsonResponse(['error' => 'Invalid dependency record']); return;\n            }\n        }\n        $clean = ManualDependencies::sanitize($rows);
+        foreach ($rows as $row) {
+            if (!is_array($row) || count($row) !== 4
+                    || array_diff(array_keys($row), ['upstream', 'downstream', 'type', 'source'])
+                    || array_diff(['upstream', 'downstream', 'type', 'source'], array_keys($row))) {
+                $this->jsonResponse(['error' => 'Invalid dependency record']); return;
+            }
+        }
+        $clean = ManualDependencies::sanitize($rows);
         // Fail closed: never silently discard unauthorized or invalid records.
         if (count($clean) !== count($rows)) {
             $this->jsonResponse(['error' => 'Invalid or duplicate dependencies']); return;
@@ -90,7 +97,10 @@ class NetworkTopologyDependencies extends NetworkTopologyController {
         }
 
         $current = ManualDependencies::loadShared();
-        // This route requires an exact revision; Revision::matches('') is permissive\n        // for legacy callers and must not be used for dependency writes.\n        if (!hash_equals(Revision::of($current),\n                (string) $this->getInput('base', ''))) {
+        // This route requires an exact revision; Revision::matches('') is permissive
+        // for legacy callers and must not be used for dependency writes.
+        if (!hash_equals(Revision::of($current),
+                (string) $this->getInput('base', ''))) {
             $this->jsonResponse([
                 'error' => 'Dependencies changed concurrently',
                 'conflict' => true,
