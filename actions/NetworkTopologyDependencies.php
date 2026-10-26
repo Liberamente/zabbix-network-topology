@@ -142,7 +142,7 @@ class NetworkTopologyDependencies extends NetworkTopologyController {
         }
 
         try {
-            $saved = ManualDependencies::saveShared($merged);
+            $saved = ManualDependencies::saveSharedChecked($merged, (string) $this->getInput('base', ''));
         }
         catch (\Throwable $e) {
             error_log('network.topology.dependencies: ' . $e);
