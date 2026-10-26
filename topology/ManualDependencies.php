@@ -53,6 +53,21 @@ final class ManualDependencies {
      * For Super admins only. Caller must also validate host visibility and
      * proxy consistency before persisting; this method checks only shape.
      */
+    /**
+     * Revision checked against freshly fetched module config.
+     * Still subject to multi-worker races: endpoint remains disabled.
+     */
+    public static function saveSharedChecked(array $rows, string $base): array {
+        $module = APP::ModuleManager()->getModule(self::MODULE_ID);
+        if ($module === null) throw new \RuntimeException('Module unavailable');
+        $clean = self::sanitize($rows);
+        if (count($clean) !== count($rows)) {
+            throw new \InvalidArgumentException('Invalid dependencies');
+        }
+        SharedConfig::writeChecked($module, self::CONFIG_KEY, $clean, $base);
+        return $clean;
+    }
+
     public static function saveShared(array $rows): array {
         $module = APP::ModuleManager()->getModule(self::MODULE_ID);
         if ($module === null) return [];
