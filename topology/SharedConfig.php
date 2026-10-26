@@ -69,6 +69,40 @@ final class SharedConfig {
         $module->setConfig($config);
     }
 
+    /**
+     * Strict, freshness-checked update reserved for dependency drafts.
+     * Fail closed when Module.get is unavailable. This guards stale requests,
+     * but is NOT atomic across simultaneous PHP workers. Do not expose a
+     * write endpoint until a transactional/serialized design is validated.
+     */
+    public static function writeChecked($module, string $key, array $value,
+            string $expectedRevision): void {
+        $id = $module->getModuleId();
+        $res = API::Module()->get([
+            'output' => ['config'],
+            'moduleids' => [$id],
+            'preservekeys' => true
+        ]);
+        if (!is_array($res) || !isset($res[$id]['config'])
+                || !is_array($res[$id]['config'])) {
+            throw new \RuntimeException('Could not read current module config');
+        }
+        $config = $res[$id]['config'];
+        $current = is_array($config[$key] ?? null) ? $config[$key] : [];
+        if ($expectedRevision === ''
+                || !hash_equals(Revision::of($current), $expectedRevision)) {
+            throw new \RuntimeException('Dependency revision conflict');
+        }
+        $config[$key] = $value;
+        if (API::Module()->update([[
+            'moduleid' => $id,
+            'config' => $config
+        ]]) === false) {
+            throw new \RuntimeException('Could not update module config');
+        }
+        $module->setConfig($config);
+    }
+
     /** Config FRISCH aus der DB; faellt auf die Bootstrap-Kopie zurueck. */
     private static function fresh($module): array {
         $id  = $module->getModuleId();
