@@ -820,8 +820,23 @@ class NetworkTopologyData extends NetworkTopologyController {
                 'filter'    => ['key_' => ['nt.wifi.clients']],
                 'monitored' => true,
             ]);
+            // Optional vendor-neutral Wi-Fi controller source: only scoped
+            // items and hosts; no direct SNMP calls from the renderer.
+            $controller_items = API::Item()->get([
+                'output' => ['hostid', 'key_', 'lastclock', 'lastvalue', 'status', 'state'],
+                'hostids' => $hostids,
+                'filter' => ['key_' => [
+                    'nt.wifi.zd.ap.1', 'nt.wifi.zd.ap.3', 'nt.wifi.zd.ap.10',
+                    'nt.wifi.zd.client.2', 'nt.wifi.zd.client.8',
+                ]],
+                'monitored' => true,
+            ]);
             if (is_array($wifi_items) && $wifi_items) {
                 $edges = AutoWifiEdges::append($hosts, $wifi_items,
+                    is_array($fdb_items) ? $fdb_items : [], $edges, $host_uplink, time());
+            }
+            if (is_array($controller_items) && $controller_items) {
+                $edges = AutoWifiEdges::appendController($hosts, $controller_items,
                     is_array($fdb_items) ? $fdb_items : [], $edges, $host_uplink, time());
             }
             if (is_array($fdb_items) && $fdb_items) {
