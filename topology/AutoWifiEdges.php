@@ -137,6 +137,92 @@ final class AutoWifiEdges {
         return $edges;
     }
 
+    /**
+     * Attach controller-sourced associations to visible hosts, using the same
+     * conservative link policy as MikroTik. The controller is the reporter,
+     * not an invented AP node. All item rows must be caller-scoped.
+     */
+    public static function appendController(array $hosts, array $controllerItems,
+            array $walkItems, array $edges, array $manual, int $now): array {
+        if (!$hosts || count($edges) >= self::MAX_TOTAL_EDGES) return $edges;
+        $byController = [];
+        foreach ($controllerItems as $item) {
+            $hid = (string) ($item['hostid'] ?? '');
+            $key = (string) ($item['key_'] ?? '');
+            if (!isset($hosts[$hid]) || !preg_match('/^nt\\.wifi\\.zd\\.(ap|client)\\.(1|2|3|8|10)$/', $key, $m)
+                || !self::validItem($item, $now, self::MAX_WIFI_AGE)) continue;
+            $proxy = (string) ($hosts[$hid]['proxyid'] ?? '0');
+            if ($proxy === '0') continue;
+            $byController[$hid][$m[1]][(int)$m[2]] = $item;
+        }
+        $arpRows = [];
+        foreach ($walkItems as $it) {
+            if (($it['key_'] ?? '') === 'nt.arp'
+                && isset($hosts[(string)($it['hostid'] ?? '')])
+                && self::validItem($it, $now, self::MAX_ARP_AGE)) $arpRows[] = $it;
+        }
+        $owners = [];
+        foreach (AutoFdbEdges::macsByHost($hosts, $arpRows, $now) as $hid => $macs) {
+            foreach ($macs as $mac => $_) $owners[$mac][(string)$hid] = true;
+        }
+        $ipHosts = [];
+        foreach ($hosts as $hid => $host) {
+            foreach (($host['interfaces'] ?? []) as $iface) {
+                $ip = (string) ($iface['ip'] ?? '');
+                if ($ip !== '') $ipHosts[$ip][(string)$hid] = true;
+            }
+        }
+        $linked = [];
+        foreach ($edges as $edge) {
+            $linked[(string)($edge['from'] ?? '')] = true;
+            $linked[(string)($edge['to'] ?? '')] = true;
+        }
+        $candidates = [];
+        foreach ($byController as $controller => $tables) {
+            if (count($tables['ap'] ?? []) !== 3 || count($tables['client'] ?? []) !== 2) continue;
+            $items = array_merge(array_values($tables['ap']), array_values($tables['client']));
+            $times = array_map(static fn(array $it): int => (int)$it['lastclock'], $items);
+            if (max($times) - min($times) > 120) continue;
+            $apWalk = array_map(static fn(array $it): string => (string)$it['lastvalue'], $tables['ap']);
+            $clWalk = array_map(static fn(array $it): string => (string)$it['lastvalue'], $tables['client']);
+            $controllerProxy = (string) $hosts[$controller]['proxyid'];
+            foreach (ZoneDirectorWifiSource::associations($apWalk, $clWalk) as $association) {
+                $apSet = $ipHosts[$association['ap_ip']] ?? [];
+                $clientSet = $ipHosts[$association['client_ip']] ?? [];
+                if (count($apSet) !== 1 || count($clientSet) !== 1) continue;
+                $ap = (string)array_key_first($apSet);
+                $client = (string)array_key_first($clientSet);
+                if ($ap === $client || isset($manual[$client]) || isset($linked[$client])
+                    || (string)($hosts[$ap]['proxyid'] ?? '0') !== $controllerProxy
+                    || (string)($hosts[$client]['proxyid'] ?? '0') !== $controllerProxy
+                    || count($owners[$association['client_mac']] ?? []) !== 1
+                    || !isset($owners[$association['client_mac']][$client])) continue;
+                $candidates[$client][$ap][$controller] = min($times);
+            }
+        }
+        $added = 0;
+        foreach ($candidates as $client => $aps) {
+            if (count($aps) !== 1 || isset($linked[$client])) continue;
+            $ap = (string)array_key_first($aps);
+            if (count($aps[$ap]) !== 1) continue;
+            $controller = (string)array_key_first($aps[$ap]);
+            $edges[] = [
+                'id' => 'wifi_'.$ap.'_'.$client,
+                'from' => $ap, 'to' => (string)$client,
+                'iface' => 'nt:wifi', 'src' => ['wifi'],
+                'reporters' => [$controller], 'confirmed' => false,
+                'match' => 'wifi', 'port_match' => 'association',
+                'ports' => [$ap => 'Wi-Fi association'],
+                'port_idx' => [], 'port_metrics' => [],
+                'confidence' => 75, 'last_seen' => $aps[$ap][$controller],
+                'source_detail' => 'ruckus-zonedirector',
+            ];
+            $linked[$client] = true;
+            if (++$added >= self::MAX_NEW_EDGES || count($edges) >= self::MAX_TOTAL_EDGES) break;
+        }
+        return $edges;
+    }
+
     private static function validItem(array $it, int $now, int $ttl): bool {
         $ts = (int) ($it['lastclock'] ?? 0);
         return $ts > 0 && $ts <= $now + 60 && ($now - $ts) <= $ttl
