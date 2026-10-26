@@ -31,9 +31,9 @@ check(ZoneDirectorWifiSource::associations($down,$clWalk)===[],'inactive AP igno
 $missing=$clWalk; $missing[2]=str_replace('02 AA BB CC DD 10','02 AA BB CC DD 11',$missing[2]);
 check(ZoneDirectorWifiSource::associations($apWalk,$missing)===[],'unknown AP ignored');
 $duplicate=$apWalk;
-foreach ([1,3,10] as $col) {
-    $duplicate[$col].="\n".str_replace($ap,'6.2.170.187.204.221.17',$apWalk[$col]);
-    if ($col===1) $duplicate[$col]=str_replace('02 AA BB CC DD 10', '02 AA BB CC DD 11', $duplicate[$col]);
-}
+$second='6.2.170.187.204.221.17';
+$duplicate[1].="\\n".$apRoot.'.1.'.$second.' = Hex-STRING: 02 AA BB CC DD 11';
+$duplicate[3].="\\n".$apRoot.'.3.'.$second.' = INTEGER: 1';
+$duplicate[10].="\\n".$apRoot.'.10.'.$second.' = IpAddress: 192.0.2.4';
 check(ZoneDirectorWifiSource::associations($duplicate,$clWalk)===[],'duplicate active IP rejected');
 echo "All ZoneDirector source tests passed.\n";
