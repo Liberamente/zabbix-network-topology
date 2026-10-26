@@ -8,6 +8,8 @@ use API;
 use CCsrfTokenHelper;
 use Modules\NetworkTopology\Topology\ManualDependencies;
 use Modules\NetworkTopology\Topology\DependencyWriteValidator;
+use Modules\NetworkTopology\Topology\DependencyScopeMerge;
+use Modules\NetworkTopology\Topology\DependencyResolver;
 use Modules\NetworkTopology\Topology\Revision;
 
 /**
@@ -104,14 +106,27 @@ class NetworkTopologyDependencies extends NetworkTopologyController {
         }
 
         $current = ManualDependencies::loadShared();
-        // Full-list replacement is only safe if this authorized scope contains
-        // every endpoint already stored. Otherwise a narrow group could erase
-        // relationships belonging to other groups.
-        foreach ($current as $d) {
-            if (!isset($scopeIds[(string) $d['upstream']],
-                    $scopeIds[(string) $d['downstream']])) {
-                $this->jsonResponse(['error' => 'Existing dependencies outside group scope']);
-                return;
+        // Replace only rows with BOTH endpoints inside the authorized scope.
+        // Preserve all other customer and cross-scope dependencies.
+        $merged = DependencyScopeMerge::replace($current, $clean, $scopeIds);
+        if (count($merged) > 2000) {
+            $this->jsonResponse(['error' => 'Dependency limit exceeded']); return;
+        }
+        // Resolve all referenced hosts for whole-graph cycle and proxy checks.
+        $allIds = [];
+        foreach ($merged as $d) {
+            $allIds[(string) $d['upstream']] = true;
+            $allIds[(string) $d['downstream']] = true;
+        }
+        if ($allIds) {
+            $allHosts = API::Host()->get([
+                'hostids' => array_keys($allIds),
+                'output' => ['hostid', 'proxyid'],
+                'preservekeys' => true
+            ]);
+            if (!is_array($allHosts) || count($allHosts) !== count($allIds)
+                    || count(DependencyResolver::resolve($allHosts, $merged)) !== count($merged)) {
+                $this->jsonResponse(['error' => 'Invalid combined dependency graph']); return;
             }
         }
         // This route requires an exact revision; Revision::matches('') is permissive
@@ -127,7 +142,7 @@ class NetworkTopologyDependencies extends NetworkTopologyController {
         }
 
         try {
-            $saved = ManualDependencies::saveShared($clean);
+            $saved = ManualDependencies::saveShared($merged);
         }
         catch (\Throwable $e) {
             error_log('network.topology.dependencies: ' . $e);
