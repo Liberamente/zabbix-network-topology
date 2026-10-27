@@ -202,7 +202,21 @@ final class PassThroughEvidence
             $to = (string) ($edge['to'] ?? '');
             if ($from !== '') $linked[$from] = true;
             if ($to !== '') $linked[$to] = true;
-            if ($from === '' || $to === '' || ($edge['_type'] ?? '') === 'hosts') {
+            if ($from === '' || $to === ''
+                    || in_array((string) ($edge['_type'] ?? ''),
+                        ['hosts', 'manual'], true)) {
+                continue;
+            }
+            // A manual/FDB/Wi-Fi edge cannot independently corroborate
+            // the identity of the CDP/LLDP-observed phone. The upper leg
+            // must already have neighbor-protocol evidence on this port.
+            $sources = $edge['src'] ?? [];
+            if (!is_array($sources)) {
+                $sources = [];
+            }
+            if (($edge['match'] ?? '') !== 'lldp_portid'
+                    && !in_array('lldp', $sources, true)
+                    && !in_array('cdp', $sources, true)) {
                 continue;
             }
             foreach ([$from => $to, $to => $from] as $switch => $peer) {
