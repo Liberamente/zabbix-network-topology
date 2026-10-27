@@ -867,6 +867,7 @@ export function render(wrap, nodes, edges, dataUrl, dependencies = []) {
                 window._ntLastData = window._ntLastData || {};
                 window._ntLastData.nodes = data.nodes;
                 window._ntLastData.edges = data.edges || [];
+                window._ntLastData.dependencies = Array.isArray(data.dependencies) ? data.dependencies : [];
                 window._ntLastData.lldp_quality = data.lldp_quality || [];
                 const pilot = applyVerifiedTrunkPilot(data.nodes,
                     data.edges || [], window.NT_CONFIG);
@@ -875,7 +876,8 @@ export function render(wrap, nodes, edges, dataUrl, dependencies = []) {
                     // monitored/visible; restore the standard backend graph.
                     toastTruncatedOnce('verified-pilot-expired',
                         'Preview trunk scaduta: topologia standard ripristinata.');
-                    render(wrap, data.nodes.slice(), (data.edges || []).slice(), dataUrl);
+                    render(wrap, data.nodes.slice(), (data.edges || []).slice(), dataUrl,
+                        window._ntLastData.dependencies);
                     return;
                 }
                 if (!pilotReadOnly) notifyTopoChanges(data.topo_changes);
@@ -888,6 +890,16 @@ export function render(wrap, nodes, edges, dataUrl, dependencies = []) {
                         (data.edges || []).slice(), dataUrl);
                     return;
                 }
+                // Replace ONLY our dependency overlay; never modify physical LLDP,
+                // FDB, Wi-Fi, manual cables or bundles during a refresh.
+                // Filter against actual rendered nodes to avoid revealing hidden hosts.
+                const currentNodes = cy.nodes().map(n => ({id: n.id()}));
+                const refreshed = buildDependencyEdgeElements(
+                    window._ntLastData.dependencies, currentNodes);
+                cy.batch(function() {
+                    cy.edges('[kind = "dependency"]').remove();
+                    if (refreshed.length) cy.add(refreshed);
+                });
                 const map = {};
                 (data.nodes || []).forEach(function(n) { map[String(n.id)] = n; });
                 if (!perfMode) clearImgCache();
