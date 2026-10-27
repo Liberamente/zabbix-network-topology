@@ -203,7 +203,8 @@ export function showEdgeDetail(panel, ed, asMember) {
         'flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--nt-text,#0f172a);'
         + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap');
     title.appendChild(el('span', '', sLbl));
-    title.appendChild(el('span', 'color:var(--nt-muted,#94a3b8);margin:0 4px', '↔'));
+    title.appendChild(el('span', 'color:var(--nt-muted,#94a3b8);margin:0 4px',
+        d.kind === 'dependency' ? '→' : '↔'));
     title.appendChild(el('span', '', tLbl));
     head.appendChild(title);
 
@@ -220,6 +221,18 @@ export function showEdgeDetail(panel, ed, asMember) {
     });
     head.appendChild(close);
     panel.appendChild(head);
+
+    if (d.kind === 'dependency') {
+        // Logical operational dependency: not a measured physical connection.
+        // Show only source and direction. Never fall through to port/traffic UI.
+        panel.appendChild(pill('DIPENDENZA', '#a21caf', 'Relazione operativa dichiarata'));
+        section(panel, 'Dipendenza di connettività');
+        row(panel, 'A monte', sLbl);
+        row(panel, 'Dipende da', tLbl + ' dipende da ' + sLbl);
+        row(panel, 'Origine', 'Conferma manuale');
+        hint(panel, 'Relazione direzionale: non prova un cavo fisico e non crea dipendenze tra trigger Zabbix.');
+        return;
+    }
 
     if (d.kind === 'fdb') {
         // The bridge FDB says only where a MAC was learned.
