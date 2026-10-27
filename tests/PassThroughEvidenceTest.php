@@ -84,6 +84,26 @@ verify(PassThroughEvidence::propose($hosts,$walk,$caps,$cdp,$existing,[],$now)==
 $noUpstream=[];
 verify(PassThroughEvidence::propose($hosts,$walk,$caps,$cdp,$noUpstream,[],$now)===[],
     'no invented switch-to-phone edge');
+$wrongPort=$edges;
+$wrongPort[0]['ports']['100']='Gi8';
+$wrongPort[0]['port_idx']['100']='8';
+verify(PassThroughEvidence::propose($hosts,$walk,$caps,$cdp,$wrongPort,[],$now)===[],
+    'switch-to-phone link on another port does not corroborate');
+$fdbOnly=$edges;
+$fdbOnly[0]['src']=['fdb'];
+$fdbOnly[0]['match']='fdb';
+verify(PassThroughEvidence::propose($hosts,$walk,$caps,$cdp,$fdbOnly,[],$now)===[],
+    'FDB-only upper leg does not independently identify phone');
+$manualOnly=$edges;
+$manualOnly[0]['src']=['lldp'];
+$manualOnly[0]['_type']='manual';
+verify(PassThroughEvidence::propose($hosts,$walk,$caps,$cdp,$manualOnly,[],$now)===[],
+    'manual upper leg cannot masquerade as LLDP evidence');
+$wifiOnly=$edges;
+$wifiOnly[0]['src']=['wifi'];
+$wifiOnly[0]['match']='wifi';
+verify(PassThroughEvidence::propose($hosts,$walk,$caps,$cdp,$wifiOnly,[],$now)===[],
+    'Wi-Fi upper leg cannot imply a copper pass-through');
 $more=$walk;$more[0]['lastvalue'].=line(
     '1.3.6.1.2.1.17.7.1.2.2.1.2.1.'.macIndex('02:11:22:33:44:77'),'INTEGER: 7');
 verify(PassThroughEvidence::propose($hosts,$more,$caps,$cdp,$edges,[],$now)===[],
