@@ -93,6 +93,33 @@ const cy=window.cytoscape({
 });
 cy.on('tap','edge',evt=>show(evt.target.data()));
 document.getElementById('fit').addEventListener('click',()=>cy.fit(undefined,55));
+// Offline interaction: simulate scope loss and returning dependencies without
+// touching the physical cables or relying on Zabbix. Not production toggles.
+let dependenciesVisible = true;
+let inRestrictedScope = false;
+function reconcileDependencyPreview() {
+  cy.batch(() => {
+    cy.edges('[kind = "dependency"]').remove();
+    if (dependenciesVisible && !inRestrictedScope) cy.add(dependencyEdges);
+  });
+  const depButton = document.getElementById('dependencies');
+  depButton.setAttribute('aria-pressed', String(dependenciesVisible));
+  depButton.textContent = dependenciesVisible
+    ? 'Dipendenze: visibili' : 'Dipendenze: nascoste';
+  const scopeButton = document.getElementById('scope');
+  scopeButton.setAttribute('aria-pressed', String(inRestrictedScope));
+  scopeButton.textContent = inRestrictedScope
+    ? 'Ambito ristretto (relazione assente)' : 'Simula cambio ambito';
+}
+document.getElementById('dependencies').addEventListener('click', () => {
+  dependenciesVisible = !dependenciesVisible;
+  reconcileDependencyPreview();
+});
+document.getElementById('scope').addEventListener('click', () => {
+  inRestrictedScope = !inRestrictedScope;
+  reconcileDependencyPreview();
+});
+
 document.getElementById('summary').textContent =
   'Fixture sintetica • 6 nodi • 2 cavi LLDP paralleli (x2) • 1 LLDP AP • '+
   '1 FDB • 1 LLDP Port-ID • 1 Wi-Fi • 1 dipendenza diretta (non fisica). Clicca un arco.';
