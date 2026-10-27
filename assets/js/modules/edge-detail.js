@@ -221,6 +221,25 @@ export function showEdgeDetail(panel, ed, asMember) {
     head.appendChild(close);
     panel.appendChild(head);
 
+    if (d.kind === 'pass_through') {
+        // The topology knows the shared SWITCH port, but neither downstream
+        // telephone port nor the endpoint's physical connection.
+        const badges = el('div', 'display:flex;gap:4px;margin-bottom:3px');
+        badges.appendChild(pill(t('pass_through.association'), '#c2410c',
+            t('pass_through.note')));
+        panel.appendChild(badges);
+        section(panel, t('pass_through.evidence'));
+        row(panel, t('pass_through.sources'), 'CDP + LLDP + ARP + FDB');
+        row(panel, t('pass_through.switch_port'),
+            d.viaSwitchPort || t('wifi.unknown'));
+        hint(panel, t('pass_through.note'));
+        panel.appendChild(el('div',
+            'font-size:10px;color:var(--nt-muted,#94a3b8);'
+            + 'line-height:1.5;margin-top:8px',
+            t('pass_through.metrics')));
+        return;
+    }
+
     if (d.kind === 'fdb') {
         // The bridge FDB says only where a MAC was learned.
         // Never display LLDP confirmation or fictitious per-link traffic.
