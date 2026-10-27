@@ -1,6 +1,7 @@
 // Offline shared-renderer preview. Synthetic fixtures only; never query Zabbix.
 import { buildEdgeElements } from '../assets/js/modules/build-elements.js';
 import { buildCytoscapeStyle } from '../assets/js/modules/render-tech-style.js';
+import { buildDependencyEdgeElements, dependencyEdgeStyle } from '../assets/js/modules/dependency-edges.js';
 
 const nodes = [
   {id:'sw-a', label:'LAB-SW-A', traffic:{in:0,out:0}, severity:0},
@@ -35,7 +36,12 @@ const edges = [
   {id:'wifi-client',from:'ap',to:'client',match:'wifi',src:['wifi'],
    confirmed:false,confidence:90,signal_dbm:-61,port_idx:{ap:'3'}}
 ];
-const graphEdges = buildEdgeElements(edges,nodes);
+const physicalEdges = buildEdgeElements(edges,nodes);
+// Synthetic, server-validated example: operational dependency is NOT a cable.
+const dependencyEdges = buildDependencyEdgeElements([
+  {upstream:'sw-b',downstream:'pc',type:'connectivity',source:'manual-confirmed',confirmed:true}
+],nodes);
+const graphEdges = physicalEdges.concat(dependencyEdges);
 const typeCount = kind => graphEdges.filter(e => e.data.kind === kind).length;
 const bundle = graphEdges.filter(e =>
   e.data.source === 'sw-a' && e.data.target === 'sw-b' &&
@@ -76,6 +82,7 @@ const cy=window.cytoscape({
  layout:{name:'preset',fit:true,padding:55},
  style:[
   ...buildCytoscapeStyle(false,nodes.length),
+  ...dependencyEdgeStyle(false),
   // Preview-only node fallback: production icons depend on Zabbix metadata.
   {selector:'node',style:{'background-color':'#e2e8f0','background-opacity':1,
     'border-width':2,'border-color':'#64748b','shape':'round-rectangle',
@@ -88,5 +95,5 @@ cy.on('tap','edge',evt=>show(evt.target.data()));
 document.getElementById('fit').addEventListener('click',()=>cy.fit(undefined,55));
 document.getElementById('summary').textContent =
   'Fixture sintetica • 6 nodi • 2 cavi LLDP paralleli (x2) • 1 LLDP AP • '+
-  '1 FDB • 1 LLDP Port-ID • 1 Wi-Fi. Clicca un arco.';
+  '1 FDB • 1 LLDP Port-ID • 1 Wi-Fi • 1 dipendenza diretta (non fisica). Clicca un arco.';
 show(graphEdges.find(e=>e.data.kind==='lldp_portid').data);
