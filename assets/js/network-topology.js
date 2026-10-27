@@ -147,6 +147,10 @@ try {
 let _verifiedTrunkSync = null;
 function renderTechnicalWithPilot(wrap, nodes, edges, url) {
     const p = applyVerifiedTrunkPilot(nodes, edges, window.NT_CONFIG);
+    // Read-only relations supplied by the current permission-scoped backend response.
+    // Rendering still filters against the final visible nodes after pilot/focus/group changes.
+    const data = window._ntLastData || {};
+    const dependencies = Array.isArray(data.dependencies) ? data.dependencies : [];
     if (p.expired) {
         if (_verifiedTrunkSync) _verifiedTrunkSync();
         toast('Collaudo trunk terminato: prova scaduta o host non più visibili.', 'warn', 8000);
@@ -156,10 +160,11 @@ function renderTechnicalWithPilot(wrap, nodes, edges, url) {
         const original = window._ntLastData || {};
         if (Array.isArray(original.nodes)) {
             return render(wrap, original.nodes.slice(),
-                (original.edges || []).slice(), original.url || url);
+                (original.edges || []).slice(), original.url || url,
+                Array.isArray(original.dependencies) ? original.dependencies : []);
         }
     }
-    return render(wrap, p.nodes, p.edges, url);
+    return render(wrap, p.nodes, p.edges, url, dependencies);
 }
 
 // ── Cross-Module-Glue (Callback-Registrierung) ─────────────────────────────
@@ -474,6 +479,7 @@ function init() {
             // lldp_quality mit durchreichen — der LLDP-Q-Tab liest es aus
             // _ntLastData (ohne dieses Feld waere der Tab immer leer).
             window._ntLastData = { nodes: data.nodes || [], edges: data.edges || [],
+                                   dependencies: Array.isArray(data.dependencies) ? data.dependencies : [],
                                    lldp_quality: data.lldp_quality || [], url: url };
             notifyTopoChanges(data.topo_changes);
             switchTab(_activeTab, wrap, data.nodes || [], data.edges || [], url);
