@@ -373,6 +373,37 @@ export function buildEdgeElements(edges, nodes) {
             return;
         }
 
+        // Ethernet pass-through: the switch has learned two MACs on a phone
+        // port, and CDP/LLDP/ARP agree about the phone and downstream device.
+        // This is a transitive association, NOT a verified copper cable.
+        // Port metrics belong to the switch's shared port, never this edge.
+        if (e.match === 'pass_through_inferred') {
+            elements.push({
+                data: {
+                    id: e.id || ('pass_through_' + src + '_' + tgt),
+                    source: src, target: tgt,
+                    kind: 'pass_through', isLLDP: false,
+                    src: Array.isArray(e.src) ? e.src : [],
+                    evidence: Array.isArray(e.evidence) ? e.evidence : [],
+                    confirmed: false,
+                    confidence: typeof e.confidence === 'number'
+                        ? e.confidence : null,
+                    matchKind: 'pass_through_inferred',
+                    portMatch: e.port_match || 'same_switch_port',
+                    viaSwitch: e.via_switch || '',
+                    viaSwitchPort: e.via_switch_port || '',
+                    lastSeen: e.last_seen || 0,
+                    fdbSharedPort: true,
+                    portSrc: '', portTgt: '', portSrcIdx: '', portTgtIdx: '',
+                    trafficIn: 0, trafficOut: 0, trafficCap: 0, capBps: 0,
+                    perLink: false, portDown: null, portErr: null,
+                    portDrop: null, ifaceDown: 0, ifaceErr: 0,
+                    ifaceDrop: 0, ifaceDownRatio: 0, tLabel: ''
+                }
+            });
+            return;
+        }
+
         // One-sided LLDP observation reconciled with ARP and FDB.
         // This is not a reciprocally confirmed physical cable.
         // Never borrow aggregate host traffic, speed or health.
