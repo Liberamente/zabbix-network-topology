@@ -61,9 +61,9 @@ import { NT_GROUP_CLUSTER_KEY, loadGhostMode } from './storage.js';
 import { applyVerifiedTrunkPilot, consumeVerifiedPilotPositionGuard }
     from './verified-trunk-live-pilot.js';
 
-function renderWithVerifiedPilot(wrap, nodes, edges, dataUrl) {
+function renderWithVerifiedPilot(wrap, nodes, edges, dataUrl, dependencies = []) {
     const p = applyVerifiedTrunkPilot(nodes, edges, window.NT_CONFIG);
-    return render(wrap, p.nodes, p.edges, dataUrl);
+    return render(wrap, p.nodes, p.edges, dataUrl, dependencies);
 }
 
 // ── Cross-Module-Glue: setupToolbar lebt im Hauptmodul ─────────────────────
@@ -887,7 +887,8 @@ export function render(wrap, nodes, edges, dataUrl, dependencies = []) {
                 try { inGroupView = localStorage.getItem(NT_GROUP_VIEW_KEY) === '1'; } catch (e) {}
                 if (inGroupView) {
                     renderWithVerifiedPilot(wrap, data.nodes.slice(),
-                        (data.edges || []).slice(), dataUrl);
+                        (data.edges || []).slice(), dataUrl,
+                        window._ntLastData.dependencies);
                     return;
                 }
                 // Replace ONLY our dependency overlay; never modify physical LLDP,
