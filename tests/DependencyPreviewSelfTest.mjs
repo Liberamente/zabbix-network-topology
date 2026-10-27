@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+const get = path => readFileSync(new URL(path, import.meta.url), 'utf8');
+const html = get('../tools/shared-renderer-preview.html');
+const preview = get('../tools/shared-renderer-preview.mjs');
+assert.match(html,/id="selftest"/);
+assert.match(html,/id="selftest-result" role="status"/);
+assert.match(preview,/cy\.edges\('\[kind = "dependency"\]'\)\.first\(\)/);
+assert.match(preview,/dep\.emit\('tap'\)/);
+assert.match(preview,/details\.textContent\.includes\('Dipendenza direzionale'\)/);
+assert.match(preview,/dependenciesVisible = false/);
+assert.match(preview,/inRestrictedScope = true/);
+assert.match(preview,/physicalPresent\(\)/);
+assert.match(preview,/finally \{/);
+console.log('DependencyPreviewSelfTest: PASS (browser interaction assertions present; execute button for runtime validation)');
