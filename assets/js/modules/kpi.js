@@ -248,6 +248,7 @@ export function collect(nodes, cy) {
                     || e.data('_isBundleEdge')
                     || kind === 'lldp_portid'
                     || kind === 'fdb'
+                    || kind === 'pass_through'
                     || kind === 'wifi') return;
             edges++;
             if (String(e.id()).indexOf('ml_') === 0) manual++;
