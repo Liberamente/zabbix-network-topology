@@ -8,6 +8,7 @@ namespace Modules\NetworkTopology\Actions;
 use Modules\NetworkTopology\Topology\HostMetadata;
 use Modules\NetworkTopology\Topology\MetricExtractor;
 use Modules\NetworkTopology\Topology\LldpEdgeBuilder;
+use Modules\NetworkTopology\Topology\CdpUnmatchedEvidence;
 use Modules\NetworkTopology\Topology\AutoFdbEdges;
 use Modules\NetworkTopology\Topology\AutoWifiEdges;
 use Modules\NetworkTopology\Topology\LldpPortIdFeed;
@@ -1062,11 +1063,16 @@ class NetworkTopologyData extends NetworkTopologyController {
         // bedingt verschiedene Subgraphen und wuerden sich sonst gegenseitig
         // die Baseline verrollen. Der Sender-Cron (eigener Monitoring-User)
         // rollt damit unabhaengig von UI-Usern.
+        $cdp_unmatched_evidence = CdpUnmatchedEvidence::classify(
+            $lldp_quality_out, $edges
+        );
+
         $core = [
             'nodes'          => $nodes,
             'edges'          => $edges,
             'lldp_unmatched' => $lldp_unmatched,
             'lldp_quality'   => $lldp_quality_out,
+            'cdp_unmatched_evidence' => $cdp_unmatched_evidence,
             'health'         => $health,
             // Hat die Obergrenze im Kantenbau zugeschlagen? Gehoert IN den
             // Cache-Eintrag, nicht daneben: sonst verschwindet der Hinweis
@@ -1297,6 +1303,7 @@ class NetworkTopologyData extends NetworkTopologyController {
             ['nodes' => $nodes, 'edges' => $edges,
              'lldp_unmatched' => $core['lldp_unmatched'] ?? [],
              'lldp_quality'   => $core['lldp_quality']   ?? [],
+             'cdp_unmatched_evidence' => $core['cdp_unmatched_evidence'] ?? [],
              // Verworfene Kanten. 0 heisst: die Karte ist vollstaendig.
              'edges_truncated' => (int) ($core['edges_truncated'] ?? 0),
              'topo_changes'   => $topo_changes,
