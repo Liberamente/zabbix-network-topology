@@ -50,6 +50,7 @@ import { collapseLeaves, bindCollapse, leafCandidates, collapsePref,
          COLLAPSE_SCHWELLE } from './collapse-leaves.js';
 import { buildLayoutConfig, letzterLayoutGrund } from './layouts.js';
 import { buildCytoscapeStyle } from './render-tech-style.js';
+import { buildDependencyEdgeElements, dependencyEdgeStyle } from './dependency-edges.js';
 import { injectInternetCloud, injectGhostNodes, buildNodeElements, buildEdgeElements } from './build-elements.js';
 import { isFocusActive, filterToFocus, dropFocus, renderFocusBanner } from './focus-mode.js';
 import { toast, toastTruncatedOnce } from './toast.js';
@@ -112,7 +113,7 @@ function _markRefresh(ok, err) {
 // ── ntShowExportOverlay: wird vom Export-Menü in setupToolbar aufgerufen ──
 // (im Hauptmodul). Daher nicht hier — bleibt im Hauptmodul.
 
-export function render(wrap, nodes, edges, dataUrl) {
+export function render(wrap, nodes, edges, dataUrl, dependencies = []) {
     // Isolated pilot never saves layout or alters real Zabbix links.
     const pilotReadOnly = (nodes || []).some(function(n) {
         return n.nt_verified_trunk_pilot === true;
@@ -289,7 +290,11 @@ export function render(wrap, nodes, edges, dataUrl) {
     const perfMode = _perfPref !== null ? _perfPref : (nodes.length >= PERF_THRESHOLD);
     window._ntPerfMode = perfMode;
 
-    const elements = buildNodeElements(nodes, perfMode).concat(buildEdgeElements(edges, nodes));
+    // Explicit, validated dependencies only: never infer from LLDP/FDB/ARP or append to physical edge input.
+    // The fifth argument is opt-in. The normal production call path passes none.
+    const elements = buildNodeElements(nodes, perfMode)
+        .concat(buildEdgeElements(edges, nodes))
+        .concat(buildDependencyEdgeElements(dependencies, nodes));
 
     // ── Cleanup vorheriger Tab-State ───────────────────────────────────────
     if (window._ntEdgeAnim)     { clearInterval(window._ntEdgeAnim);     window._ntEdgeAnim     = null; }
@@ -405,7 +410,7 @@ export function render(wrap, nodes, edges, dataUrl) {
     const cy = cytoscape({
         container: cyDiv,
         elements: elements,
-        style: buildCytoscapeStyle(dark, nodes.length),
+        style: buildCytoscapeStyle(dark, nodes.length).concat(dependencyEdgeStyle(dark)),
         layout: _initialLayout,
         userZoomingEnabled: true, userPanningEnabled: true, boxSelectionEnabled: false,
         autoungrabify: pilotReadOnly,
