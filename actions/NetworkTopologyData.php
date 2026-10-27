@@ -10,6 +10,7 @@ use Modules\NetworkTopology\Topology\MetricExtractor;
 use Modules\NetworkTopology\Topology\LldpEdgeBuilder;
 use Modules\NetworkTopology\Topology\CdpUnmatchedEvidence;
 use Modules\NetworkTopology\Topology\AutoFdbEdges;
+use Modules\NetworkTopology\Topology\PassThroughEvidence;
 use Modules\NetworkTopology\Topology\AutoWifiEdges;
 use Modules\NetworkTopology\Topology\LldpPortIdFeed;
 use Modules\NetworkTopology\Topology\PortIdPilotScope;
@@ -31,6 +32,10 @@ class NetworkTopologyData extends NetworkTopologyController {
     // One-sided LLDP Port-ID identity reconciliation.
     // Pilot only: disabled until scoped staging validation.
     private const AUTO_LLDP_PORTID_EDGES = false;
+
+    // Pilot: require explicit staging switch-on after read-only replay.
+    // Keep production and multi-group navigation unchanged by default.
+    private const AUTO_PASS_THROUGH_EDGES = false;
 
     /**
      * Wie lange eine nicht mehr gemeldete Kante auf der Karte bleibt, bevor
@@ -925,6 +930,29 @@ class NetworkTopologyData extends NetworkTopologyController {
                 }
                 $edges = AutoFdbEdges::append($hosts, $fdb_items, $caps, $edges,
                     $host_uplink, $metrics, time());
+
+                // Optional VoIP/industrial bridge-pass-through associations.
+                // This block inherits the single-group, visible-host and
+                // non-host-mode guards of the access-link pipeline.
+                // No per-endpoint port metric or confirmed cable is created.
+                if (self::AUTO_PASS_THROUGH_EDGES && $fdb_switches && $caps) {
+                    $cdp_items = API::Item()->get([
+                        'output'    => ['hostid', 'key_', 'lastclock',
+                                        'lastvalue', 'status', 'state'],
+                        'hostids'   => array_keys($fdb_switches),
+                        'search'    => ['key_' => 'cdpCacheDeviceId'],
+                        'monitored' => true,
+                    ]);
+                    if (is_array($cdp_items) && $cdp_items) {
+                        $proposed = PassThroughEvidence::propose(
+                            $hosts, $fdb_items, $caps, $cdp_items,
+                            $edges, $host_uplink, time()
+                        );
+                        if ($proposed) {
+                            $edges = array_merge($edges, $proposed);
+                        }
+                    }
+                }
             }
         }
 
