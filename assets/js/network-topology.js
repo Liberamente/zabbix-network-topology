@@ -474,7 +474,8 @@ function init() {
             // lldp_quality mit durchreichen — der LLDP-Q-Tab liest es aus
             // _ntLastData (ohne dieses Feld waere der Tab immer leer).
             window._ntLastData = { nodes: data.nodes || [], edges: data.edges || [],
-                                   lldp_quality: data.lldp_quality || [], url: url };
+                                   lldp_quality: data.lldp_quality || [],
+                                   cdp_unmatched_evidence: data.cdp_unmatched_evidence || [], url: url };
             notifyTopoChanges(data.topo_changes);
             switchTab(_activeTab, wrap, data.nodes || [], data.edges || [], url);
 
