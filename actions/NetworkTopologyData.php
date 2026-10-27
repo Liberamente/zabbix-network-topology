@@ -15,6 +15,8 @@ use Modules\NetworkTopology\Topology\PortIdPilotScope;
 use Modules\NetworkTopology\Topology\HostTagParser;
 use Modules\NetworkTopology\Topology\HopScope;
 use Modules\NetworkTopology\Topology\ManualLinks;
+use Modules\NetworkTopology\Topology\ManualDependencies;
+use Modules\NetworkTopology\Topology\DependencyReadProjection;
 use Modules\NetworkTopology\Topology\NodeBuilder;
 use Modules\NetworkTopology\Topology\ProblemLoader;
 use Modules\NetworkTopology\Topology\TopoDiff;
@@ -1308,8 +1310,36 @@ class NetworkTopologyData extends NetworkTopologyController {
             }
         }
 
+        // Separate operational declarations from physical topology links.
+        // Node set is already scoped by this response; Host.get rechecks
+        // permissions and returns authoritative proxy ids.
+        $visible_dependencies = [];
+        $declared_dependencies = ManualDependencies::loadShared();
+        if ($declared_dependencies) {
+            $visible_ids = [];
+            foreach ($nodes as $node) {
+                $id = (string) ($node['id'] ?? '');
+                if (preg_match('/^[0-9]{1,20}$/', $id)) {
+                    $visible_ids[$id] = true;
+                }
+            }
+            if ($visible_ids) {
+                $authorized = API::Host()->get([
+                    'hostids' => array_keys($visible_ids),
+                    'output' => ['hostid', 'proxyid'],
+                    'preservekeys' => true
+                ]);
+                if (is_array($authorized)) {
+                    $visible_dependencies = DependencyReadProjection::project(
+                        $declared_dependencies, $nodes, $authorized
+                    );
+                }
+            }
+        }
+
         $_payload = $this->encodeJson(
             ['nodes' => $nodes, 'edges' => $edges,
+             'dependencies' => $visible_dependencies,
              'lldp_unmatched' => $core['lldp_unmatched'] ?? [],
              'lldp_quality'   => $core['lldp_quality']   ?? [],
              // Verworfene Kanten. 0 heisst: die Karte ist vollstaendig.
