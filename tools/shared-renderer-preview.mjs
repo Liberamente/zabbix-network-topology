@@ -132,6 +132,51 @@ document.getElementById('scope').addEventListener('click', () => {
   reconcileDependencyPreview();
 });
 
+// Real Cytoscape instance assertions; button is exclusive to the offline lab.
+// Restore preview toggles after every check, even if one assertion fails.
+document.getElementById('selftest').addEventListener('click', () => {
+  const result = document.getElementById('selftest-result');
+  const beforeVisible = dependenciesVisible;
+  const beforeRestricted = inRestrictedScope;
+  const physicalIds = physicalEdges.map(e => e.data.id).sort();
+  const physicalPresent = () => physicalIds.every(id => cy.getElementById(id).length === 1);
+  const depCount = () => cy.edges('[kind = "dependency"]').length;
+  const check = (condition, message) => {
+    if (!condition) throw new Error(message);
+  };
+  try {
+    dependenciesVisible = true;
+    inRestrictedScope = false;
+    reconcileDependencyPreview();
+    check(depCount() === 1, 'dipendenza iniziale assente o duplicata');
+    check(physicalPresent(), 'collegamento fisico mancante');
+    const dep = cy.edges('[kind = "dependency"]').first();
+    dep.emit('tap');
+    check(details.textContent.includes('Dipendenza direzionale')
+      && details.textContent.includes('non collegamento fisico'),
+      'dettaglio dipendenza non coerente');
+    dependenciesVisible = false;
+    reconcileDependencyPreview();
+    check(depCount() === 0 && physicalPresent(), 'toggle altera archi fisici');
+    dependenciesVisible = true;
+    inRestrictedScope = true;
+    reconcileDependencyPreview();
+    check(depCount() === 0 && physicalPresent(), 'cambio ambito non sicuro');
+    inRestrictedScope = false;
+    reconcileDependencyPreview();
+    check(depCount() === 1 && physicalPresent(), 'ripristino o deduplica falliti');
+    result.textContent = 'PASS: dettaglio, toggle, ambito, x2/archi fisici preservati';
+    result.style.color = '#166534';
+  } catch (error) {
+    result.textContent = 'FAIL: ' + error.message;
+    result.style.color = '#b91c1c';
+  } finally {
+    dependenciesVisible = beforeVisible;
+    inRestrictedScope = beforeRestricted;
+    reconcileDependencyPreview();
+  }
+});
+
 document.getElementById('summary').textContent =
   'Fixture sintetica • 6 nodi • 2 cavi LLDP paralleli (x2) • 1 LLDP AP • '+
   '1 FDB • 1 LLDP Port-ID • 1 Wi-Fi • 1 dipendenza diretta (non fisica). Clicca un arco.';
