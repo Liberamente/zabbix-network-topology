@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { buildDependencyEdgeElements } from '../assets/js/modules/dependency-edges.js';
+const src=readFileSync(new URL('../assets/js/modules/render-tech.js', import.meta.url),'utf8');
+assert.match(src,/function renderWithVerifiedPilot\(wrap, nodes, edges, dataUrl, dependencies = \[\]\)/);
+assert.match(src,/return render\(wrap, p\.nodes, p\.edges, dataUrl, dependencies\);/);
+assert.match(src,/renderWithVerifiedPilot\(wrap, data\.nodes\.slice\(\),\s*\(data\.edges \|\| \[\]\)\.slice\(\), dataUrl,\s*window\._ntLastData\.dependencies\)/);
+const d=[{upstream:'1',downstream:'2',type:'connectivity',source:'manual-confirmed',confirmed:true}];
+assert.equal(buildDependencyEdgeElements(d,[{id:'1'},{id:'2'}]).length,1);
+assert.equal(buildDependencyEdgeElements(d,[{id:'1'}]).length,0);
+console.log('DependencyGroupRefresh: PASS (group refresh forwards scoped dependencies; absent endpoint suppressed)');
