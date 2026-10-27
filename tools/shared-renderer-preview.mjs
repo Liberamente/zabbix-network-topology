@@ -55,6 +55,18 @@ const details = document.querySelector('#details');
 const safe = v => v === undefined || v === null || v === '' ? 'Non disponibile' : String(v);
 function show(d) {
   details.replaceChildren();
+  if (d.kind === 'dependency') {
+    const title=document.createElement('p');
+    const strong=document.createElement('strong');
+    strong.textContent='Dipendenza direzionale: ';
+    title.append(strong,document.createTextNode(
+      String(d.source) + ' → ' + String(d.target)));
+    details.appendChild(title);
+    const info=document.createElement('p');
+    info.textContent='Conferma manuale. Relazione operativa, non collegamento fisico; nessuna porta o metrica per-link dichiarata.';
+    details.appendChild(info);
+    return;
+  }
   for (const [name,value] of [
     ['Tipo', d.kind || 'LLDP/CDP fisico'],
     ['Origine', (d.src || []).join(', ')],
