@@ -232,7 +232,13 @@ final class PassThroughEvidence
             // LLDP/CDP switch-to-switch edge, with concrete local IF-MIB
             // labels at BOTH ends and the SAME nonzero proxy. A mere
             // two-ended port label is not reciprocal confirmation.
+            $reporters = is_array($edge['reporters'] ?? null)
+                ? array_map('strval', $edge['reporters']) : [];
             if (($edge['confirmed'] ?? false) === true
+                    && (in_array('lldp', $sources, true)
+                        || in_array('cdp', $sources, true))
+                    && in_array($from, $reporters, true)
+                    && in_array($to, $reporters, true)
                     && isset($bySwitch[$from], $bySwitch[$to])) {
                 $proxyFrom = (string) ($hosts[$from]['proxyid'] ?? '0');
                 $proxyTo = (string) ($hosts[$to]['proxyid'] ?? '0');
