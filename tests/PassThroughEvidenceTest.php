@@ -114,4 +114,39 @@ $ambig[103]['inventory']=['macaddress_a'=>'02:11:22:33:44:66'];
 $ambig['103']['interfaces']=[['ip'=>'192.0.2.3']];
 verify(PassThroughEvidence::propose($ambig,$walk,$caps,$cdp,$edges,[],$now)===[],
     'duplicate monitored endpoint IP excluded');
+$reasonCounts = [];
+$withReasons = PassThroughEvidence::propose(
+    $hosts, $walk, $caps, $cdp, $edges, [], $now, $reasonCounts
+);
+verify(count($withReasons) === 1
+    && $reasonCounts['identified_phone_ports'] === 1
+    && $reasonCounts['accepted'] === 1
+    && $reasonCounts['excluded'] === [],
+    'aggregate diagnostics report one accepted phone without private IDs');
+
+$missingUpstreamReasons = [];
+PassThroughEvidence::propose(
+    $hosts, $walk, $caps, $cdp, $wrongPort, [], $now,
+    $missingUpstreamReasons
+);
+verify(($missingUpstreamReasons['excluded']['upstream_lldp_cdp_edge_missing'] ?? 0) === 1,
+    'diagnostics distinguish missing upstream port evidence');
+$alreadyLinkedReasons = [];
+PassThroughEvidence::propose(
+    $hosts, $walk, $caps, $cdp, $existing, [], $now,
+    $alreadyLinkedReasons
+);
+verify(($alreadyLinkedReasons['excluded']['downstream_already_linked'] ?? 0) === 1,
+    'diagnostics distinguish existing endpoint association');
+$sharedPortReasons = [];
+PassThroughEvidence::propose(
+    $hosts, $more, $caps, $cdp, $edges, [], $now,
+    $sharedPortReasons
+);
+verify(($sharedPortReasons['excluded']['fdb_mac_count_not_two'] ?? 0) === 1,
+    'diagnostics distinguish ambiguous shared port');
+verify(!str_contains(json_encode($reasonCounts), '192.0.2.')
+    && !str_contains(json_encode($reasonCounts), '02:11:22:')
+    && !str_contains(json_encode($reasonCounts), '101'),
+    'diagnostics exclude IP, MAC and host identifiers');
 echo "PassThroughEvidenceTest: PASS (synthetic; no production modifications)\n";
