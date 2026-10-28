@@ -19,7 +19,7 @@ guard(str_contains($controller, 'private const PASS_THROUGH_GROUP_OPT_IN = true;
 guard(str_contains($controller,
         'use Modules\NetworkTopology\Topology\PassThroughGroupScope;')
     && str_contains($controller, 'PassThroughGroupScope::eligible(')
-    && str_contains($controller, "if ($passScope['switch_ids'])"),
+    && str_contains($controller, "if (\$passScope['switch_ids'])"),
     'feature OFF unless group- and proxy-specific switch tag grants opt-in');
 guard(str_contains($controller, 'use Modules\NetworkTopology\Topology\PassThroughEvidence;'),
     'controller imports evidence class');
@@ -33,7 +33,7 @@ guard(strpos($controller, 'PassThroughGroupScope::eligible(')
 guard(str_contains($controller, 'count($groupids) === 1')
     && str_contains($controller, '&& !$host_mode'),
     'single-group and non-host-mode scope preserved');
-guard(str_contains($controller, "'hostids'   => $passScope['switch_ids']"),
+guard(str_contains($controller, "'hostids'   => \$passScope['switch_ids']"),
     'CDP item search limited to eligible FDB switch hosts and proxies');
 guard(str_contains($controller, '$passHosts = $passScope[')
     && str_contains($controller, '$passFdb = array_values(array_filter(')
