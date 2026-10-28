@@ -42,7 +42,8 @@ final class PassThroughEvidence
     ): array {
         // Optional aggregate counters: NEVER include host IDs, MACs or ports.
         $diagnostics = ['identified_phone_ports' => 0,
-                        'accepted' => 0, 'excluded' => []];
+                        'accepted' => 0, 'excluded' => [],
+                        'verified_uplink_copies_ignored' => 0];
         if (!$hosts || !$walkItems || !$capItems || !$cdpItems) {
             return [];
         }
@@ -201,6 +202,7 @@ final class PassThroughEvidence
 
         $linked = [];
         $upstream = [];
+        $verifiedSwitchUplinks = [];
         foreach ($edges as $edge) {
             $from = (string) ($edge['from'] ?? '');
             $to = (string) ($edge['to'] ?? '');
@@ -222,6 +224,31 @@ final class PassThroughEvidence
                     && !in_array('lldp', $sources, true)
                     && !in_array('cdp', $sources, true)) {
                 continue;
+            }
+
+            // A FDB entry seen on several switches is normal in a cascade:
+            // an intermediate switch learns the destination on its uplink.
+            // Discount ONLY the uplink ports of a *reciprocally confirmed*
+            // LLDP/CDP switch-to-switch edge, with concrete local IF-MIB
+            // labels at BOTH ends and the SAME nonzero proxy. A mere
+            // two-ended port label is not reciprocal confirmation.
+            $reporters = is_array($edge['reporters'] ?? null)
+                ? array_map('strval', $edge['reporters']) : [];
+            if (($edge['confirmed'] ?? false) === true
+                    && (in_array('lldp', $sources, true)
+                        || in_array('cdp', $sources, true))
+                    && in_array($from, $reporters, true)
+                    && in_array($to, $reporters, true)
+                    && isset($bySwitch[$from], $bySwitch[$to])) {
+                $proxyFrom = (string) ($hosts[$from]['proxyid'] ?? '0');
+                $proxyTo = (string) ($hosts[$to]['proxyid'] ?? '0');
+                $portFrom = self::verifiedSwitchPort($from, $edge, $ifNames);
+                $portTo = self::verifiedSwitchPort($to, $edge, $ifNames);
+                if ($proxyFrom !== '0' && $proxyFrom === $proxyTo
+                        && $portFrom !== null && $portTo !== null) {
+                    $verifiedSwitchUplinks[self::place($from, $portFrom)] = true;
+                    $verifiedSwitchUplinks[self::place($to, $portTo)] = true;
+                }
             }
             foreach ([$from => $to, $to => $from] as $switch => $peer) {
                 $switch = (string) $switch;
@@ -269,8 +296,8 @@ final class PassThroughEvidence
             }
             $phoneMac = strtolower((string) $phoneMacs[0]);
             if (count($macOwners[$phoneMac] ?? []) !== 1
-                    || !isset($locations[$phoneMac][$place])
-                    || count($locations[$phoneMac]) !== 1) {
+                    || !self::uniqueAccessWithUplinks(
+                        $locations[$phoneMac] ?? [], $place, $verifiedSwitchUplinks)) {
                 self::reject($diagnostics, 'phone_fdb_location_not_unique');
                 continue;
             }
@@ -281,8 +308,8 @@ final class PassThroughEvidence
             }
             $downstreamMac = $otherMacs[0];
             if (count($macOwners[$downstreamMac] ?? []) !== 1
-                    || count($locations[$downstreamMac] ?? []) !== 1
-                    || !isset($locations[$downstreamMac][$place])) {
+                    || !self::uniqueAccessWithUplinks(
+                        $locations[$downstreamMac] ?? [], $place, $verifiedSwitchUplinks)) {
                 self::reject($diagnostics, 'downstream_arp_fdb_not_unique');
                 continue;
             }
@@ -303,6 +330,10 @@ final class PassThroughEvidence
                 self::reject($diagnostics, 'downstream_proxy_mismatch');
                 continue;
             }
+
+            $diagnostics['verified_uplink_copies_ignored'] +=
+                count($locations[$phoneMac]) - 1
+                + count($locations[$downstreamMac]) - 1;
 
             $proposals[] = [
                 'id' => 'pass_through_' . $phone . '_' . $endpoint,
@@ -339,6 +370,59 @@ final class PassThroughEvidence
         }
         $diagnostics['accepted'] = count($proposals);
         return $proposals;
+    }
+
+    /**
+     * A MAC must occur on the exact candidate access port; its other
+     * observations may be disregarded ONLY if all are verified switch-to-
+     * switch uplinks, and none is another port of the same switch.
+     *
+     * No unverified/hypothetical uplink, missing port label or second local
+     * FDB location can justify a downstream phone association.
+     */
+    private static function uniqueAccessWithUplinks(
+        array $locations, string $accessPlace, array $verifiedUplinks
+    ): bool {
+        if (!isset($locations[$accessPlace])
+                || isset($verifiedUplinks[$accessPlace])) {
+            return false;
+        }
+        $sourceSwitch = (string) ($locations[$accessPlace]['hostid'] ?? '');
+        foreach ($locations as $place => $hit) {
+            if ($place === $accessPlace) {
+                continue;
+            }
+            if ((string) ($hit['hostid'] ?? '') === $sourceSwitch
+                    || !isset($verifiedUplinks[$place])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Never infer a bridge-port name from a numeric LLDP hint. A local
+     * ifIndex/ifName match or a unique exact IF-MIB label is required.
+     */
+    private static function verifiedSwitchPort(
+        string $hid, array $edge, array $ifNames
+    ): ?string {
+        $names = $ifNames[$hid] ?? [];
+        $index = (string) ($edge['port_idx'][$hid] ?? '');
+        if ($index !== '') {
+            return isset($names[$index]) ? (string) $names[$index] : null;
+        }
+        $label = trim((string) ($edge['ports'][$hid] ?? ''));
+        if ($label === '') {
+            return null;
+        }
+        $matches = [];
+        foreach ($names as $name) {
+            if (strcasecmp(trim((string) $name), $label) === 0) {
+                $matches[] = (string) $name;
+            }
+        }
+        return count($matches) === 1 ? $matches[0] : null;
     }
 
     private static function reject(array &$diagnostics, string $reason): void
