@@ -41,7 +41,7 @@ $tagOnlyEndpoint['14']['tags'] = [scopeTag('600')];
 checkGroupScope($call($tagOnlyEndpoint, $switches, ['600'])['hosts'] === [],
     'A tag on a non-FDB endpoint never enables a group');
 $approved = $call($hosts, $switches, ['600']);
-checkGroupScope(array_keys($approved['hosts']) === ['11', '12', '13', '14'],
+checkGroupScope(array_map('strval', array_keys($approved['hosts'])) === ['11', '12', '13', '14'],
     'One tagged switch authorizes all visible hosts on same proxy');
 checkGroupScope($approved['switch_ids'] === ['11', '12'],
     'All same-proxy FDB switches become eligible without per-switch tags');
@@ -86,7 +86,7 @@ $onlySecond = $hosts;
 $onlySecond['11']['tags'] = [];
 $onlySecond['21']['tags'] = [scopeTag('600')];
 $result = $call($onlySecond, $switches, ['600']);
-checkGroupScope(array_keys($result['hosts']) === ['21', '22'],
+checkGroupScope(array_map('strval', array_keys($result['hosts'])) === ['21', '22'],
     'Opt-in on other proxy does not leak into first proxy');
 
 echo "PassThroughGroupScopeTest: PASS (synthetic; group and proxy isolation)\n";
