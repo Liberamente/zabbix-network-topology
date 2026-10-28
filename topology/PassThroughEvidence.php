@@ -37,8 +37,12 @@ final class PassThroughEvidence
         array $cdpItems,
         array $edges,
         array $manualUplinks,
-        int $now
+        int $now,
+        ?array &$diagnostics = null
     ): array {
+        // Optional aggregate counters: NEVER include host IDs, MACs or ports.
+        $diagnostics = ['identified_phone_ports' => 0,
+                        'accepted' => 0, 'excluded' => []];
         if (!$hosts || !$walkItems || !$capItems || !$cdpItems) {
             return [];
         }
@@ -235,44 +239,68 @@ final class PassThroughEvidence
             }
         }
 
+        $diagnostics['identified_phone_ports'] = count($phoneByPort);
         $proposals = [];
         foreach ($phoneByPort as $place => $phones) {
-            if (count($phones) !== 1 || !isset($portMacs[$place])
-                    || count($portMacs[$place]) !== 2) {
+            if (count($phones) !== 1) {
+                self::reject($diagnostics, 'phone_identity_ambiguous');
+                continue;
+            }
+            if (!isset($portMacs[$place]) || count($portMacs[$place]) !== 2) {
+                self::reject($diagnostics, 'fdb_mac_count_not_two');
                 continue;
             }
             $phone = (string) array_key_first($phones);
             $observation = $phones[$phone];
             $switch = $observation['switch'];
             $proxy = (string) ($hosts[$switch]['proxyid'] ?? '0');
-            if (!isset($upstream[$place][$phone])
-                    || (string) ($hosts[$phone]['proxyid'] ?? '0') !== $proxy) {
-                continue; // Require an existing upstream graph edge on this port.
+            if (!isset($upstream[$place][$phone])) {
+                self::reject($diagnostics, 'upstream_lldp_cdp_edge_missing');
+                continue; // No invented switch-to-phone cable.
+            }
+            if ((string) ($hosts[$phone]['proxyid'] ?? '0') !== $proxy) {
+                self::reject($diagnostics, 'phone_proxy_mismatch');
+                continue;
             }
             $phoneMacs = array_keys($arpIdentity[$phone] ?? []);
             if (count($phoneMacs) !== 1) {
+                self::reject($diagnostics, 'phone_arp_mac_not_unique');
                 continue;
             }
             $phoneMac = strtolower((string) $phoneMacs[0]);
             if (count($macOwners[$phoneMac] ?? []) !== 1
                     || !isset($locations[$phoneMac][$place])
                     || count($locations[$phoneMac]) !== 1) {
+                self::reject($diagnostics, 'phone_fdb_location_not_unique');
                 continue;
             }
             $otherMacs = array_values(array_diff(array_keys($portMacs[$place]), [$phoneMac]));
             if (count($otherMacs) !== 1) {
+                self::reject($diagnostics, 'downstream_mac_not_unique');
                 continue;
             }
             $downstreamMac = $otherMacs[0];
             if (count($macOwners[$downstreamMac] ?? []) !== 1
                     || count($locations[$downstreamMac] ?? []) !== 1
                     || !isset($locations[$downstreamMac][$place])) {
+                self::reject($diagnostics, 'downstream_arp_fdb_not_unique');
                 continue;
             }
             $endpoint = (string) array_key_first($macOwners[$downstreamMac]);
-            if ($endpoint === $phone || $endpoint === $switch
-                    || isset($manualUplinks[$endpoint]) || isset($linked[$endpoint])
-                    || (string) ($hosts[$endpoint]['proxyid'] ?? '0') !== $proxy) {
+            if ($endpoint === $phone || $endpoint === $switch) {
+                self::reject($diagnostics, 'invalid_self_association');
+                continue;
+            }
+            if (isset($manualUplinks[$endpoint])) {
+                self::reject($diagnostics, 'manual_uplink_precedence');
+                continue;
+            }
+            if (isset($linked[$endpoint])) {
+                self::reject($diagnostics, 'downstream_already_linked');
+                continue;
+            }
+            if ((string) ($hosts[$endpoint]['proxyid'] ?? '0') !== $proxy) {
+                self::reject($diagnostics, 'downstream_proxy_mismatch');
                 continue;
             }
 
@@ -305,10 +333,18 @@ final class PassThroughEvidence
                 ),
             ];
             if (count($proposals) >= self::MAX_PROPOSALS) {
+                $diagnostics['proposal_limit_reached'] = true;
                 break;
             }
         }
+        $diagnostics['accepted'] = count($proposals);
         return $proposals;
+    }
+
+    private static function reject(array &$diagnostics, string $reason): void
+    {
+        $diagnostics['excluded'][$reason] =
+            ($diagnostics['excluded'][$reason] ?? 0) + 1;
     }
 
     private static function place(string $hid, string $port): string
