@@ -1,8 +1,9 @@
 # Private pass-through replay (read-only)
 
 This pilot validates the portable \`PassThroughEvidence::propose()\` engine
-without enabling \`AUTO_PASS_THROUGH_EDGES\`, installing the module, or changing
-Zabbix. Evidence from CDP/LLDP/ARP/FDB remains **inferred**, never a verified
+without installing the module or changing Zabbix. The runtime gate is
+OFF by default until one existing monitored FDB switch in the selected
+group has a matching `nt:pass_through` host tag. Evidence from CDP/LLDP/ARP/FDB remains **inferred**, never a verified
 cable or independently measured per-link traffic.
 
 ## Prerequisites
@@ -119,19 +120,56 @@ Expected report keys include \`hosts\`, \`original_edges\`,
 Theoretical counts do NOT mean that anything was deployed. They are
 valid only for the graph and item timestamps acquired during this run.
 
-## 4. Gates and cleanup
+## 4. Quick opt-in per group (staging only)
+
+After installing a validated common module build once on the Zabbix server,
+enable another customer group **without editing code or discovery scripts**:
+
+| Zabbix host setting | Value |
+| --- | --- |
+| Host | One monitored FDB switch in the chosen group |
+| Tag | `nt:pass_through` |
+| Tag value | The EXACT numeric group ID (example: `600`) |
+
+Use Data collection > Hosts > selected FDB switch > Tags. No endpoint,
+phone, SNMP template or per-switch configuration is necessary. One
+tag enables all FDB switches and downstream hosts **on that switch's
+same nonzero proxy and in the selected group**. For a group with two
+proxies, add one tag to a switch on each desired proxy.
+
+Matching is fail-closed: an untagged group, a different group ID,
+multiple selected groups, host/hops views, an unmonitored endpoint tag
+or a switch with proxy=0 cannot enable this feature. A host that is
+in several groups does not inherit an opt-in to other groups because
+the tag value must equal the selected group ID, not just `1`.
+
+The scope gate uses tags already returned by the existing host.get;
+it issues NO extra API request for disabled groups, and the extra CDP
+item read occurs only for an explicitly enabled group/proxy.
+
+To turn it off, remove the matching switch tag and allow the current
+60-second Zabbix topology data cache to expire. Tag removal does not
+require a container restart. Production tag changes and deployment
+still require explicit authorization and a validated rollback plan.
+
+The private replay is intentionally independent of this opt-in tag:
+it remains read-only, even for a disabled group. Its `diagnostics`
+field includes aggregate reason counts, with no host IDs, IPs, MACs,
+client names or switch ports.
+## 5. Gates and cleanup
 
 \`\`\`sh
 php -l tools/pass-through-replay.php
 php tests/PassThroughEvidenceTest.php
 php tests/PassThroughReplayCliTest.php
 php tests/PassThroughHttpContractTest.php
+php tests/PassThroughGroupScopeTest.php
 \`\`\`
 
 Review only aggregate console outputs. Securely delete the graph export
 from the client and private server when the test is complete, subject to
-your organization's evidence-retention policy. Do not change the feature
-flag or deploy the module without explicit authorization.
+your organization's evidence-retention policy. Do not add production
+host tags or deploy the module without explicit authorization.
 
 ## Rollback
 
