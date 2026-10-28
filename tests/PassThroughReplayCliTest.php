@@ -100,6 +100,10 @@ try {
     checkReplay(is_array($stats)
         && ($stats['new_inferred_candidates'] ?? -1) === 1,
         'one inferred phone-to-industrial-device association');
+    checkReplay(($stats['diagnostics']['identified_phone_ports'] ?? -1) === 1
+        && ($stats['diagnostics']['accepted'] ?? -1) === 1
+        && ($stats['diagnostics']['excluded'] ?? null) === [],
+        'private replay returns anonymous accepted/rejected counters');
     checkReplay(($stats['hosts'] ?? -1) === 3
         && ($stats['original_edges'] ?? -1) === 1
         && ($stats['isolated_before'] ?? -1) === 1
