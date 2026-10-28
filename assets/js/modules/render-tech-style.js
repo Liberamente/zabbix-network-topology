@@ -220,6 +220,16 @@ export function buildCytoscapeStyle(dark, knotenzahl) {
             'source-text-offset': 26,
             'target-text-offset': 0,
         }},
+        // Distinct pass-through association: a possible phone-to-endpoint
+        // transit chain, NOT a measured cable or operational link.
+        { selector: 'edge[kind = "pass_through"]', style: {
+            'width': 2.5,
+            'line-color': dark ? '#fb923c' : '#c2410c',
+            'line-style': 'dashed', 'line-dash-pattern': [7, 3, 2, 3],
+            'opacity': 0.92, 'curve-style': 'straight',
+            'target-arrow-shape': 'none', 'label': '',
+            'source-text-offset': 0, 'target-text-offset': 0,
+        }},
         // ARP+FDB is evidence of MAC learning on a switch port, not
         // a confirmed direct cable. Amber/dotted never means link UP.
         { selector: 'edge[kind = "fdb"]', style: {

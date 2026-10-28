@@ -228,6 +228,28 @@ function _sumArrays(a, b) {
 }
 
 export function showEdgeTip(evt, edgeData, srcLabel, tgtLabel) {
+    if (edgeData.kind === 'pass_through') {
+        // Only the shared SWITCH port is observed; neither a direct
+        // phone-to-endpoint cable nor per-device counters were measured.
+        _syncTheme();
+        _tip.replaceChildren();
+        _tip.appendChild(el('div',
+            'font-weight:700;margin-bottom:5px', srcLabel + ' - ' + tgtLabel));
+        _tip.appendChild(el('div',
+            'color:#c2410c;font-weight:700', t('pass_through.association')));
+        _tip.appendChild(el('div',
+            'margin-top:5px;font-size:11px',
+            t('pass_through.switch_port') + ': '
+            + (edgeData.viaSwitchPort || t('wifi.unknown'))));
+        _tip.appendChild(el('div',
+            'margin-top:5px;font-size:10px', t('pass_through.note')));
+        _tip.appendChild(el('div',
+            'margin-top:5px;font-size:10px', t('pass_through.metrics')));
+        _tip.style.width = '285px';
+        _tip.style.display = 'block';
+        moveTip(evt);
+        return;
+    }
     if (edgeData.kind === 'fdb') {
         // DOM/textContent rather than HTML: SNMP port and host names are
         // untrusted. This is not a directly measured Ethernet cable.

@@ -22,11 +22,11 @@ export function renderCdpEvidenceTable(records, theme) {
             : '';
 
         const cells = [
-            r.reporter ?? '',
-            r.port ?? '',
-            r.raw ?? '',
+            r.reporter == null ? '' : r.reporter,
+            r.port == null ? '' : r.port,
+            r.raw == null ? '' : r.raw,
             status,
-            r.candidate_count ?? 0,
+            r.candidate_count == null ? 0 : r.candidate_count,
             t(r.shared_port === true ? 'cdp.yes' : 'cdp.no'),
             kinds
         ];
