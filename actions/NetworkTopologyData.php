@@ -11,6 +11,7 @@ use Modules\NetworkTopology\Topology\LldpEdgeBuilder;
 use Modules\NetworkTopology\Topology\CdpUnmatchedEvidence;
 use Modules\NetworkTopology\Topology\AutoFdbEdges;
 use Modules\NetworkTopology\Topology\PassThroughEvidence;
+use Modules\NetworkTopology\Topology\PassThroughGroupScope;
 use Modules\NetworkTopology\Topology\AutoWifiEdges;
 use Modules\NetworkTopology\Topology\LldpPortIdFeed;
 use Modules\NetworkTopology\Topology\PortIdPilotScope;
@@ -33,9 +34,10 @@ class NetworkTopologyData extends NetworkTopologyController {
     // Pilot only: disabled until scoped staging validation.
     private const AUTO_LLDP_PORTID_EDGES = false;
 
-    // Pilot: require explicit staging switch-on after read-only replay.
-    // Keep production and multi-group navigation unchanged by default.
-    private const AUTO_PASS_THROUGH_EDGES = false;
+    // Available in any installation, but effectively OFF unless a visible
+    // FDB switch carries nt:pass_through=<selected group ID>. The selected
+    // group AND same nonzero proxy are mandatory; no per-client code/config.
+    private const PASS_THROUGH_GROUP_OPT_IN = true;
 
     /**
      * Wie lange eine nicht mehr gemeldete Kante auf der Karte bleibt, bevor
@@ -931,25 +933,49 @@ class NetworkTopologyData extends NetworkTopologyController {
                 $edges = AutoFdbEdges::append($hosts, $fdb_items, $caps, $edges,
                     $host_uplink, $metrics, time());
 
-                // Optional VoIP/industrial bridge-pass-through associations.
-                // This block inherits the single-group, visible-host and
-                // non-host-mode guards of the access-link pipeline.
-                // No per-endpoint port metric or confirmed cable is created.
-                if (self::AUTO_PASS_THROUGH_EDGES && $fdb_switches && $caps) {
-                    $cdp_items = API::Item()->get([
-                        'output'    => ['hostid', 'key_', 'lastclock',
-                                        'lastvalue', 'status', 'state'],
-                        'hostids'   => array_keys($fdb_switches),
-                        'search'    => ['key_' => 'cdpCacheDeviceId'],
-                        'monitored' => true,
-                    ]);
-                    if (is_array($cdp_items) && $cdp_items) {
-                        $proposed = PassThroughEvidence::propose(
-                            $hosts, $fdb_items, $caps, $cdp_items,
-                            $edges, $host_uplink, time()
-                        );
-                        if ($proposed) {
-                            $edges = array_merge($edges, $proposed);
+                // Opt-in once per group/proxy, not once per phone or endpoint.
+                // We already have group-scoped host tags and FDB switch IDs:
+                // no new discovery, API configuration query or global flag.
+                // Default OFF unless an in-scope switch carries the EXACT
+                // nt:pass_through=<numeric selected group ID> host tag.
+                if (self::PASS_THROUGH_GROUP_OPT_IN && $fdb_switches && $caps) {
+                    $passScope = PassThroughGroupScope::eligible(
+                        $hosts, array_keys($fdb_switches), $groupids, $host_mode
+                    );
+                    if ($passScope['switch_ids']) {
+                        $passHosts = $passScope['hosts'];
+                        // Proxy isolation applies to source reads as well as
+                        // the inferred endpoint pairs. Every original edge
+                        // is still supplied to prevent duplicate associations.
+                        $passFdb = array_values(array_filter(
+                            $fdb_items,
+                            static fn(array $item): bool => isset(
+                                $passHosts[(string) ($item['hostid'] ?? '')]
+                            )
+                        ));
+                        $passCaps = array_values(array_filter(
+                            $caps,
+                            static fn(array $item): bool => isset(
+                                $passHosts[(string) ($item['hostid'] ?? '')]
+                            )
+                        ));
+                        if ($passFdb && $passCaps) {
+                            $cdp_items = API::Item()->get([
+                                'output'    => ['hostid', 'key_', 'lastclock',
+                                                'lastvalue', 'status', 'state'],
+                                'hostids'   => $passScope['switch_ids'],
+                                'search'    => ['key_' => 'cdpCacheDeviceId'],
+                                'monitored' => true,
+                            ]);
+                            if (is_array($cdp_items) && $cdp_items) {
+                                $proposed = PassThroughEvidence::propose(
+                                    $passHosts, $passFdb, $passCaps, $cdp_items,
+                                    $edges, $host_uplink, time()
+                                );
+                                if ($proposed) {
+                                    $edges = array_merge($edges, $proposed);
+                                }
+                            }
                         }
                     }
                 }
