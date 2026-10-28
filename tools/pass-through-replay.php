@@ -155,8 +155,9 @@ function replay(array $hosts, array $walk, array $caps, array $cdp,
             }
         }
     }
+    $diagnostics = [];
     $new = PassThroughEvidence::propose(
-        $hosts, $walk, $caps, $cdp, $edges, $manual, $now
+        $hosts, $walk, $caps, $cdp, $edges, $manual, $now, $diagnostics
     );
     $linked = [];
     foreach ($edges as $edge) {
@@ -185,6 +186,7 @@ function replay(array $hosts, array $walk, array $caps, array $cdp,
         'original_edges' => count($edges),
         'isolated_before' => $isolatedBefore,
         'new_inferred_candidates' => count($new),
+        'diagnostics' => $diagnostics, // Aggregate counts, no host, port or MAC IDs.
         'edges_theoretical_after' => count($edges) + count($new),
         'isolated_theoretical_after' => $isolatedBefore - count($new),
         'confidence' => 'inferred_only_not_physical',
