@@ -63,22 +63,22 @@ Only synthetic fixtures may be committed. Keep all customer snapshots and diagno
 
 ## ADR-014 operational rule: Git as the deployment source
 
-**ACCEPTED operator preference, 2026-10-29.** All future new customer installs and updates to proxy-side tooling are **Git-driven**, using \`git@github.com:Liberamente/zabbix-tools.git\` (SSH), with a fixed commit SHA for each rollout. Frontend topology updates likewise derive from \`git@github.com:Liberamente/zabbix-network-topology.git\` on the Zabbix frontend **host**.
+**ACCEPTED operator preference, 2026-10-29.** All future new customer installs and updates to proxy-side tooling are **Git-driven**, using `git@github.com:Liberamente/zabbix-tools.git` (SSH), with a fixed commit SHA for each rollout. Frontend topology updates likewise derive from `git@github.com:Liberamente/zabbix-network-topology.git` on the Zabbix frontend **host**.
 
-- \`zabbix-tools\` resides on the Zabbix **proxies** (where discovery/collector scripts run). Place source in an access-controlled Git working copy and installed copies in \`/opt/zabbix-tools/releases/<full-sha>/\`; use controlled symlinks for executable entrypoints. Preserve \`/etc/zabbix\` runtime configuration, credentials, and permissions outside Git. Roll back by restoring the previous release symlinks, never changing Zabbix server items or hosts as a side effect.
-- \`network_topology\` PHP/JS resides in the **central frontend**, not on proxies. For the Docker web frontend, maintain the Git checkout outside its published webroot; identify the actual host-side bind source by inspecting \`zabbix-web\` before touching files. Build and stage a fixed Git commit outside webroot, verify bundle/tests, back up the mounted module outside webroot, then perform a separately approved cutover with a tested rollback. **Never clone a Git working tree under \`/usr/share/zabbix/modules\`.** Never point a symlink inside a Docker bind mount to a host-only path which the container cannot resolve.
+- `zabbix-tools` resides on the Zabbix **proxies** (where discovery/collector scripts run). Place source in an access-controlled Git working copy and installed copies in `/opt/zabbix-tools/releases/<full-sha>/`; use controlled symlinks for executable entrypoints. Preserve `/etc/zabbix` runtime configuration, credentials, and permissions outside Git. Roll back by restoring the previous release symlinks, never changing Zabbix server items or hosts as a side effect.
+- `network_topology` PHP/JS resides in the **central frontend**, not on proxies. For the Docker web frontend, maintain the Git checkout outside its published webroot; identify the actual host-side bind source by inspecting `zabbix-web` before touching files. Build and stage a fixed Git commit outside webroot, verify bundle/tests, back up the mounted module outside webroot, then perform a separately approved cutover with a tested rollback. **Never clone a Git working tree under `/usr/share/zabbix/modules`.** Never point a symlink inside a Docker bind mount to a host-only path which the container cannot resolve.
 - Git commit SHA and deploy journal (host, timestamp, backup path, module bundle hash, pre/post counts, exact scripts) are authoritative. A standalone ZIP is a CI validation artifact, **not the standard installation transport** and not a replacement for the corresponding pinned Git commit.
-- No \`git pull\` of a moving branch for running services. Fetch, verify and deploy an immutable known SHA. No modification of customer environments without a recorded GO.
-- On the currently monitored Docker frontend, the operator supplied 5 installed-file SHA-256 fingerprints. All 5 were found equal to the known public \`feature/voip-passthrough-evidence-20261027\` commit \`2090203f1b4382ef5597eeb6e4d42e43f483ba75\`. The downstream cascade commit \`9cf2c815448595a0c0633d140c7832a9f049e45b\` matched 4/5; the difference was \`topology/PassThroughEvidence.php\`. This **is not a proof of complete tree identity**. The exact host bind source, backups, and rollback dry-run are not yet confirmed.
+- No `git pull` of a moving branch for running services. Fetch, verify and deploy an immutable known SHA. No modification of customer environments without a recorded GO.
+- On the currently monitored Docker frontend, the operator supplied 5 installed-file SHA-256 fingerprints. All 5 were found equal to the known public `feature/voip-passthrough-evidence-20261027` commit `2090203f1b4382ef5597eeb6e4d42e43f483ba75`. The downstream cascade commit `9cf2c815448595a0c0633d140c7832a9f049e45b` matched 4/5; the difference was `topology/PassThroughEvidence.php`. This **is not a proof of complete tree identity**. The exact host bind source, backups, and rollback dry-run are not yet confirmed.
 
 ### Mandatory Git / mounted frontend preflight (read-only)
 
-\`\`\`bash
+```bash
 docker inspect zabbix-web --format '{{range .Mounts}}{{if eq .Destination "/usr/share/zabbix/modules"}}SOURCE={{.Source}} TYPE={{.Type}} RW={{.RW}}{{end}}{{end}}'
 docker inspect zabbix-web --format 'IMAGE_ID={{.Image}} RUNNING={{.State.Running}}'
 GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8' \
   git ls-remote git@github.com:Liberamente/zabbix-network-topology.git \
   refs/heads/release/topology-beta1-rc1-20261029
-\`\`\`
+```
 
 Run these on the **Docker host**, not on a proxy; if Git SSH auth fails, stop and set up verified SSH keys / known_hosts, without exposing private keys or tokens. Do not launch an installer after these commands; first establish the backup/rollback procedure against the discovered bind source.
