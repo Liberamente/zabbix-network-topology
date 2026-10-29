@@ -1,0 +1,94 @@
+name: beta-package-rc1
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/beta-package.yml"
+      - "BETA-RELEASE-CANDIDATE.md"
+      - "actions/**"
+      - "assets/**"
+      - "include/**"
+      - "topology/**"
+      - "views/**"
+      - "manifest.json"
+      - "package.json"
+      - "package-lock.json"
+      - "tools/**"
+      - "widget/**"
+      - "widget_health/**"
+      - "widget_table/**"
+      - "widget_kpi/**"
+      - "widget_items/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build isolated beta ZIP and SHA256
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Verify pinned source and build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          for tool in rsync zip unzip sha256sum; do
+            command -v "$tool" >/dev/null || { echo "$tool missing"; exit 1; }
+          done
+          git status --porcelain
+          git rev-parse HEAD
+      - name: Clean install and compile
+        run: |
+          npm ci
+          npm run ci:templates
+          npm run ci:frontend
+          npm run build
+          git diff --exit-code -- assets/js/dist/nt-bundle.js
+      - name: Package main frontend module only, excluding development source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/beta-stage/network_topology" "$GITHUB_WORKSPACE/dist"
+          rsync -a \
+            --exclude '.git' --exclude '.claude' --exclude '.vscode' --exclude '.idea' \
+            --exclude '.github' --exclude 'screenshots' --exclude 'dashboards' \
+            --exclude 'widget' --exclude 'widget_health' --exclude 'widget_table' \
+            --exclude 'widget_kpi' --exclude 'widget_items' \
+            --exclude 'tools' --exclude 'templates' --exclude 'tests' \
+            --exclude 'node_modules' --exclude 'package.json' --exclude 'package-lock.json' \
+            --exclude '.DS_Store' --exclude '*.zip' --exclude '*.map' --exclude '*.bak' \
+            --exclude '.env*' --exclude 'nt_smtp_password' --exclude '.gitignore' \
+            --exclude 'deploy.sh' --exclude 'nt-*.sh' \
+            --exclude 'CLAUDE.md' --exclude 'ROADMAP.md' \
+            --exclude 'eslint.config.mjs' --exclude 'eslint-suppressions.json' \
+            --exclude 'BETA-RELEASE-CANDIDATE.md' \
+            "$GITHUB_WORKSPACE/" "$RUNNER_TEMP/beta-stage/network_topology/"
+          printf 'Candidate: beta1-rc1\nSource commit: %s\nManifest version: 5.5.27\nStatus: NOT DEPLOYED / NOT APPROVED\n' \
+            "$(git rev-parse HEAD)" > "$RUNNER_TEMP/beta-stage/network_topology/BETA-BUILD-INFO.txt"
+          test -f "$RUNNER_TEMP/beta-stage/network_topology/manifest.json"
+          test -s "$RUNNER_TEMP/beta-stage/network_topology/assets/js/dist/nt-bundle.js"
+          (cd "$RUNNER_TEMP/beta-stage" && zip -qr "$GITHUB_WORKSPACE/dist/network_topology-beta1-rc1.zip" network_topology)
+          unzip -t "$GITHUB_WORKSPACE/dist/network_topology-beta1-rc1.zip" >/dev/null
+          if unzip -Z1 "$GITHUB_WORKSPACE/dist/network_topology-beta1-rc1.zip" | \
+            grep -E '(^|/)(\\.git|\\.github|node_modules|tests|tools|templates)/|\\.map$|/\\.env'; then
+            echo "Forbidden path inside webroot ZIP" >&2
+            exit 1
+          fi
+          (cd "$GITHUB_WORKSPACE/dist" && sha256sum network_topology-beta1-rc1.zip > network_topology-beta1-rc1.zip.sha256)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: network-topology-beta1-rc1
+          path: |
+            dist/network_topology-beta1-rc1.zip
+            dist/network_topology-beta1-rc1.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
