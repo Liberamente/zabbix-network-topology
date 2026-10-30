@@ -38,7 +38,9 @@ final class PassThroughEvidence
         array $edges,
         array $manualUplinks,
         int $now,
-        ?array &$diagnostics = null
+        ?array &$diagnostics = null,
+        array $chassisItems = [],
+        array $trunkItems = []
     ): array {
         // Optional aggregate counters: NEVER include host IDs, MACs or ports.
         $diagnostics = ['identified_phone_ports' => 0,
@@ -107,12 +109,12 @@ final class PassThroughEvidence
             $switch = (string) $hit['hostid'];
             $port = (string) $hit['port'];
             $mac = strtolower((string) $hit['mac']);
-            if (self::aggregate($port)) {
-                continue;
-            }
             $place = self::place($switch, $port);
             $locations[$mac][$place] = $hit; // collapse repeated VLAN entries
-            $portMacs[$place][$mac] = true;
+            // Audit aggregate FDB copies; discount only verified trunk transit.
+            if (!self::aggregate($port)) {
+                $portMacs[$place][$mac] = true;
+            }
         }
 
         // Only ARP-derived identities qualify for this first pilot. Never
@@ -146,6 +148,13 @@ final class PassThroughEvidence
             $class = self::phoneBridge((string) ($item['lastvalue'] ?? ''))
                 ? 'phone' : 'other';
             $capByPort[$place][$class] = ($capByPort[$place][$class] ?? 0) + 1;
+            if ($class === 'phone') {
+                $chassisKey = str_replace(
+                    'lldpRemSysCapEnabled[', 'lldpRemChassisId[',
+                    (string) $item['key_']
+                );
+                $capByPort[$place]['phone_chassis_keys'][$chassisKey] = true;
+            }
             $capByPort[$place]['ts'] = max(
                 (int) ($capByPort[$place]['ts'] ?? 0),
                 (int) $item['lastclock']
@@ -168,6 +177,27 @@ final class PassThroughEvidence
             }
         }
 
+        // The matching LLDP chassis ID MUST use the identical SNMPINDEX
+        // as a fresh Bridge+Telephone capability on the same switch port.
+        $chassisMacs = [];
+        foreach ($chassisItems as $item) {
+            $sw = (string) ($item['hostid'] ?? '');
+            $key = (string) ($item['key_'] ?? '');
+            if (!isset($bySwitch[$sw]) || !self::valid($item, $now, self::NEIGHBOR_TTL)
+                    || !preg_match('/^lldpRemChassisId\[\d+\.\d+\.\d+\]$/D', $key)) {
+                continue;
+            }
+            $parsed = self::macSixOctets((string) ($item['lastvalue'] ?? ''));
+            if ($parsed === null) {
+                continue;
+            }
+            if (array_key_exists($key, $chassisMacs[$sw] ?? [])) {
+                $chassisMacs[$sw][$key] = null; // conflicting duplicate
+            } else {
+                $chassisMacs[$sw][$key] = $parsed;
+            }
+        }
+
         $phoneByPort = [];
         foreach ($cdpItems as $item) {
             $switch = (string) ($item['hostid'] ?? '');
@@ -183,26 +213,52 @@ final class PassThroughEvidence
                     || ($capByPort[$place]['other'] ?? 0) !== 0) {
                 continue;
             }
-            $ip = self::cdpIPv4((string) ($item['lastvalue'] ?? ''));
+            $rawId = (string) ($item['lastvalue'] ?? '');
+            $ip = self::cdpIPv4($rawId);
             $proxy = (string) ($hosts[$switch]['proxyid'] ?? '0');
-            if ($ip === null || $proxy === '0'
-                    || count($ipOwners[$proxy][$ip] ?? []) !== 1) {
+            if ($proxy === '0') {
                 continue;
             }
-            $phone = (string) array_key_first($ipOwners[$proxy][$ip]);
-            if ($phone === $switch) {
+            $phone = null;
+            $identity = '';
+            if ($ip !== null) {
+                if (count($ipOwners[$proxy][$ip] ?? []) !== 1) {
+                    continue;
+                }
+                $phone = (string) array_key_first($ipOwners[$proxy][$ip]);
+                $identity = 'cdp_01_ipv4';
+            } else {
+                // A six-octet CDP ID cannot identify a host on its own.
+                // Require a unique ARP owner AND same-index LLDP chassis.
+                $idMac = self::macSixOctets($rawId);
+                if ($idMac === null || count($macOwners[$idMac] ?? []) !== 1
+                        || ($capByPort[$place]['phone'] ?? 0) !== 1) {
+                    continue;
+                }
+                $phone = (string) array_key_first($macOwners[$idMac]);
+                $indices = array_keys($capByPort[$place]['phone_chassis_keys'] ?? []);
+                if (count($indices) !== 1
+                        || ($chassisMacs[$switch][$indices[0]] ?? null) !== $idMac) {
+                    continue;
+                }
+                $identity = 'cdp_mac6_lldp_chassis_arp';
+            }
+            if ($phone === $switch
+                    || (string) ($hosts[$phone]['proxyid'] ?? '0') !== $proxy) {
                 continue;
             }
             $phoneByPort[$place][$phone] = [
                 'switch' => $switch,
                 'port' => $port,
                 'ts' => (int) $item['lastclock'],
+                'identity' => $identity,
             ];
         }
 
         $linked = [];
         $upstream = [];
         $verifiedSwitchUplinks = [];
+        $reciprocalMemberPairs = [];
         foreach ($edges as $edge) {
             $from = (string) ($edge['from'] ?? '');
             $to = (string) ($edge['to'] ?? '');
@@ -246,8 +302,19 @@ final class PassThroughEvidence
                 $portTo = self::verifiedSwitchPort($to, $edge, $ifNames);
                 if ($proxyFrom !== '0' && $proxyFrom === $proxyTo
                         && $portFrom !== null && $portTo !== null) {
-                    $verifiedSwitchUplinks[self::place($from, $portFrom)] = true;
-                    $verifiedSwitchUplinks[self::place($to, $portTo)] = true;
+                    $aPlace = self::place($from, $portFrom);
+                    $bPlace = self::place($to, $portTo);
+                    $verifiedSwitchUplinks[$aPlace] = true;
+                    $verifiedSwitchUplinks[$bPlace] = true;
+                    // Ports reused by different edges become ambiguous.
+                    foreach ([$aPlace => $bPlace, $bPlace => $aPlace] as $a => $b) {
+                        if (array_key_exists($a, $reciprocalMemberPairs)
+                                && $reciprocalMemberPairs[$a] !== $b) {
+                            $reciprocalMemberPairs[$a] = null;
+                        } elseif (!array_key_exists($a, $reciprocalMemberPairs)) {
+                            $reciprocalMemberPairs[$a] = $b;
+                        }
+                    }
                 }
             }
             foreach ([$from => $to, $to => $from] as $switch => $peer) {
@@ -265,6 +332,13 @@ final class PassThroughEvidence
                 }
             }
         }
+
+        // Vendor adapter checks ALL local HPE static trunks and their
+        // opposite switch members before any FDB aggregate is ignored.
+        $verifiedAggregates = $trunkItems
+            ? HpeStaticTrunkEvidence::verifiedPlaces(
+                $trunkItems, $ifNames, $reciprocalMemberPairs, $now
+            ) : [];
 
         $diagnostics['identified_phone_ports'] = count($phoneByPort);
         $proposals = [];
@@ -297,7 +371,7 @@ final class PassThroughEvidence
             $phoneMac = strtolower((string) $phoneMacs[0]);
             if (count($macOwners[$phoneMac] ?? []) !== 1
                     || !self::uniqueAccessWithUplinks(
-                        $locations[$phoneMac] ?? [], $place, $verifiedSwitchUplinks)) {
+                        $locations[$phoneMac] ?? [], $place, $verifiedSwitchUplinks, $verifiedAggregates)) {
                 self::reject($diagnostics, 'phone_fdb_location_not_unique');
                 continue;
             }
@@ -309,7 +383,7 @@ final class PassThroughEvidence
             $downstreamMac = $otherMacs[0];
             if (count($macOwners[$downstreamMac] ?? []) !== 1
                     || !self::uniqueAccessWithUplinks(
-                        $locations[$downstreamMac] ?? [], $place, $verifiedSwitchUplinks)) {
+                        $locations[$downstreamMac] ?? [], $place, $verifiedSwitchUplinks, $verifiedAggregates)) {
                 self::reject($diagnostics, 'downstream_arp_fdb_not_unique');
                 continue;
             }
@@ -352,7 +426,7 @@ final class PassThroughEvidence
                 'via_switch' => $switch,
                 'via_switch_port' => $observation['port'],
                 'evidence' => [
-                    'cdp_01_ipv4', 'lldp_bridge_telephone',
+                    $observation['identity'], 'lldp_bridge_telephone',
                     'arp_ip_mac', 'fdb_two_macs_same_port',
                     'existing_switch_phone_edge',
                 ],
@@ -381,7 +455,8 @@ final class PassThroughEvidence
      * FDB location can justify a downstream phone association.
      */
     private static function uniqueAccessWithUplinks(
-        array $locations, string $accessPlace, array $verifiedUplinks
+        array $locations, string $accessPlace, array $verifiedUplinks,
+        array $verifiedAggregates
     ): bool {
         if (!isset($locations[$accessPlace])
                 || isset($verifiedUplinks[$accessPlace])) {
@@ -392,8 +467,14 @@ final class PassThroughEvidence
             if ($place === $accessPlace) {
                 continue;
             }
-            if ((string) ($hit['hostid'] ?? '') === $sourceSwitch
-                    || !isset($verifiedUplinks[$place])) {
+            if ((string) ($hit['hostid'] ?? '') === $sourceSwitch) {
+                return false;
+            }
+            if (self::aggregate((string) ($hit['port'] ?? ''))) {
+                if (!isset($verifiedAggregates[$place])) {
+                    return false; // unknown aggregate, do not guess
+                }
+            } elseif (!isset($verifiedUplinks[$place])) {
                 return false;
             }
         }
@@ -458,6 +539,17 @@ final class PassThroughEvidence
         }
         $parts = preg_split('/\s+/', trim($raw));
         return implode('.', array_map('hexdec', array_slice($parts, 1)));
+    }
+
+    private static function macSixOctets(string $raw): ?string
+    {
+        // Strict six textual hex octets. Opaque CDP Device IDs are excluded.
+        $text = trim($raw);
+        if (!preg_match('/^[0-9a-fA-F]{2}(?:\s+[0-9a-fA-F]{2}){5}$/D', $text)) {
+            return null;
+        }
+        return strtolower(str_replace(' ', ':',
+            preg_replace('/\s+/', ' ', $text)));
     }
 
     private static function phoneBridge(string $raw): bool

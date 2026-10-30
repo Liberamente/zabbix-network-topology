@@ -971,9 +971,31 @@ class NetworkTopologyData extends NetworkTopologyController {
                                 'monitored' => true,
                             ]);
                             if (is_array($cdp_items) && $cdp_items) {
+                                // Both reads stay within already permitted
+                                // FDB-source switches of this group/proxy.
+                                $chassis_items = API::Item()->get([
+                                    'output' => ['hostid', 'key_', 'lastclock',
+                                                'lastvalue', 'status', 'state'],
+                                    'hostids' => $passScope['switch_ids'],
+                                    'search' => ['key_' => 'lldpRemChassisId'],
+                                    'monitored' => true,
+                                ]);
+                                $trunk_items = API::Item()->get([
+                                    'output' => ['hostid', 'key_', 'lastclock',
+                                                'lastvalue', 'status', 'state'],
+                                    'hostids' => $passScope['switch_ids'],
+                                    'filter' => ['key_' => [
+                                        'nt.hpe.trunk.group',
+                                        'nt.hpe.trunk.type',
+                                    ]],
+                                    'monitored' => true,
+                                ]);
+                                $passDiagnostics = null;
                                 $proposed = PassThroughEvidence::propose(
                                     $passHosts, $passFdb, $passCaps, $cdp_items,
-                                    $edges, $host_uplink, time()
+                                    $edges, $host_uplink, time(), $passDiagnostics,
+                                    is_array($chassis_items) ? $chassis_items : [],
+                                    is_array($trunk_items) ? $trunk_items : []
                                 );
                                 if ($proposed) {
                                     $edges = array_merge($edges, $proposed);
