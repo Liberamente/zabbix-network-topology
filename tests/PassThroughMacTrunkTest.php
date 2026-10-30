@@ -125,6 +125,21 @@ $f = pmtFixture();
 $before = serialize($f);
 $diags = [];
 $rows = pmtRun($f, $diags);
+if (count($rows) !== 1) {
+    $trunksDebug = \Modules\NetworkTopology\Topology\HpeStaticTrunkEvidence::verifiedPlaces(
+        $f[6],
+        ['100' => ['7' => 'Gi7','23' => 'Gi23','24' => 'Gi24','60' => 'Trk1'],
+         '200' => ['47' => 'Gi47','48' => 'Gi48','60' => 'Trk1']],
+        ['100|gi23'=>'200|gi47','200|gi47'=>'100|gi23',
+         '100|gi24'=>'200|gi48','200|gi48'=>'100|gi24'],
+        PMT_NOW
+    );
+    echo 'DIAGNOSTIC_MAC_TRUNK=' . json_encode([
+        'proposal_count' => count($rows),
+        'diagnostics' => $diags,
+        'verified_aggregates' => array_keys($trunksDebug),
+    ]) . "\n";
+}
 pmtCheck(count($rows) === 1, 'unique MAC6 + LLDP chassis + full static trunk accepted');
 pmtCheck($rows[0]['from'] === '101' && $rows[0]['to'] === '102',
     'real phone and endpoint host IDs on the SAME scoped proxy');
