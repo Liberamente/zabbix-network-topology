@@ -347,6 +347,119 @@ export function buildEdgeElements(edges, nodes) {
             return;
         }
 
+        // A Wi-Fi association is NOT a physical cable. Never estimate traffic,
+        // interface errors, link state or per-port Ethernet metrics for it.
+        if (e.match === 'wifi' || (Array.isArray(e.src) && e.src.includes('wifi'))) {
+            const signal = Number(e.signal_dbm);
+            const hasSignal = e.signal_dbm !== undefined && e.signal_dbm !== null
+                           && Number.isFinite(signal) && signal < 0 && signal >= -150;
+            elements.push({
+                data: {
+                    id: e.id || ('wifi_' + src + '_' + tgt),
+                    source: src, target: tgt,
+                    kind: 'wifi', isLLDP: false,
+                    src: ['wifi'], reporters: e.reporters || [],
+                    matchKind: 'wifi', portMatch: e.port_match || 'association',
+                    confirmed: false,
+                    confidence: (typeof e.confidence === 'number') ? e.confidence : null,
+                    signalDbm: hasSignal ? signal : null,
+                    radioIfIndex: (e.port_idx && e.port_idx[src]) || '',
+                    trafficIn: 0, trafficOut: 0, trafficCap: 0,
+                    portSrc: '', portTgt: '', portSrcIdx: '', portTgtIdx: '',
+                    ifaceDown: 0, ifaceErr: 0, ifaceDrop: 0, ifaceDownRatio: 0,
+                    tLabel: hasSignal ? (signal + ' dBm') : ''
+                }
+            });
+            return;
+        }
+
+        // Ethernet pass-through: the switch has learned two MACs on a phone
+        // port, and CDP/LLDP/ARP agree about the phone and downstream device.
+        // This is a transitive association, NOT a verified copper cable.
+        // Port metrics belong to the switch's shared port, never this edge.
+        if (e.match === 'pass_through_inferred') {
+            elements.push({
+                data: {
+                    id: e.id || ('pass_through_' + src + '_' + tgt),
+                    source: src, target: tgt,
+                    kind: 'pass_through', isLLDP: false,
+                    src: Array.isArray(e.src) ? e.src : [],
+                    evidence: Array.isArray(e.evidence) ? e.evidence : [],
+                    confirmed: false,
+                    confidence: typeof e.confidence === 'number'
+                        ? e.confidence : null,
+                    matchKind: 'pass_through_inferred',
+                    portMatch: e.port_match || 'same_switch_port',
+                    viaSwitch: e.via_switch || '',
+                    viaSwitchPort: e.via_switch_port || '',
+                    lastSeen: e.last_seen || 0,
+                    fdbSharedPort: true,
+                    portSrc: '', portTgt: '', portSrcIdx: '', portTgtIdx: '',
+                    trafficIn: 0, trafficOut: 0, trafficCap: 0, capBps: 0,
+                    perLink: false, portDown: null, portErr: null,
+                    portDrop: null, ifaceDown: 0, ifaceErr: 0,
+                    ifaceDrop: 0, ifaceDownRatio: 0, tLabel: ''
+                }
+            });
+            return;
+        }
+
+        // One-sided LLDP observation reconciled with ARP and FDB.
+        // This is not a reciprocally confirmed physical cable.
+        // Never borrow aggregate host traffic, speed or health.
+        if (e.match === 'lldp_portid') {
+            elements.push({
+                data: {
+                    id: e.id || ('lldp_portid_' + src + '_' + tgt),
+                    source: src, target: tgt,
+                    kind: 'lldp_portid', isLLDP: true,
+                    src: ['lldp'], reporters: e.reporters || [],
+                    matchKind: 'lldp_portid',
+                    evidence: Array.isArray(e.evidence) ? e.evidence : [],
+                    portMatch: e.port_match || 'lldp_local_fdb',
+                    confirmed: false,
+                    confidence: typeof e.confidence === 'number'
+                        ? e.confidence : null,
+                    portSrc: (e.ports && e.ports[src]) || '',
+                    portTgt: '',
+                    portSrcIdx: '', portTgtIdx: '',
+                    fdbSharedPort: e.fdb_shared_port === true,
+                    trafficIn: 0, trafficOut: 0, capBps: 0,
+                    perLink: false,
+                    portDown: null, portErr: null, portDrop: null,
+                    ifaceDown: 0, ifaceErr: 0, ifaceDrop: 0,
+                    ifaceDownRatio: 0,
+                    tLabel: ''
+                }
+            });
+            return;
+        }
+
+        // Native FDB + ARP MAC-learning association. Evidence establishes
+        // the switch port that learned this MAC, NOT a direct Ethernet cable.
+        // Keep inferred links distinct from LLDP and avoid borrowed host
+        // traffic/health values, which would assert a measurement never made.
+        if (e.match === 'fdb' || (Array.isArray(e.src) && e.src.includes('fdb'))) {
+            elements.push({
+                data: {
+                    id: e.id || ('fdb_' + src + '_' + tgt),
+                    source: src, target: tgt, kind: 'fdb', isLLDP: false,
+                    src: ['fdb'], confirmed: false,
+                    confidence: (typeof e.confidence === 'number') ? e.confidence : null,
+                    matchKind: 'fdb', portMatch: 'learned',
+                    portSrc: (e.ports && e.ports[src]) || '',
+                    portTgt: '', portSrcIdx: (e.port_idx && e.port_idx[src]) || '',
+                    portTgtIdx: '', fdbSharedPort: e.fdb_shared_port === true,
+                    lastSeen: e.last_seen || 0, vlan: e.vlan || null,
+                    trafficIn: 0, trafficOut: 0, capBps: 0,
+                    perLink: false, portDown: null, portErr: null, portDrop: null,
+                    ifaceDown: 0, ifaceErr: 0, ifaceDrop: 0, ifaceDownRatio: 0,
+                    tLabel: ''
+                }
+            });
+            return;
+        }
+
         // §9 Ghost-Kanten: KEINE Traffic-Berechnung. Sonst erbt die Kante den
         // Node-Summen-Traffic des meldenden Hosts (der Ghost selbst hat 0) und
         // die Weathermap faerbt sie als hoch ausgelastet — voellig irrefuehrend
@@ -400,6 +513,32 @@ export function buildEdgeElements(edges, nodes) {
             return;
         }
 
+        // Verified trunk pilot: ONE logical edge for the complete 2-member
+        // aggregate. No inferred port traffic or host-wide utilization:
+        // the structural blue edge is evidence, not operational status.
+        if (e.nt_verified_static_trunk === true && e.nt_offline_preview === true) {
+            const ports = e.ports || {};
+            const indices = e.port_idx || {};
+            elements.push({
+                data: {
+                    id: e.id, source: src, target: tgt,
+                    isLLDP: true, ntVerified: true,
+                    ntMembers: Array.isArray(e.nt_members) ? e.nt_members : [],
+                    ntMemberCount: e.nt_member_count,
+                    portSrc: ports[src] || '', portTgt: ports[tgt] || '',
+                    portSrcIdx: indices[src] || '', portTgtIdx: indices[tgt] || '',
+                    tLabel: '×' + e.nt_member_count + ' · LLDP',
+                    src: ['lldp'], confirmed: true,
+                    reporters: [src, tgt],
+                    trafficIn: 0, trafficOut: 0,
+                    perLink: false, capBps: 0,
+                    portDown: null, portErr: null, portDrop: null,
+                    ifaceDown: 0, ifaceErr: 0, ifaceDrop: 0,
+                    ifaceDownRatio: 0
+                }
+            });
+            return;
+        }
         const srcNode = nodeById[src];
         const tgtNode = nodeById[tgt];
         const tIn  = (srcNode && srcNode.traffic ? srcNode.traffic.in  : 0)

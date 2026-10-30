@@ -429,8 +429,19 @@ final class LldpEdgeBuilder {
                 // Kanten zu Switches, die nichts miteinander zu tun haben.
                 $mac = $rhid ? null : self::macForm($neighbor_full);
 
+                // CDP Device-ID can contain an opaque, space-delimited hex
+                // sequence that is NOT a six-byte MAC (e.g. five bytes).
+                // cleanNeighbor() would truncate it to the first byte and
+                // could match an unrelated host named "01". Preserve the
+                // complete observation and do not apply name fallbacks.
+                // An exact match on the full original value remains valid.
+                $opaque_hex = $mac === null
+                    && preg_match('/^(?:[0-9a-fA-F]{2}\\s+){1,}[0-9a-fA-F]{2}$/D', $neighbor_full) === 1;
+
                 $neighbor_raw = $rhid ? $neighbor_full
-                    : ($mac !== null ? $mac : $cleanNeighbor($neighbor_full));
+                    : ($mac !== null || $opaque_hex
+                        ? ($mac ?? $neighbor_full)
+                        : $cleanNeighbor($neighbor_full));
                 if ($neighbor_raw === '') continue;
                 $lldp_val = strtolower($neighbor_raw);
 
@@ -451,7 +462,7 @@ final class LldpEdgeBuilder {
                         $alias_mehrdeutig = array_values($mac_kandidaten);
                     }
                 }
-                if ($mac === null) {
+                if ($mac === null && !$opaque_hex) {
                     // 1. Exakter Match gegen cleaned host/visiblename/lowercase
                     if (!$rhid) {
                         $rhid = $name_map[$lldp_val] ?? null;
@@ -574,6 +585,11 @@ final class LldpEdgeBuilder {
                     // liefert. Ueber denselben SNMPINDEX wie der SysName —
                     // dieselbe Nachbar-Zeile in der lldpRemTable.
                     $entry = ['raw' => $neighbor_raw, 'src' => $src];
+                    if ($src === 'lldp') {
+                        $entry['index'] = HostMetadata::ifaceParam(
+                            (string) ($item['key_'] ?? '')
+                        );
+                    }
                     // DER PORT, AN DEM DER GEIST HAENGT.
                     //
                     // Das ist die Frage, wegen der ein Nutzer dieses Modul
@@ -1159,6 +1175,11 @@ final class LldpEdgeBuilder {
             $port_idx = $port;
             if ($port !== '' && isset($port_names[$rid][$port]) && $port_names[$rid][$port] !== '') {
                 $port = $port_names[$rid][$port];
+            } elseif ($port === '0' && preg_match('/^\\d+\\.0\\.\\d+$/', $idx)) {
+                // Some LLDP agents report LocalPortNum=0. It is an LLDP
+                // index, not proof of a physical interface named "0".
+                // Label only: preserve port_idx and evidence identity.
+                $port = 'LLDP index 0';
             }
             $port = self::capLabel($port);
         }
@@ -1811,6 +1832,17 @@ final class LldpEdgeBuilder {
      * Bit-Reihenfolge nach lldpRemSysCapEnabled, hoechstwertiges Bit zuerst.
      */
     private static function decodeCaps(string $raw): array {
+        // LLDP capabilities may arrive as raw binary octets.
+        // Normalize before trim(), which would discard space (0x20)
+        // and NUL (0x00). Preserve printable hex and text forms.
+        $length = strlen($raw);
+        if ($length === 1
+                || ($length === 2
+                    && (ord($raw[0]) < 0x21 || ord($raw[0]) > 0x7e
+                        || ord($raw[1]) < 0x21 || ord($raw[1]) > 0x7e))) {
+            $raw = sprintf('%02X 00', ord($raw[0]));
+        }
+
         $raw = trim($raw);
         if ($raw === '') {
             return [];

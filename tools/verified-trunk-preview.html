@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Network Topology — Preview tecnica offline</title>
+<style>
+:root{color-scheme:dark;--bg:#081323;--surface:#122439;--surface2:#172e47;--line:#2e526e;--text:#e7f3ff;--muted:#a3bfd5;--cyan:#63bbec;--accent:#ffc783}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 22% 3%,#133955 0%,var(--bg) 49%,#071120 100%);color:var(--text);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+header{border-bottom:1px solid #385873;padding:20px 28px 18px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:15px;align-items:center;background:#0a1a2bd9}
+h1{font-size:20px;margin:0;letter-spacing:.01em}
+h2{font-size:15px;margin:0 0 9px}
+h3{font-size:12px;margin:20px 0 8px;color:var(--cyan);text-transform:uppercase;letter-spacing:.09em}
+small,.muted{color:var(--muted)}
+p{margin:6px 0 0}
+header p{margin-top:4px;font-size:12px;color:var(--muted)}
+.tag{display:inline-flex;font-size:10px;letter-spacing:.08em;font-weight:700;border:1px solid #52728c;color:#d5eafb;border-radius:5px;padding:3px 8px;vertical-align:middle;margin-right:9px}
+.controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+label.file-picker{display:inline-block;border-radius:8px;padding:10px 15px;background:#2378ac;color:#fff;font-weight:700;cursor:pointer;border:1px solid #4498ca}
+label.file-picker:focus-within{outline:2px solid var(--accent);outline-offset:3px}
+label.file-picker input{position:absolute;width:1px;height:1px;opacity:0}
+button{background:#183850;border:1px solid #5182a4;border-radius:8px;padding:10px 14px;color:#f2f9ff;cursor:pointer;font-weight:600}
+button:disabled{opacity:.4;cursor:default}
+button:not(:disabled):hover{background:#23526f}
+main{padding:19px 22px 26px;max-width:1900px;margin:0 auto}
+.intro{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.intro strong{font-size:14px}
+#nt-preview-help{font-size:12px;color:var(--muted)}
+#nt-preview-error{color:#ffe1ae;min-height:0;font-weight:600;margin-bottom:9px}
+.viewer{display:grid;grid-template-columns:minmax(0,1fr) 350px;gap:16px;align-items:stretch}
+.graph-panel,.detail-panel{border:1px solid #35546f;border-radius:14px;background:linear-gradient(158deg,#0c2136,#0a1a2f);box-shadow:0 7px 28px #0003;overflow:hidden}
+.graph-panel{min-height:560px;position:relative;background-color:#0c1e31;background-image:linear-gradient(#1b375325 1px,transparent 1px),linear-gradient(90deg,#1b375325 1px,transparent 1px);background-size:36px 36px}
+#nt-preview-graph{position:absolute;inset:0}
+.graph-head{pointer-events:none;position:absolute;z-index:2;top:18px;left:21px;border:1px solid #43627b;background:#102a40f5;border-radius:9px;padding:11px 14px}
+.graph-head div{font-size:12px;font-weight:700}
+.graph-head small{display:block;margin-top:3px;font-size:11px}
+.legend{pointer-events:none;position:absolute;z-index:2;bottom:16px;left:18px;right:18px;color:#accce0;font-size:11px;background:#0b1e30cb;border:1px solid #36546b;border-radius:8px;padding:9px 13px;display:flex;gap:18px;flex-wrap:wrap}
+.legend .line{display:inline-block;width:29px;height:0;border-top:4px solid #3298d6;vertical-align:middle;margin-right:7px}
+.legend .empty{display:inline-block;width:12px;height:12px;border:1px solid #9bb3c5;background:#223b50;border-radius:3px;vertical-align:middle;margin-right:8px}
+.detail-panel{padding:23px 21px;overflow-y:auto;max-height:780px}
+.nt-subtitle{font-size:12px;color:var(--muted);line-height:1.55;margin-bottom:18px}
+.nt-note{border:1px solid #425b74;background:#1b3146;border-radius:9px;padding:11px 12px;color:#b4cfe1;font-size:12px;line-height:1.6;margin-top:20px}
+.nt-kv{display:flex;justify-content:space-between;align-items:start;gap:10px;margin-bottom:9px;font-size:12px;border-bottom:1px solid #29435a;padding-bottom:8px}
+.nt-k{color:#9ebbd2;flex-shrink:0}
+.nt-v{font-weight:600;text-align:right;color:#e9f6ff;overflow-wrap:anywhere}
+.nt-member{margin:11px 0;border:1px solid #40647f;border-radius:10px;padding:12px;background:#122d45}
+.nt-member-title{font-size:13px;color:#fff;font-weight:800;padding-bottom:11px}
+.nt-member-time{color:#92b4cb;font-size:11px;padding-top:5px}
+footer{margin-top:16px;color:#9cb5c8;font-size:12px}
+footer strong{color:#d4e9fa}
+@media(max-width:950px){.viewer{grid-template-columns:1fr}.graph-panel{min-height:560px}.detail-panel{max-height:none}header{padding:17px}}
+@media(max-width:500px){main{padding:10px}.graph-panel{min-height:430px}header h1{font-size:17px}.graph-head{top:11px;left:12px}.legend{font-size:10px;padding:7px}}
+</style>
+</head>
+<body>
+<header>
+<div>
+  <h1><span class="tag">OFFLINE · READ ONLY</span> Network Topology — Preview tecnica</h1>
+  <p>Switch, LLDP reciproco e trunk statici · nessuna connessione al server Zabbix</p>
+</div>
+<div class="controls">
+  <label class="file-picker" for="report-file">Apri JSON della preview
+    <input id="report-file" type="file" accept=".json,application/json">
+  </label>
+  <button id="nt-preview-fit" type="button" disabled>Centra topologia</button>
+</div>
+</header>
+<main>
+<div class="intro">
+  <strong id="nt-preview-counts">Carica il payload JSON generato dall'adattatore PHP.</strong>
+  <span id="nt-preview-help">Le informazioni vengono lette soltanto dal file locale.</span>
+</div>
+<div id="nt-preview-error" role="alert"></div>
+<div class="viewer">
+  <section class="graph-panel" aria-label="Mappa interattiva della topologia offline">
+    <div class="graph-head">
+      <div>Technical topology · Trunk statici</div>
+      <small>Un arco per aggregazione · clicca sul collegamento</small>
+    </div>
+    <div id="nt-preview-graph"></div>
+    <div class="legend">
+      <span><span class="line"></span>Collegamento LLDP reciproco e trunk verificato</span>
+      <span><span class="empty"></span>Stato operativo non disponibile</span>
+      <span>Le cifre sugli archi indicano le coppie fisiche</span>
+    </div>
+  </section>
+  <aside class="detail-panel" id="nt-preview-detail" aria-live="polite"></aside>
+</div>
+<footer>
+<strong>Preview sicura:</strong> dati locali, nessuna API, nessuna pubblicazione,
+nessuno stato di salute inventato. Porte fisiche annidate nei quattro archi logici.
+La topology di produzione non viene modificata.
+</footer>
+</main>
+<script src="../assets/js/cytoscape.min.js"></script>
+<script src="../assets/js/nt-verified-trunk-model.js"></script>
+<script src="./verified-trunk-preview-app.js"></script>
+</body>
+</html>

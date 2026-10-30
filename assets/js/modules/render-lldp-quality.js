@@ -19,6 +19,7 @@
 import { esc, mkTabTheme, isDark, clearWrap } from './utils.js';
 import { t } from './i18n.js';
 import { showDeviceReport } from './device-report.js';
+import { renderCdpEvidenceTable } from './cdp-evidence-table.js';
 
 const COL_GOOD = '#16a34a';
 const COL_WARN = '#f59e0b';
@@ -235,6 +236,9 @@ export function renderLldpQuality(wrap) {
     // Grund, warum Nutzer dieses Modul fuer kaputt halten.
     if (!perHost.length) {
         root.appendChild(_makeDiv(_noDataBlock(theme)));
+        root.appendChild(_makeDiv(renderCdpEvidenceTable(
+            data.cdp_unmatched_evidence || [], theme
+        )));
         wrap.appendChild(root);
         return;
     }
@@ -242,6 +246,9 @@ export function renderLldpQuality(wrap) {
     root.appendChild(_makeDiv(_aggregateBlock(perHost, theme)));
     root.appendChild(_makeDiv(_perHostTable(perHost, theme)));
     root.appendChild(_makeDiv(_topUnmatchedTable(perHost, theme)));
+    root.appendChild(_makeDiv(renderCdpEvidenceTable(
+        data.cdp_unmatched_evidence || [], theme
+    )));
 
     wrap.appendChild(root);
 }

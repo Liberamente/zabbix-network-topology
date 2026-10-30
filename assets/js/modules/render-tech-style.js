@@ -101,6 +101,15 @@ export function buildCytoscapeStyle(dark, knotenzahl) {
             // target-label inline; hier nur die Offsets weg vom Node)
             'source-text-offset': 26, 'target-text-offset': 26,
         }},
+        // Isolated, manually enabled static-trunk preview. Blue means
+        // independent LLDP topology evidence, never link health or ping.
+        { selector: 'edge[?ntVerified]', style: {
+            'width': 4.5, 'line-color': '#278fc5', 'line-style': 'solid',
+            'line-cap': 'round', 'opacity': 0.95,
+            'font-size': 11, 'font-weight': 'bold',
+            'color': dark ? '#a0d6f6' : '#155f8b',
+            'source-text-offset': 31, 'target-text-offset': 31,
+        }},
         // Beschriftete Kante über die unbeschrifteten legen: in einem Bündel
         // trägt nur der Lead ein tLabel, die Geschwister werden aber NACH ihm
         // gezeichnet (Einfügereihenfolge) und ihre gestrichelte Linie lief
@@ -109,6 +118,14 @@ export function buildCytoscapeStyle(dark, knotenzahl) {
         // bleibt, die Box verdeckt also keine Knoten. Path-Highlight (999)
         // liegt weiterhin darüber.
         { selector: 'edge[?tLabel]', style: { 'z-index': 10 }},
+        // Measured radio association: not an Ethernet cable.
+        { selector: 'edge[kind = "wifi"]', style: {
+            'width': 2, 'line-color': '#0891b2', 'line-style': 'dashed',
+            'line-dash-pattern': [3, 7], 'opacity': 0.82,
+            'target-arrow-shape': 'none',
+            'color': dark ? '#67e8f9' : '#0e7490',
+            'font-size': 9,
+        }},
         // Hosting/Containment-Kante (nt:parent → build-elements kind=hosts):
         // gerichtet Parent→Child (Pfeil zeigt auf den gehosteten Host), violett
         // + fein gestrichelt, klar abgesetzt von gruenem LLDP und blauem Uplink.
@@ -188,6 +205,39 @@ export function buildCytoscapeStyle(dark, knotenzahl) {
             'line-style': 'dashed', 'line-dash-pattern': [2, 5],
             'opacity': 0.45, 'curve-style': 'straight',
             'label': '', 'source-text-offset': 0, 'target-text-offset': 0,
+        }},
+        // One-sided LLDP + corroborating ARP/FDB.
+        // Amber dashed: observed association, not confirmed cable.
+        { selector: 'edge[kind = "lldp_portid"]', style: {
+            'width': 2.5,
+            'line-color': dark ? '#fbbf24' : '#b45309',
+            'line-style': 'dashed',
+            'line-dash-pattern': [6, 5],
+            'opacity': 0.9,
+            'curve-style': 'straight',
+            'target-arrow-shape': 'none',
+            'label': '',
+            'source-text-offset': 26,
+            'target-text-offset': 0,
+        }},
+        // Distinct pass-through association: a possible phone-to-endpoint
+        // transit chain, NOT a measured cable or operational link.
+        { selector: 'edge[kind = "pass_through"]', style: {
+            'width': 2.5,
+            'line-color': dark ? '#fb923c' : '#c2410c',
+            'line-style': 'dashed', 'line-dash-pattern': [7, 3, 2, 3],
+            'opacity': 0.92, 'curve-style': 'straight',
+            'target-arrow-shape': 'none', 'label': '',
+            'source-text-offset': 0, 'target-text-offset': 0,
+        }},
+        // ARP+FDB is evidence of MAC learning on a switch port, not
+        // a confirmed direct cable. Amber/dotted never means link UP.
+        { selector: 'edge[kind = "fdb"]', style: {
+            'width': 2, 'line-color': dark ? '#fbbf24' : '#b45309',
+            'line-style': 'dotted', 'line-dash-pattern': [2, 6],
+            'opacity': 0.85, 'curve-style': 'straight',
+            'target-arrow-shape': 'none', 'label': '',
+            'source-text-offset': 26, 'target-text-offset': 0,
         }},
         // Manuell gezogene Kanten. Seit 5.0.1 gibt es zwei Ebenen, und man muss
         // ihnen ansehen, welche man vor sich hat: eine geteilte Kante ist eine

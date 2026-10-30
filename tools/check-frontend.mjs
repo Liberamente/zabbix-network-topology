@@ -1813,6 +1813,10 @@ const kpiZ = szenario('kpi-count', { lang: 'en_US' }, `
         mkEdge('eg', { _isGhostEdge: true }),      // Ghost
         mkEdge('ei', { _isInternetEdge: true }),   // Internet-Wolke
         mkEdge('eb', { _isBundleEdge: true }),     // Endgeraete-Buendel
+        // Evidence associations, not verified physical links.
+        mkEdge('lp', { kind: 'lldp_portid', isLLDP: true, confirmed: false }),
+        mkEdge('fd', { kind: 'fdb', isLLDP: false }),
+        mkEdge('wf', { kind: 'wifi', isLLDP: false }),
     ] };
     const g = collect([], cy);
     console.log(JSON.stringify({ edges: g.edges, manual: g.manual, lldp: g.lldp }));

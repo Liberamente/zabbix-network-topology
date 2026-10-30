@@ -221,6 +221,127 @@ export function showEdgeDetail(panel, ed, asMember) {
     head.appendChild(close);
     panel.appendChild(head);
 
+    if (d.kind === 'pass_through') {
+        // The topology knows the shared SWITCH port, but neither downstream
+        // telephone port nor the endpoint's physical connection.
+        const badges = el('div', 'display:flex;gap:4px;margin-bottom:3px');
+        badges.appendChild(pill(t('pass_through.association'), '#c2410c',
+            t('pass_through.note')));
+        panel.appendChild(badges);
+        section(panel, t('pass_through.evidence'));
+        row(panel, t('pass_through.sources'), 'CDP + LLDP + ARP + FDB');
+        row(panel, t('pass_through.switch_port'),
+            d.viaSwitchPort || t('wifi.unknown'));
+        hint(panel, t('pass_through.note'));
+        panel.appendChild(el('div',
+            'font-size:10px;color:var(--nt-muted,#94a3b8);'
+            + 'line-height:1.5;margin-top:8px',
+            t('pass_through.metrics')));
+        return;
+    }
+
+    if (d.kind === 'fdb') {
+        // The bridge FDB says only where a MAC was learned.
+        // Never display LLDP confirmation or fictitious per-link traffic.
+        const badge = el('div', 'display:flex;gap:4px;margin-bottom:3px');
+        badge.appendChild(pill('ARP + FDB', '#b45309', t('fdb.association')));
+        panel.appendChild(badge);
+        section(panel, t('fdb.learned'));
+        row(panel, sLbl, d.portSrc || t('wifi.unknown'));
+        if (d.fdbSharedPort) hint(panel, t('fdb.shared'));
+        panel.appendChild(el('div',
+            'font-size:10px;color:var(--nt-muted,#94a3b8);line-height:1.5;margin-top:8px',
+            t('fdb.note')));
+        return;
+    }
+
+    if (d.kind === 'lldp_portid') {
+        // Corroborated identity is not a confirmed physical cable.
+        const badges = el('div',
+            'display:flex;gap:4px;margin-bottom:3px');
+        badges.appendChild(pill(
+            t('lldp_portid.association'), '#b45309',
+            t('lldp_portid.onesided')
+        ));
+        panel.appendChild(badges);
+
+        section(panel, t('edge.sec.ports'));
+        row(panel, t('fdb.edge.port'),
+            d.portSrc || t('wifi.unknown'));
+
+        hint(panel, t('lldp_portid.onesided'));
+
+        if (d.fdbSharedPort) {
+            hint(panel, t('fdb.shared'));
+        }
+
+        panel.appendChild(el('div',
+            'font-size:10px;color:var(--nt-muted,#94a3b8);'
+            + 'line-height:1.5;margin-top:8px',
+            t('lldp_portid.note')));
+
+        panel.appendChild(el('div',
+            'font-size:10px;color:var(--nt-muted,#94a3b8);'
+            + 'line-height:1.5;margin-top:5px',
+            t('lldp_portid.metrics')));
+
+        return;
+    }
+
+    if (d.kind === 'wifi') {
+        // Radio association: never attribute host aggregate traffic, Ethernet
+        // interface state, capacity or per-port sparklines to this edge.
+        const badgeRow = el('div', 'display:flex;gap:4px;margin-bottom:3px');
+        badgeRow.appendChild(pill('WIFI', '#0891b2', t('wifi.registered')));
+        panel.appendChild(badgeRow);
+        section(panel, t('wifi.association'));
+        row(panel, t('wifi.source'), 'SNMP MikroTik');
+        const radio = String(d.radioIfIndex || '');
+        row(panel, t('wifi.radio'), radio ? 'ifIndex ' + radio : t('wifi.unknown'));
+        const sig = Number(d.signalDbm);
+        const signal = d.signalDbm !== null && d.signalDbm !== undefined
+            && Number.isFinite(sig) && sig < 0 && sig >= -150
+            ? String(sig) + ' dBm' : t('wifi.unknown');
+        row(panel, t('wifi.signal'), signal);
+        panel.appendChild(el('div',
+            'font-size:10px;color:var(--nt-muted,#94a3b8);line-height:1.45;margin-top:8px',
+            t('wifi.no_traffic')));
+        return;
+    }
+
+    // Isolated verified-trunk pilot: reveal both native LLDP/IF-MIB member
+    // pairs without presenting absent performance counters as measured zero.
+    // All values are added via textContent through el(), never innerHTML.
+    if (d.ntVerified) {
+        const intro = el('div',
+            'font-size:11px;color:var(--nt-text-2,#475569);line-height:1.55;'
+            + 'margin:9px 0;padding:9px;border:1px solid var(--nt-line,#e2e8f0);'
+            + 'border-radius:7px',
+            'COLLAUDO LIVE · LLDP reciproco e appartenenza a trunk HPE. '
+            + 'Le condizioni operative dei membri non sono ancora misurate.');
+        panel.appendChild(intro);
+        section(panel, 'Aggregazioni statiche');
+        row(panel, sLbl, d.portSrc || '?');
+        row(panel, tLbl, d.portTgt || '?');
+        row(panel, 'Porte fisiche', d.ntMemberCount || 0);
+        section(panel, 'Coppie fisiche verificate');
+        (d.ntMembers || []).forEach(function(m, i) {
+            const card = el('div', 'border:1px solid var(--nt-line,#e2e8f0);'
+                + 'padding:8px 9px;border-radius:7px;margin-bottom:8px');
+            card.appendChild(el('b', 'font-size:11px',
+                'Coppia ' + (i + 1) + ': ' + m.portA + ' ↔ ' + m.portB));
+            row(card, 'ifIndex', m.ifindexA + ' ↔ ' + m.ifindexB);
+            row(card, 'LLDP index', m.nativeA + ' ↔ ' + m.nativeB);
+            row(card, 'Scarto', m.skew + ' s');
+            panel.appendChild(card);
+        });
+        hint(panel, 'Blu = collegamento topologico verificato, NON stato UP. '
+            + 'Ping e allarmi dei nodi provengono da Zabbix live; '
+            + 'i contatori di traffico e lo stato delle porte di questo trunk '
+            + 'non sono ancora integrati.');
+        return;
+    }
+
     // ── Herkunft ────────────────────────────────────────────────────────────
     // Die Protokollnamen stehen als Literale da, statt d.src durchzureichen:
     // der Satz ist geschlossen, das Backend meldet 'lldp' und 'cdp'. Ein

@@ -53,6 +53,11 @@ export function clearSimulation(cy) {
 // Uplink-Referenz bestimmen (siehe Header). excludeSimulated=true filtert
 // tote Hosts raus (fuer die Sim-BFS); die Baseline nutzt die volle Menge.
 // Exportiert: root-cause.js nutzt dieselbe Referenz + BFS.
+export function isUnconfirmedAccessEvidenceEdge(edge) {
+    const kind = edge.data('kind');
+    return kind === 'fdb' || kind === 'lldp_portid';
+}
+
 export function findRoots(cy, excludeSimulated) {
     let roots = cy.nodes('[?_isInternet]');
     if (roots.length === 0) {
@@ -70,7 +75,11 @@ export function highestDegree(cy, excludeSimulated) {
     let best = null, bestDeg = -1;
     cy.nodes('[!isGroup]').forEach(function(n) {
         if (excludeSimulated && _simulated.has(n.id())) return;
-        const d = n.degree(false);
+        // A hundred MACs learned by one access switch do not make that
+        // switch a better upstream root than its actual LLDP links.
+        const d = n.connectedEdges().filter(function(e) {
+            return !isUnconfirmedAccessEvidenceEdge(e);
+        }).length;
         if (d > bestDeg) { bestDeg = d; best = n; }
     });
     return best;
@@ -117,6 +126,9 @@ export function reachable(cy, roots, blocked, ohneManuelle) {
             // sie ein gueltiger Weg — laeuft der Hypervisor, ist die VM
             // erreichbar. Vom Gast zum Wirt nicht. Genau diese eine Richtung
             // war der Fehler, nicht die Kante an sich.
+            // MAC learned on a switch port is a placement observation,
+            // not proof of a direct network path or a hard dependency.
+            if (isUnconfirmedAccessEvidenceEdge(edge)) return;
             if (edge.data('kind') === 'hosts' && edge.source().id() !== cur) return;
             if (ohneManuelle && String(edge.id() || '').indexOf('ml_') === 0) return;
             const s = edge.source().id();

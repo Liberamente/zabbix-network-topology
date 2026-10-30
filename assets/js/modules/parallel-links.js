@@ -68,7 +68,9 @@ export function setAllLinks(on) {
 function isMember(d) {
     // Physical links only: measured LLDP/CDP edges and ageing ones. Hosting
     // edges, ghosts, the internet cloud and manual links are no cables.
-    return !!(d.isLLDP || d._isStaleEdge) && d.kind !== 'hosts';
+    return !!(d.isLLDP || d._isStaleEdge)
+        && d.kind !== 'hosts'
+        && d.kind !== 'lldp_portid';
 }
 
 // A member counts as down when it is no longer reported (stale) OR when its

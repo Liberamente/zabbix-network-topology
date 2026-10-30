@@ -9,7 +9,7 @@
 //   _sparkCache   — hostid -> {cpu:[...], ping:[...], since, ts}
 //   _sparkPending — hostid -> true, verhindert parallele Fetches
 
-import { esc, fmt, fmtItemValue, isDark, paintAdaptive } from './utils.js';
+import { el, esc, fmt, fmtItemValue, isDark, paintAdaptive } from './utils.js';
 import { utilizationColor, utilizationPct } from './traffic.js';
 import { meta as qualiMeta, QUALITY } from './quality.js';
 import { t } from './i18n.js';
@@ -228,6 +228,140 @@ function _sumArrays(a, b) {
 }
 
 export function showEdgeTip(evt, edgeData, srcLabel, tgtLabel) {
+    if (edgeData.kind === 'pass_through') {
+        // Only the shared SWITCH port is observed; neither a direct
+        // phone-to-endpoint cable nor per-device counters were measured.
+        _syncTheme();
+        _tip.replaceChildren();
+        _tip.appendChild(el('div',
+            'font-weight:700;margin-bottom:5px', srcLabel + ' - ' + tgtLabel));
+        _tip.appendChild(el('div',
+            'color:#c2410c;font-weight:700', t('pass_through.association')));
+        _tip.appendChild(el('div',
+            'margin-top:5px;font-size:11px',
+            t('pass_through.switch_port') + ': '
+            + (edgeData.viaSwitchPort || t('wifi.unknown'))));
+        _tip.appendChild(el('div',
+            'margin-top:5px;font-size:10px', t('pass_through.note')));
+        _tip.appendChild(el('div',
+            'margin-top:5px;font-size:10px', t('pass_through.metrics')));
+        _tip.style.width = '285px';
+        _tip.style.display = 'block';
+        moveTip(evt);
+        return;
+    }
+    if (edgeData.kind === 'fdb') {
+        // DOM/textContent rather than HTML: SNMP port and host names are
+        // untrusted. This is not a directly measured Ethernet cable.
+        _syncTheme();
+        _tip.replaceChildren();
+        const head = el('div', 'font-weight:700;margin-bottom:5px',
+            srcLabel + ' - ' + tgtLabel);
+        _tip.appendChild(head);
+        _tip.appendChild(el('div', 'color:#b45309;font-weight:700',
+            t('fdb.association')));
+        _tip.appendChild(el('div', 'margin-top:5px;font-size:11px',
+            t('fdb.edge.port') + ': ' + (edgeData.portSrc || t('wifi.unknown'))));
+        if (edgeData.fdbSharedPort) {
+            _tip.appendChild(el('div', 'margin-top:5px;font-size:10px',
+                t('fdb.shared')));
+        }
+        _tip.appendChild(el('div', 'margin-top:5px;font-size:10px',
+            t('fdb.note')));
+        _tip.style.width = '255px';
+        _tip.style.display = 'block';
+        moveTip(evt);
+        return;
+    }
+    if (edgeData.kind === 'lldp_portid') {
+        // One-sided LLDP identity, corroborated by ARP/FDB.
+        // Use safe DOM nodes and never fetch host traffic history.
+        _syncTheme();
+        _tip.replaceChildren();
+
+        _tip.appendChild(el(
+            'div', 'font-weight:700;margin-bottom:5px',
+            srcLabel + ' - ' + tgtLabel
+        ));
+        _tip.appendChild(el(
+            'div', 'color:#b45309;font-weight:700',
+            t('lldp_portid.association')
+        ));
+        _tip.appendChild(el(
+            'div', 'margin-top:5px;font-size:11px',
+            t('fdb.edge.port') + ': '
+                + (edgeData.portSrc || t('wifi.unknown'))
+        ));
+        _tip.appendChild(el(
+            'div', 'margin-top:5px;font-size:10px',
+            t('lldp_portid.onesided')
+        ));
+
+        if (edgeData.fdbSharedPort) {
+            _tip.appendChild(el(
+                'div', 'margin-top:5px;font-size:10px',
+                t('fdb.shared')
+            ));
+        }
+
+        _tip.appendChild(el(
+            'div', 'margin-top:5px;font-size:10px',
+            t('lldp_portid.note')
+        ));
+        _tip.appendChild(el(
+            'div', 'margin-top:5px;font-size:10px',
+            t('lldp_portid.metrics')
+        ));
+
+        _tip.style.width = '280px';
+        _tip.style.display = 'block';
+        moveTip(evt);
+        return;
+    }
+
+    if (edgeData.kind === 'wifi') {
+        // Association data are not link traffic. Do not fetch host traffic
+        // histories, infer Ethernet capacity or display interface errors.
+        const sig = Number(edgeData.signalDbm);
+        const signal = edgeData.signalDbm !== null && edgeData.signalDbm !== undefined
+            && Number.isFinite(sig) && sig < 0 && sig >= -150
+            ? String(sig) + ' dBm' : t('wifi.unknown');
+        const radio = String(edgeData.radioIfIndex || '');
+        _syncTheme();
+        _tip.style.width = '230px';
+        _tip.replaceChildren();
+
+        const head = el('div',
+            'font-weight:700;font-size:11px;color:var(--nt-text);margin-bottom:7px;'
+            + 'padding-bottom:5px;border-bottom:1px solid var(--nt-line-soft)',
+            srcLabel + ' ↔ ' + tgtLabel);
+        head.appendChild(el('span',
+            'font-size:9px;color:#fff;background:#0891b2;border-radius:3px;'
+            + 'padding:1px 5px;margin-left:4px;font-weight:600', 'WIFI'));
+        _tip.appendChild(head);
+
+        const row = function(label, value) {
+            const div = el('div',
+                'display:flex;justify-content:space-between;gap:8px;'
+                + 'margin-bottom:5px;font-size:11px');
+            div.appendChild(el('span', 'color:var(--nt-muted)', label));
+            div.appendChild(el('b', '', value));
+            return div;
+        };
+
+        _tip.appendChild(row(t('wifi.association'), t('wifi.registered')));
+        _tip.appendChild(row(t('wifi.radio'),
+            radio ? 'ifIndex ' + radio : t('wifi.unknown')));
+        _tip.appendChild(row(t('wifi.signal'), signal));
+        _tip.appendChild(row(t('wifi.source'), 'SNMP MikroTik'));
+        _tip.appendChild(el('div',
+            'font-size:10px;color:var(--nt-muted);margin-top:6px;'
+            + 'border-top:1px solid var(--nt-line-soft);padding-top:5px',
+            t('wifi.no_traffic')));
+        _tip.style.display = 'block';
+        moveTip(evt);
+        return;
+    }
     const tIn  = edgeData.trafficIn  || 0;
     const tOut = edgeData.trafficOut || 0;
     const srcId = edgeData.source || edgeData.from || '';

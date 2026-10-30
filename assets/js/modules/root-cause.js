@@ -29,7 +29,7 @@
 
 import { toast } from './toast.js';
 import { t } from './i18n.js';
-import { findRoots, reachable, highestDegree } from './whatif.js';
+import { findRoots, reachable, highestDegree, isUnconfirmedAccessEvidenceEdge } from './whatif.js';
 
 let _active = false;
 
@@ -85,6 +85,7 @@ export function runRootCause(cy, verbose) {
         let frontier = !!rootIds[id];
         if (!frontier) {
             n.connectedEdges().forEach(function(e) {
+                if (isUnconfirmedAccessEvidenceEdge(e)) return;
                 const nb = e.source().id() === id ? e.target().id() : e.source().id();
                 if (alive[nb]) frontier = true;
             });
@@ -120,6 +121,7 @@ export function runRootCause(cy, verbose) {
                 comp.problems += node.data('problems') || 0;
             }
             node.connectedEdges().forEach(function(e) {
+                if (isUnconfirmedAccessEvidenceEdge(e)) return;
                 const nb = e.source().id() === cur ? e.target().id() : e.source().id();
                 if (deadZone[nb] && compOf[nb] === undefined) {
                     compOf[nb] = ci;

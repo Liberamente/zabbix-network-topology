@@ -8,6 +8,14 @@ namespace Modules\NetworkTopology\Actions;
 use Modules\NetworkTopology\Topology\HostMetadata;
 use Modules\NetworkTopology\Topology\MetricExtractor;
 use Modules\NetworkTopology\Topology\LldpEdgeBuilder;
+use Modules\NetworkTopology\Topology\CdpUnmatchedEvidence;
+use Modules\NetworkTopology\Topology\AutoFdbEdges;
+use Modules\NetworkTopology\Topology\PassThroughEvidence;
+use Modules\NetworkTopology\Topology\PassThroughGroupScope;
+use Modules\NetworkTopology\Topology\PingOnlyFilter;
+use Modules\NetworkTopology\Topology\AutoWifiEdges;
+use Modules\NetworkTopology\Topology\LldpPortIdFeed;
+use Modules\NetworkTopology\Topology\PortIdPilotScope;
 use Modules\NetworkTopology\Topology\HostTagParser;
 use Modules\NetworkTopology\Topology\HopScope;
 use Modules\NetworkTopology\Topology\ManualLinks;
@@ -18,6 +26,19 @@ use CControllerResponseFatal;
 use API;
 
 class NetworkTopologyData extends NetworkTopologyController {
+
+    // Native read-only endpoint association. Effective only if the
+    // selected group exposes suitable Zabbix SNMP walk items.
+    private const AUTO_DISCOVER_ACCESS_LINKS = true;
+
+    // One-sided LLDP Port-ID identity reconciliation.
+    // Pilot only: disabled until scoped staging validation.
+    private const AUTO_LLDP_PORTID_EDGES = false;
+
+    // Available in any installation, but effectively OFF unless a visible
+    // FDB switch carries nt:pass_through=<selected group ID>. The selected
+    // group AND same nonzero proxy are mandatory; no per-client code/config.
+    private const PASS_THROUGH_GROUP_OPT_IN = true;
 
     /**
      * Wie lange eine nicht mehr gemeldete Kante auf der Karte bleibt, bevor
@@ -305,6 +326,8 @@ class NetworkTopologyData extends NetworkTopologyController {
             // Nur die Widgets setzen das. Siehe respondData(): sie haben keinen
             // View-Controller und kommen sonst nie an manuelle Verbindungen.
             'manual_links' => 'in 0,1',
+            // Optional, view-only reachability filter (does not delete hosts).
+            'ping_only' => 'in 0,1',
         ]);
         if (!$ret) $this->setResponse(new CControllerResponseFatal());
         return $ret;
@@ -364,6 +387,22 @@ class NetworkTopologyData extends NetworkTopologyController {
             $cache_parts = [$groupids];
         }
 
+        // Pilot gate uses private runtime configuration; fail closed without
+        // an exact single-group match and an explicit nonzero proxy.
+        $pilotScope = PortIdPilotScope::mode(
+            (string) (getenv('NT_LLDP_PORTID_PILOT_ALL') ?: ''),
+            (string) (getenv('NT_LLDP_PORTID_PILOT_GROUP_ID') ?: ''),
+            (string) (getenv('NT_LLDP_PORTID_PILOT_PROXY_ID') ?: ''),
+            $groupids,
+            $host_mode
+        );
+        // Separate cached OFF/ON payloads and baseline scopes. Changing the
+        // runtime gate cannot reuse an unscoped payload from a prior request.
+        if ($pilotScope !== null) {
+            $cache_parts[] = 'portid_pilot';
+            $cache_parts[] = $pilotScope;
+        }
+
         // Response-Cache. Der Schluessel ist user- UND gruppengebunden (das
         // Scoping macht NtCache); ohne APCu ist der Aufruf ein No-Op und alles
         // laeuft wie bisher.
@@ -401,7 +440,7 @@ class NetworkTopologyData extends NetworkTopologyController {
             // Probleme gibt (= last_seen-Aequivalent fuer "down since").
             'selectInterfaces'      => ['ip', 'type', 'main', 'available', 'errors_from', 'error'],
             'selectParentTemplates' => ['name'],
-            'selectInventory'       => ['location_lat', 'location_lon', 'location'],
+            'selectInventory'       => ['location_lat', 'location_lon', 'location', 'macaddress_a', 'macaddress_b'],
             'selectTags'            => ['tag', 'value'],
             // Fuer das {$NT_PARENT}-Macro (Traeger-Beziehung als Macro statt Tag,
             // damit sie per Template/LLD massenhaft setzbar ist — eine VM je
@@ -766,6 +805,208 @@ class NetworkTopologyData extends NetworkTopologyController {
             $edges = array_merge($edges, self::parentEdges($hosts, $host_parent));
         }
 
+        // ── 5a1. NATIVE ARP/FDB + WIFI ACCESS ASSOCIATIONS ──────────────
+        // Strictly scope reads to the visible hostids (including proxy/group
+        // boundaries); do not use the install-wide interactive Finder query.
+        if (
+           self::AUTO_DISCOVER_ACCESS_LINKS
+           && !$host_mode
+           && count($groupids) === 1
+        ) {
+            $fdb_items = API::Item()->get([
+                'output'    => ['hostid', 'key_', 'lastclock', 'lastvalue', 'status', 'state'],
+                'hostids'   => $hostids,
+                'filter'    => ['key_' => [
+                    'nt.fdb.dot1d', 'nt.fdb.dot1q',
+                    'nt.fdb.baseport', 'nt.fdb.ifname', 'nt.arp',
+                ]],
+                'monitored' => true,
+            ]);
+            // WLAN association comes before FDB inference: never describe an
+            // associated wireless client as a direct copper switch link.
+            // Only read items of the already visible hosts in this group.
+            $wifi_items = API::Item()->get([
+                'output'    => ['hostid', 'key_', 'lastclock', 'lastvalue', 'status', 'state'],
+                'hostids'   => $hostids,
+                'filter'    => ['key_' => ['nt.wifi.clients']],
+                'monitored' => true,
+            ]);
+            if (is_array($wifi_items) && $wifi_items) {
+                $edges = AutoWifiEdges::append($hosts, $wifi_items,
+                    is_array($fdb_items) ? $fdb_items : [], $edges, $host_uplink, time());
+            }
+            if (is_array($fdb_items) && $fdb_items) {
+                $fdb_switches = [];
+                foreach ($fdb_items as $fi) {
+                    if (strpos((string) ($fi['key_'] ?? ''), 'nt.fdb.') === 0) {
+                        $fdb_switches[(string) $fi['hostid']] = true;
+                    }
+                }
+
+                // Optional, read-only LLDP Port-ID reconciliation.
+                // Existing LLDP, manual and Wi-Fi edges take priority.
+                // These host IDs originate from the already scoped
+                // nt.fdb item.get result. Never search installation-wide.
+                if ($pilotScope !== null && $fdb_switches) {
+                    $pilotHosts = $pilotScope === 'all'
+                        ? $hosts
+                        : PortIdPilotScope::eligibleHosts($hosts, $pilotScope);
+                    $scopeSwitchIds = array_values(array_filter(
+                        array_keys($fdb_switches),
+                        static fn($id): bool => isset($pilotHosts[(string) $id])
+                    ));
+
+                    if ($scopeSwitchIds) {
+                        $lldpPortIdItems = API::Item()->get([
+                            'output' => [
+                                'hostid', 'key_', 'lastclock', 'lastvalue',
+                                'status', 'state'
+                            ],
+                            'hostids' => $scopeSwitchIds,
+                            'search' => ['key_' => [
+                                'lldpRemSysName[', 'lldpRemPortId['
+                            ]],
+                            'searchByAny' => true,
+                            'monitored' => true,
+                        ]);
+    
+                        $localPortItems = API::Item()->get([
+                            'output' => [
+                                'hostid', 'key_', 'lastclock', 'lastvalue',
+                                'status', 'state'
+                            ],
+                            'hostids' => $scopeSwitchIds,
+                            'filter' => ['key_' => [
+                                'nt.lldp.local.portid',
+                                'nt.lldp.local.portdesc',
+                            ]],
+                            'monitored' => true,
+                        ]);
+    
+                        if ($scopeSwitchIds
+                                && is_array($lldpPortIdItems)
+                                && $lldpPortIdItems
+                                && is_array($localPortItems)
+                                && $localPortItems) {
+                            $existingEdges = $edges;
+                            $edgesBeforePortId = count($edges);
+                            $validatedCandidates = [];
+
+                            $edges = LldpPortIdFeed::append(
+                                $pilotHosts,
+                                $lldpPortIdItems,
+                                $fdb_items,
+                                $localPortItems,
+                                $edges,
+                                time(),
+                                $validatedCandidates
+                            );
+
+                            [$lldp_quality, $lldp_unmatched] =
+                                \Modules\NetworkTopology\Topology\LldpReconciledQuality::apply(
+                                    $lldp_quality,
+                                    $lldp_unmatched,
+                                    array_slice($edges, $edgesBeforePortId)
+                                );
+
+                            [$lldp_quality, $lldp_unmatched] =
+                                \Modules\NetworkTopology\Topology\LldpReconciledQuality::reconcileExisting(
+                                    $lldp_quality,
+                                    $lldp_unmatched,
+                                    $validatedCandidates,
+                                    $existingEdges,
+                                    $pilotHosts
+                                );
+                        }
+                    }
+                }
+
+                $caps = [];
+                if ($fdb_switches) {
+                    $caps_result = API::Item()->get([
+                        'output'    => ['hostid', 'key_', 'lastclock', 'lastvalue', 'status', 'state'],
+                        'hostids'   => array_keys($fdb_switches),
+                        'search'    => ['key_' => 'lldpRemSysCapEnabled'],
+                        'monitored' => true,
+                    ]);
+                    if (is_array($caps_result)) {
+                        $caps = $caps_result;
+                    }
+                }
+                $edges = AutoFdbEdges::append($hosts, $fdb_items, $caps, $edges,
+                    $host_uplink, $metrics, time());
+
+                // Opt-in once per group/proxy, not once per phone or endpoint.
+                // We already have group-scoped host tags and FDB switch IDs:
+                // no new discovery, API configuration query or global flag.
+                // Default OFF unless an in-scope switch carries the EXACT
+                // nt:pass_through=<numeric selected group ID> host tag.
+                if (self::PASS_THROUGH_GROUP_OPT_IN && $fdb_switches && $caps) {
+                    $passScope = PassThroughGroupScope::eligible(
+                        $hosts, array_keys($fdb_switches), $groupids, $host_mode
+                    );
+                    if ($passScope['switch_ids']) {
+                        $passHosts = $passScope['hosts'];
+                        // Proxy isolation applies to source reads as well as
+                        // the inferred endpoint pairs. Every original edge
+                        // is still supplied to prevent duplicate associations.
+                        $passFdb = array_values(array_filter(
+                            $fdb_items,
+                            static fn(array $item): bool => isset(
+                                $passHosts[(string) ($item['hostid'] ?? '')]
+                            )
+                        ));
+                        $passCaps = array_values(array_filter(
+                            $caps,
+                            static fn(array $item): bool => isset(
+                                $passHosts[(string) ($item['hostid'] ?? '')]
+                            )
+                        ));
+                        if ($passFdb && $passCaps) {
+                            $cdp_items = API::Item()->get([
+                                'output'    => ['hostid', 'key_', 'lastclock',
+                                                'lastvalue', 'status', 'state'],
+                                'hostids'   => $passScope['switch_ids'],
+                                'search'    => ['key_' => 'cdpCacheDeviceId'],
+                                'monitored' => true,
+                            ]);
+                            if (is_array($cdp_items) && $cdp_items) {
+                                // Both reads stay within already permitted
+                                // FDB-source switches of this group/proxy.
+                                $chassis_items = API::Item()->get([
+                                    'output' => ['hostid', 'key_', 'lastclock',
+                                                'lastvalue', 'status', 'state'],
+                                    'hostids' => $passScope['switch_ids'],
+                                    'search' => ['key_' => 'lldpRemChassisId'],
+                                    'monitored' => true,
+                                ]);
+                                $trunk_items = API::Item()->get([
+                                    'output' => ['hostid', 'key_', 'lastclock',
+                                                'lastvalue', 'status', 'state'],
+                                    'hostids' => $passScope['switch_ids'],
+                                    'filter' => ['key_' => [
+                                        'nt.hpe.trunk.group',
+                                        'nt.hpe.trunk.type',
+                                    ]],
+                                    'monitored' => true,
+                                ]);
+                                $passDiagnostics = null;
+                                $proposed = PassThroughEvidence::propose(
+                                    $passHosts, $passFdb, $passCaps, $cdp_items,
+                                    $edges, $host_uplink, time(), $passDiagnostics,
+                                    is_array($chassis_items) ? $chassis_items : [],
+                                    is_array($trunk_items) ? $trunk_items : []
+                                );
+                                if ($proposed) {
+                                    $edges = array_merge($edges, $proposed);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // ── 5b. PROXY + PROXY-GROUP LOOKUP ────────────────────────────────
         // Hosts können via Proxy oder Proxy-Group (Zabbix 7+) monitored werden.
         // Wir sammeln die unique Proxy-IDs und Proxy-Group-IDs aus den Hosts
@@ -901,11 +1142,16 @@ class NetworkTopologyData extends NetworkTopologyController {
         // bedingt verschiedene Subgraphen und wuerden sich sonst gegenseitig
         // die Baseline verrollen. Der Sender-Cron (eigener Monitoring-User)
         // rollt damit unabhaengig von UI-Usern.
+        $cdp_unmatched_evidence = CdpUnmatchedEvidence::classify(
+            $lldp_quality_out, $edges
+        );
+
         $core = [
             'nodes'          => $nodes,
             'edges'          => $edges,
             'lldp_unmatched' => $lldp_unmatched,
             'lldp_quality'   => $lldp_quality_out,
+            'cdp_unmatched_evidence' => $cdp_unmatched_evidence,
             'health'         => $health,
             // Hat die Obergrenze im Kantenbau zugeschlagen? Gehoert IN den
             // Cache-Eintrag, nicht daneben: sonst verschwindet der Hinweis
@@ -968,8 +1214,13 @@ class NetworkTopologyData extends NetworkTopologyController {
         // removed — 'moved', wenn dasselbe Paar an einem anderen Port haengt.
         // Vorher fiel genau dieser Fall durchs Raster, weil der Schluessel nur
         // aus dem Host-Paar bestand und sich beim Umstecken nicht aendert.
-        $current  = TopoDiff::snapshot($edges, $host_label);
-        $baseline = NtCache::get('topo_baseline', $cache_parts);
+        // MAC-learning and client Wi-Fi associations are dynamic and not
+        // proof of a physical cable move. Keep them OUT of the persistent
+        // LLDP/CDP topology-change baseline and warning notifications.
+        // A new baseline namespace avoids replaying old pilot FDB entries.
+        $physical_edges = TopoDiff::physicalBaselineEdges($edges);
+        $current  = TopoDiff::snapshot($physical_edges, $host_label);
+        $baseline = NtCache::get('topo_baseline_physical_v1', $cache_parts);
         $base_arr = is_array($baseline) ? $baseline : null;
 
         // Datenschutz (Review #11): die Baseline speichert Hostnamen. Verliert
@@ -1033,15 +1284,19 @@ class NetworkTopologyData extends NetworkTopologyController {
         // Neustart, eine ausgefallene Discovery, ein zu frueher Poll —, und
         // ohne diese Frist sprang die Karte bei jedem davon.
         $aged = TopoDiff::ageOut($base_arr, $current, time(), self::STALE_TTL);
-        NtCache::set('topo_baseline', $cache_parts, $aged['store'], 7 * 86400);
+        NtCache::set('topo_baseline_physical_v1', $cache_parts, $aged['store'], 7 * 86400);
 
         // Neu aufgetauchte Kanten markieren — Gegenstueck zur Alterung.
         // Same keys as the snapshot — with parallel links "a|b" alone no
         // longer names one edge.
         $jetzt = time();
-        $_keys = TopoDiff::keys($edges);
+        $_keys = TopoDiff::keys(array_filter(
+            $edges,
+            [TopoDiff::class, 'isPhysicalBaselineEdge']
+        ));
         foreach ($edges as $_i => &$_ne) {
-            if ($_keys[$_i] === null) {
+            if (!TopoDiff::isPhysicalBaselineEdge($_ne)
+                    || ($_keys[$_i] ?? null) === null) {
                 continue;
             }
             $st = $aged['store'][$_keys[$_i]] ?? null;
@@ -1123,10 +1378,59 @@ class NetworkTopologyData extends NetworkTopologyController {
             }
         }
 
+        // Only after the full, user-scoped topology baseline and optional
+        // manual edges have been assembled: this is a VIEW filter, not a
+        // Zabbix discovery, monitoring or topology-change policy.
+        //
+        // Collect ONLY exact icmpping items for host IDs already authorized
+        // by the current group/hop scope. This intentionally excludes
+        // icmppingsec (RTT) and custom probes for other IP addresses.
+        // Requery on every response (including topology-cache hits), so a
+        // host that acquires a new DHCP lease or powers on can reappear after
+        // the next ICMP check, without deleting historical Zabbix records.
+        $pingFilter = null;
+        if ((int) $this->getInput('ping_only', 0) === 1) {
+            $visibleHostIds = [];
+            foreach ($nodes as $node) {
+                $id = (string) ($node['id'] ?? '');
+                if ($id !== '' && ctype_digit($id)) {
+                    $visibleHostIds[$id] = true;
+                }
+            }
+
+            $icmpItems = [];
+            if ($visibleHostIds) {
+                $icmpItems = API::Item()->get([
+                    'output' => ['hostid', 'key_', 'status', 'state',
+                                 'lastclock', 'lastvalue'],
+                    'hostids' => array_keys($visibleHostIds),
+                    'filter' => ['key_' => ['icmpping']],
+                    'monitored' => true
+                ]);
+            }
+            if (!is_array($icmpItems)) {
+                // Report a source error, never silently show the full graph
+                // or pretend every host is down when Zabbix API is failing.
+                $this->jsonResponse([
+                    'error' => 'Current ICMP status unavailable for ping-only view'
+                ]);
+                return;
+            }
+            $result = PingOnlyFilter::apply($nodes, $edges, $icmpItems, time());
+            $nodes = $result['nodes'];
+            $edges = $result['edges'];
+            $pingFilter = $result['summary'];
+        }
+
         $_payload = $this->encodeJson(
             ['nodes' => $nodes, 'edges' => $edges,
+             'ping_filter' => $pingFilter,
              'lldp_unmatched' => $core['lldp_unmatched'] ?? [],
-             'lldp_quality'   => $core['lldp_quality']   ?? [],
+             // Ghosts have no successful ICMP item; never re-inject them
+             // when the operator explicitly requests ping-positive hosts.
+             'lldp_quality'   => $pingFilter === null
+                 ? ($core['lldp_quality'] ?? []) : [],
+             'cdp_unmatched_evidence' => $core['cdp_unmatched_evidence'] ?? [],
              // Verworfene Kanten. 0 heisst: die Karte ist vollstaendig.
              'edges_truncated' => (int) ($core['edges_truncated'] ?? 0),
              'topo_changes'   => $topo_changes,

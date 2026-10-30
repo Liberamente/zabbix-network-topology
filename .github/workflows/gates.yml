@@ -83,7 +83,7 @@ jobs:
       - name: snmprec
         run: node tools/check-snmprec.mjs
       - name: frontend
-        run: node tools/check-frontend.mjs
+        run: npm run ci:frontend
       - name: package
         run: node tools/check-package.mjs
       - name: layers

@@ -1,0 +1,461 @@
+{
+  "schema": 2,
+  "groupids": [
+    "900"
+  ],
+  "generated_at": 1800000000,
+  "publication_allowed": false,
+  "logical_link_summary": {
+    "reciprocal_directional_observations": 16,
+    "unique_reciprocal_physical_pairs": 8,
+    "complete_static_trunk_links": 4,
+    "direct_physical_links": 0,
+    "logical_links_total": 4,
+    "excluded_link_diagnostics": 0
+  },
+  "logical_link_issues": [],
+  "logical_links": [
+    {
+      "link_id": "trunk:1001/1001001--1002/1002001",
+      "kind": "static_trunk",
+      "evidence_status": "reciprocal_lldp_and_verified_static_membership",
+      "endpoints": [
+        {
+          "hostid": "1001",
+          "name": "SW-1001",
+          "logical_ifindex": 1001001,
+          "logical_ifname": "Trk1",
+          "mode": "static",
+          "vendor": "hpe_procurve",
+          "member_ifindexes": [
+            100123,
+            100124
+          ],
+          "member_port_labels": {
+            "100123": "23",
+            "100124": "24"
+          },
+          "source_itemids": [
+            "90010",
+            "90011"
+          ]
+        },
+        {
+          "hostid": "1002",
+          "name": "SW-1002",
+          "logical_ifindex": 1002001,
+          "logical_ifname": "Trk1",
+          "mode": "static",
+          "vendor": "hpe_procurve",
+          "member_ifindexes": [
+            100245,
+            100246
+          ],
+          "member_port_labels": {
+            "100245": "45",
+            "100246": "46"
+          },
+          "source_itemids": [
+            "90010",
+            "90011"
+          ]
+        }
+      ],
+      "physical_member_links": [
+        {
+          "endpoints": [
+            {
+              "hostid": "1001",
+              "ifindex": 100123,
+              "local_port_num": 23,
+              "lldp_index": "0.23.1",
+              "lldp_clock": 1799999935,
+              "fdb_clock": 1799999956,
+              "source_itemids": [
+                "90020"
+              ]
+            },
+            {
+              "hostid": "1002",
+              "ifindex": 100245,
+              "local_port_num": 45,
+              "lldp_index": "0.45.2",
+              "lldp_clock": 1799999939,
+              "fdb_clock": 1799999952,
+              "source_itemids": [
+                "90021"
+              ]
+            }
+          ],
+          "evidence": "reciprocal_lldp_ports",
+          "dynamic_skew_seconds": 21,
+          "publication_allowed": false
+        },
+        {
+          "endpoints": [
+            {
+              "hostid": "1001",
+              "ifindex": 100124,
+              "local_port_num": 24,
+              "lldp_index": "0.24.1",
+              "lldp_clock": 1799999935,
+              "fdb_clock": 1799999956,
+              "source_itemids": [
+                "90020"
+              ]
+            },
+            {
+              "hostid": "1002",
+              "ifindex": 100246,
+              "local_port_num": 46,
+              "lldp_index": "0.46.2",
+              "lldp_clock": 1799999939,
+              "fdb_clock": 1799999952,
+              "source_itemids": [
+                "90021"
+              ]
+            }
+          ],
+          "evidence": "reciprocal_lldp_ports",
+          "dynamic_skew_seconds": 21,
+          "publication_allowed": false
+        }
+      ],
+      "physical_member_count": 2,
+      "publication_allowed": false
+    },
+    {
+      "link_id": "trunk:1002/1002002--1003/1003001",
+      "kind": "static_trunk",
+      "evidence_status": "reciprocal_lldp_and_verified_static_membership",
+      "endpoints": [
+        {
+          "hostid": "1002",
+          "name": "SW-1002",
+          "logical_ifindex": 1002002,
+          "logical_ifname": "Trk2",
+          "mode": "static",
+          "vendor": "hpe_procurve",
+          "member_ifindexes": [
+            100247,
+            100248
+          ],
+          "member_port_labels": {
+            "100247": "47",
+            "100248": "48"
+          },
+          "source_itemids": [
+            "90010",
+            "90011"
+          ]
+        },
+        {
+          "hostid": "1003",
+          "name": "SW-1003",
+          "logical_ifindex": 1003001,
+          "logical_ifname": "Trk1",
+          "mode": "static",
+          "vendor": "hpe_procurve",
+          "member_ifindexes": [
+            100345,
+            100346
+          ],
+          "member_port_labels": {
+            "100345": "45",
+            "100346": "46"
+          },
+          "source_itemids": [
+            "90010",
+            "90011"
+          ]
+        }
+      ],
+      "physical_member_links": [
+        {
+          "endpoints": [
+            {
+              "hostid": "1002",
+              "ifindex": 100247,
+              "local_port_num": 47,
+              "lldp_index": "0.47.1",
+              "lldp_clock": 1799999935,
+              "fdb_clock": 1799999956,
+              "source_itemids": [
+                "90020"
+              ]
+            },
+            {
+              "hostid": "1003",
+              "ifindex": 100345,
+              "local_port_num": 45,
+              "lldp_index": "0.45.2",
+              "lldp_clock": 1799999939,
+              "fdb_clock": 1799999952,
+              "source_itemids": [
+                "90021"
+              ]
+            }
+          ],
+          "evidence": "reciprocal_lldp_ports",
+          "dynamic_skew_seconds": 21,
+          "publication_allowed": false
+        },
+        {
+          "endpoints": [
+            {
+              "hostid": "1002",
+              "ifindex": 100248,
+              "local_port_num": 48,
+              "lldp_index": "0.48.1",
+              "lldp_clock": 1799999935,
+              "fdb_clock": 1799999956,
+              "source_itemids": [
+                "90020"
+              ]
+            },
+            {
+              "hostid": "1003",
+              "ifindex": 100346,
+              "local_port_num": 46,
+              "lldp_index": "0.46.2",
+              "lldp_clock": 1799999939,
+              "fdb_clock": 1799999952,
+              "source_itemids": [
+                "90021"
+              ]
+            }
+          ],
+          "evidence": "reciprocal_lldp_ports",
+          "dynamic_skew_seconds": 21,
+          "publication_allowed": false
+        }
+      ],
+      "physical_member_count": 2,
+      "publication_allowed": false
+    },
+    {
+      "link_id": "trunk:1003/1003002--1004/1004002",
+      "kind": "static_trunk",
+      "evidence_status": "reciprocal_lldp_and_verified_static_membership",
+      "endpoints": [
+        {
+          "hostid": "1003",
+          "name": "SW-1003",
+          "logical_ifindex": 1003002,
+          "logical_ifname": "Trk2",
+          "mode": "static",
+          "vendor": "hpe_procurve",
+          "member_ifindexes": [
+            100347,
+            100348
+          ],
+          "member_port_labels": {
+            "100347": "47",
+            "100348": "48"
+          },
+          "source_itemids": [
+            "90010",
+            "90011"
+          ]
+        },
+        {
+          "hostid": "1004",
+          "name": "SW-1004",
+          "logical_ifindex": 1004002,
+          "logical_ifname": "Trk2",
+          "mode": "static",
+          "vendor": "hpe_procurve",
+          "member_ifindexes": [
+            100423,
+            100424
+          ],
+          "member_port_labels": {
+            "100423": "23",
+            "100424": "24"
+          },
+          "source_itemids": [
+            "90010",
+            "90011"
+          ]
+        }
+      ],
+      "physical_member_links": [
+        {
+          "endpoints": [
+            {
+              "hostid": "1003",
+              "ifindex": 100347,
+              "local_port_num": 47,
+              "lldp_index": "0.47.1",
+              "lldp_clock": 1799999935,
+              "fdb_clock": 1799999956,
+              "source_itemids": [
+                "90020"
+              ]
+            },
+            {
+              "hostid": "1004",
+              "ifindex": 100423,
+              "local_port_num": 23,
+              "lldp_index": "0.23.2",
+              "lldp_clock": 1799999939,
+              "fdb_clock": 1799999952,
+              "source_itemids": [
+                "90021"
+              ]
+            }
+          ],
+          "evidence": "reciprocal_lldp_ports",
+          "dynamic_skew_seconds": 21,
+          "publication_allowed": false
+        },
+        {
+          "endpoints": [
+            {
+              "hostid": "1003",
+              "ifindex": 100348,
+              "local_port_num": 48,
+              "lldp_index": "0.48.1",
+              "lldp_clock": 1799999935,
+              "fdb_clock": 1799999956,
+              "source_itemids": [
+                "90020"
+              ]
+            },
+            {
+              "hostid": "1004",
+              "ifindex": 100424,
+              "local_port_num": 24,
+              "lldp_index": "0.24.2",
+              "lldp_clock": 1799999939,
+              "fdb_clock": 1799999952,
+              "source_itemids": [
+                "90021"
+              ]
+            }
+          ],
+          "evidence": "reciprocal_lldp_ports",
+          "dynamic_skew_seconds": 21,
+          "publication_allowed": false
+        }
+      ],
+      "physical_member_count": 2,
+      "publication_allowed": false
+    },
+    {
+      "link_id": "trunk:1004/1004001--1005/1005001",
+      "kind": "static_trunk",
+      "evidence_status": "reciprocal_lldp_and_verified_static_membership",
+      "endpoints": [
+        {
+          "hostid": "1004",
+          "name": "SW-1004",
+          "logical_ifindex": 1004001,
+          "logical_ifname": "Trk1",
+          "mode": "static",
+          "vendor": "hpe_procurve",
+          "member_ifindexes": [
+            100421,
+            100422
+          ],
+          "member_port_labels": {
+            "100421": "21",
+            "100422": "22"
+          },
+          "source_itemids": [
+            "90010",
+            "90011"
+          ]
+        },
+        {
+          "hostid": "1005",
+          "name": "SW-1005",
+          "logical_ifindex": 1005001,
+          "logical_ifname": "Trk1",
+          "mode": "static",
+          "vendor": "hpe_procurve",
+          "member_ifindexes": [
+            100547,
+            100548
+          ],
+          "member_port_labels": {
+            "100547": "47",
+            "100548": "48"
+          },
+          "source_itemids": [
+            "90010",
+            "90011"
+          ]
+        }
+      ],
+      "physical_member_links": [
+        {
+          "endpoints": [
+            {
+              "hostid": "1004",
+              "ifindex": 100421,
+              "local_port_num": 21,
+              "lldp_index": "0.21.1",
+              "lldp_clock": 1799999935,
+              "fdb_clock": 1799999956,
+              "source_itemids": [
+                "90020"
+              ]
+            },
+            {
+              "hostid": "1005",
+              "ifindex": 100547,
+              "local_port_num": 47,
+              "lldp_index": "0.47.2",
+              "lldp_clock": 1799999939,
+              "fdb_clock": 1799999952,
+              "source_itemids": [
+                "90021"
+              ]
+            }
+          ],
+          "evidence": "reciprocal_lldp_ports",
+          "dynamic_skew_seconds": 21,
+          "publication_allowed": false
+        },
+        {
+          "endpoints": [
+            {
+              "hostid": "1004",
+              "ifindex": 100422,
+              "local_port_num": 22,
+              "lldp_index": "0.22.1",
+              "lldp_clock": 1799999935,
+              "fdb_clock": 1799999956,
+              "source_itemids": [
+                "90020"
+              ]
+            },
+            {
+              "hostid": "1005",
+              "ifindex": 100548,
+              "local_port_num": 48,
+              "lldp_index": "0.48.2",
+              "lldp_clock": 1799999939,
+              "fdb_clock": 1799999952,
+              "source_itemids": [
+                "90021"
+              ]
+            }
+          ],
+          "evidence": "reciprocal_lldp_ports",
+          "dynamic_skew_seconds": 21,
+          "publication_allowed": false
+        }
+      ],
+      "physical_member_count": 2,
+      "publication_allowed": false
+    }
+  ],
+  "results": [
+    {
+      "classification": "candidate_unverified",
+      "ip": "198.51.100.99"
+    }
+  ]
+}

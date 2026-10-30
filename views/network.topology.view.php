@@ -117,6 +117,13 @@ $selected_data = array_map(
                                 (new CDiv(_('Show whole host groups or pick a single host plus a hop radius. If single host selected, the map then contains only that host and everything within N hops (LLDP/CDP, nt:parent and manual links). A selected host overrides the group selection.')))
                                     ->setAttribute('style', 'color:#7c8594;font-size:12px;max-width:920px;')
                             )
+                            // Opt-in display scope, NEVER deletes/disables Zabbix hosts.
+                            // No customer-specific group names or IDs are hard-coded.
+                            ->addRow(
+                                new CLabel(_('Only hosts answering recent ICMP ping (5 min)'), 'ping_only'),
+                                (new CCheckBox('ping_only', '1'))
+                                    ->setChecked((bool) ($data['ping_only'] ?? false))
+                            )
                     )
                     ->addItem(
                         (new CDiv())
@@ -247,9 +254,12 @@ if ($_nt_v === '0' || $_nt_v === '') $_nt_v = (string) time();
 
 
 <?php
-$data_url = (new CUrl('zabbix.php'))
-    ->setArgument('action', 'network.topology.data')
-    ->getUrl();
+$data_query = (new CUrl('zabbix.php'))
+    ->setArgument('action', 'network.topology.data');
+if (!empty($data['ping_only'])) {
+    $data_query->setArgument('ping_only', '1');
+}
+$data_url = $data_query->getUrl();
 
 ?>
 <script>
@@ -286,6 +296,7 @@ window.NT_CONFIG = <?= json_encode([
     'selected_hostid'    => (string) ($data['selected_hostid'] ?? ''),
     'selected_host_name' => (string) ($data['selected_host_name'] ?? ''),
     'hops'               => (int) ($data['hops'] ?? 1),
+    'ping_only'          => (bool) ($data['ping_only'] ?? false),
     'data_url'   => $data_url,
     'can_edit'       => (bool) $data['user']['can_edit'],
     'host_edit_popup' => (bool) ($data['user']['host_edit_popup'] ?? true),
@@ -395,6 +406,10 @@ if (!window.NT_CONFIG || ((!window.NT_CONFIG.selected_groupids || !window.NT_CON
       // echte Stacktraces, kein Import-Rewriting-Regex. defer = Modul-
       // defer-Semantik (DOM fertig, cytoscape davor geladen). Nach
       // JS-Aenderungen `npm run build` (deploy.sh baut ausserdem selbst). ?>
+<?php // Extra read-only validator only for the super-admin pilot. No network requests. ?>
+<?php if (!empty($data['user']['is_super_admin'])): ?>
+<script defer src="modules/network_topology/assets/js/nt-verified-trunk-model.js?v=<?= $_nt_v ?>"></script>
+<?php endif; ?>
 <script defer src="modules/network_topology/assets/js/dist/nt-bundle.js?v=<?= $_nt_v ?>"></script>
 <script>window.addEventListener("load", function(){
     // Wallboard-Mode: Body-Klasse setzen damit CSS Header/Filter ausblendet,
