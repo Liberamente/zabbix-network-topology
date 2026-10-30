@@ -150,6 +150,8 @@ final class HpeStaticTrunkEvidence
         // counterpart group with the same reciprocal member set.
         $trusted = [];
         foreach ($groupsBySwitch as $sw => $groups) {
+            // PHP coerces numeric hostid array keys to integers.
+            $sw = (string) $sw;
             $ok = true;
             foreach ($groups as $group) {
                 $otherGroups = $groupsBySwitch[$group['remote_switch']] ?? [];
