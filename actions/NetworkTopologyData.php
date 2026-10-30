@@ -12,6 +12,7 @@ use Modules\NetworkTopology\Topology\CdpUnmatchedEvidence;
 use Modules\NetworkTopology\Topology\AutoFdbEdges;
 use Modules\NetworkTopology\Topology\PassThroughEvidence;
 use Modules\NetworkTopology\Topology\PassThroughGroupScope;
+use Modules\NetworkTopology\Topology\PingOnlyFilter;
 use Modules\NetworkTopology\Topology\AutoWifiEdges;
 use Modules\NetworkTopology\Topology\LldpPortIdFeed;
 use Modules\NetworkTopology\Topology\PortIdPilotScope;
@@ -325,6 +326,8 @@ class NetworkTopologyData extends NetworkTopologyController {
             // Nur die Widgets setzen das. Siehe respondData(): sie haben keinen
             // View-Controller und kommen sonst nie an manuelle Verbindungen.
             'manual_links' => 'in 0,1',
+            // Optional, view-only reachability filter (does not delete hosts).
+            'ping_only' => 'in 0,1',
         ]);
         if (!$ret) $this->setResponse(new CControllerResponseFatal());
         return $ret;
@@ -1353,10 +1356,58 @@ class NetworkTopologyData extends NetworkTopologyController {
             }
         }
 
+        // Only after the full, user-scoped topology baseline and optional
+        // manual edges have been assembled: this is a VIEW filter, not a
+        // Zabbix discovery, monitoring or topology-change policy.
+        //
+        // Collect ONLY exact icmpping items for host IDs already authorized
+        // by the current group/hop scope. This intentionally excludes
+        // icmppingsec (RTT) and custom probes for other IP addresses.
+        // Requery on every response (including topology-cache hits), so a
+        // host that acquires a new DHCP lease or powers on can reappear after
+        // the next ICMP check, without deleting historical Zabbix records.
+        $pingFilter = null;
+        if ((int) $this->getInput('ping_only', 0) === 1) {
+            $visibleHostIds = [];
+            foreach ($nodes as $node) {
+                $id = (string) ($node['id'] ?? '');
+                if ($id !== '' && ctype_digit($id)) {
+                    $visibleHostIds[$id] = true;
+                }
+            }
+
+            $icmpItems = [];
+            if ($visibleHostIds) {
+                $icmpItems = API::Item()->get([
+                    'output' => ['hostid', 'key_', 'status', 'state',
+                                 'lastclock', 'lastvalue'],
+                    'hostids' => array_keys($visibleHostIds),
+                    'filter' => ['key_' => ['icmpping']],
+                    'monitored' => true
+                ]);
+            }
+            if (!is_array($icmpItems)) {
+                // Report a source error, never silently show the full graph
+                // or pretend every host is down when Zabbix API is failing.
+                $this->jsonResponse([
+                    'error' => 'Current ICMP status unavailable for ping-only view'
+                ]);
+                return;
+            }
+            $result = PingOnlyFilter::apply($nodes, $edges, $icmpItems, time());
+            $nodes = $result['nodes'];
+            $edges = $result['edges'];
+            $pingFilter = $result['summary'];
+        }
+
         $_payload = $this->encodeJson(
             ['nodes' => $nodes, 'edges' => $edges,
+             'ping_filter' => $pingFilter,
              'lldp_unmatched' => $core['lldp_unmatched'] ?? [],
-             'lldp_quality'   => $core['lldp_quality']   ?? [],
+             // Ghosts have no successful ICMP item; never re-inject them
+             // when the operator explicitly requests ping-positive hosts.
+             'lldp_quality'   => $pingFilter === null
+                 ? ($core['lldp_quality'] ?? []) : [],
              'cdp_unmatched_evidence' => $core['cdp_unmatched_evidence'] ?? [],
              // Verworfene Kanten. 0 heisst: die Karte ist vollstaendig.
              'edges_truncated' => (int) ($core['edges_truncated'] ?? 0),
