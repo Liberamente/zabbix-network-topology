@@ -1,4 +1,4 @@
-name: beta-package-rc1
+name: beta-package-rc2
 
 on:
   pull_request:
@@ -72,23 +72,23 @@ jobs:
             --exclude 'eslint.config.mjs' --exclude 'eslint-suppressions.json' \
             --exclude 'BETA-RELEASE-CANDIDATE.md' \
             "$GITHUB_WORKSPACE/" "$RUNNER_TEMP/beta-stage/network_topology/"
-          printf 'Candidate: beta1-rc1\nSource commit: %s\nManifest version: 5.5.27\nStatus: NOT DEPLOYED / NOT APPROVED\n' \
+          printf 'Candidate: beta1-rc2\nSource commit: %s\nManifest version: 5.5.27\nStatus: NOT DEPLOYED / NOT APPROVED\n' \
             "$(git rev-parse HEAD)" > "$RUNNER_TEMP/beta-stage/network_topology/BETA-BUILD-INFO.txt"
           test -f "$RUNNER_TEMP/beta-stage/network_topology/manifest.json"
           test -s "$RUNNER_TEMP/beta-stage/network_topology/assets/js/dist/nt-bundle.js"
-          (cd "$RUNNER_TEMP/beta-stage" && zip -qr "$GITHUB_WORKSPACE/dist/network_topology-beta1-rc1.zip" network_topology)
-          unzip -t "$GITHUB_WORKSPACE/dist/network_topology-beta1-rc1.zip" >/dev/null
-          if unzip -Z1 "$GITHUB_WORKSPACE/dist/network_topology-beta1-rc1.zip" | \
+          (cd "$RUNNER_TEMP/beta-stage" && zip -qr "$GITHUB_WORKSPACE/dist/network_topology-beta1-rc2.zip" network_topology)
+          unzip -t "$GITHUB_WORKSPACE/dist/network_topology-beta1-rc2.zip" >/dev/null
+          if unzip -Z1 "$GITHUB_WORKSPACE/dist/network_topology-beta1-rc2.zip" | \
             grep -E '(^|/)(\\.git|\\.github|node_modules|tests|tools|templates)/|\\.map$|/\\.env'; then
             echo "Forbidden path inside webroot ZIP" >&2
             exit 1
           fi
-          (cd "$GITHUB_WORKSPACE/dist" && sha256sum network_topology-beta1-rc1.zip > network_topology-beta1-rc1.zip.sha256)
+          (cd "$GITHUB_WORKSPACE/dist" && sha256sum network_topology-beta1-rc2.zip > network_topology-beta1-rc2.zip.sha256)
       - uses: actions/upload-artifact@v4
         with:
-          name: network-topology-beta1-rc1
+          name: network-topology-beta1-rc2
           path: |
-            dist/network_topology-beta1-rc1.zip
-            dist/network_topology-beta1-rc1.zip.sha256
+            dist/network_topology-beta1-rc2.zip
+            dist/network_topology-beta1-rc2.zip.sha256
           if-no-files-found: error
           retention-days: 14
