@@ -226,7 +226,8 @@ final class PassThroughEvidence
                     continue;
                 }
                 $phone = (string) array_key_first($ipOwners[$proxy][$ip]);
-                $identity = 'cdp_01_ipv4';
+                $identity = preg_match('/^01(?:\s+[0-9a-fA-F]{2}){4}$/D', trim($rawId))
+                    ? 'cdp_01_ipv4' : 'cdp_text_ipv4';
             } else {
                 // A six-octet CDP ID cannot identify a host on its own.
                 // Require a unique ARP owner AND same-index LLDP chassis.
@@ -533,11 +534,18 @@ final class PassThroughEvidence
 
     private static function cdpIPv4(string $raw): ?string
     {
-        // Observed device-specific encoding, NOT a universal CDP Device ID.
-        if (!preg_match('/^01(?:\s+[0-9a-fA-F]{2}){4}$/D', trim($raw))) {
+        $text = trim($raw);
+        // Some CDP agents publish Device ID as ordinary dotted IPv4 text.
+        // Resolve it only through the existing unique-IP, same-proxy check.
+        if (filter_var($text, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
+            return $text;
+        }
+        // Also support the observed device-specific 01 + four-byte form;
+        // it is not a universal CDP Device ID encoding.
+        if (!preg_match('/^01(?:\s+[0-9a-fA-F]{2}){4}$/D', $text)) {
             return null;
         }
-        $parts = preg_split('/\s+/', trim($raw));
+        $parts = preg_split('/\s+/', $text);
         return implode('.', array_map('hexdec', array_slice($parts, 1)));
     }
 

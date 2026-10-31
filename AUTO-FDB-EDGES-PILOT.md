@@ -21,6 +21,10 @@ script, private JSON file or shell utility is required in customer sites.
      `nt.fdb.baseport` (BRIDGE-MIB) and `nt.fdb.ifname` (IF-MIB);
    - existing `lldpRemSysCapEnabled` discovery, for distinguishing
      network uplinks from downstream access ports.
+   - Ruckus ZoneDirector AP identity items `nt.wifi.zd.ap.1` (AP MAC),
+     `nt.wifi.zd.ap.3` (active state), and `nt.wifi.zd.ap.10` (AP IPv4), when
+     collected on a visible host in the same proxy. These identify active AP
+     endpoints for the existing FDB path; they do not create Wi-Fi client links.
 
    The module uses the **already implemented** `FdbParser`,
    `FdbResolver`, `LldpEdgeBuilder` and `ArpParser`. The existing
@@ -96,8 +100,17 @@ module directory is the rollback.
 - Current Wi-Fi edge parser interprets **MikroTik**
   `1.3.6.1.4.1.14988.1.1.1.2.1.3` registration RSSI entries.
   **RUCKUS / SmartZone is not yet supported** by this vendor-specific
-  reader. A Ruckus AP with only ICMP and empty LLDP items cannot provide
-  client identities or RSSI until native Zabbix telemetry is configured
-  and the module gains a validated Ruckus-specific mapping.
+  reader. Ruckus ZoneDirector AP MAC/IP rows can identify AP nodes for FDB
+  inference, but Ruckus wireless-client associations and RSSI are not
+  interpreted here.
 - ARP-only hosts lacking any MAC-to-port evidence stay disconnected.
+  Multiple active ZoneDirector AP MACs mapped to one IP remain ambiguous and
+  are skipped; inactive AP rows do not create endpoint identities.
   Absence of discovery must never be treated as a healthy or direct link.
+
+## RC2 incomplete-capability regression checkpoint
+
+See [2026-10-31 checkpoint](RC2-FDB-CHECKPOINT-20261031.md) for the five-switch
+synthetic regression, per-port LLDP/CDP transit correction, offline exclusion
+counters, exact code/rollback commits and remaining release gates. This is a
+source-only correction; it has not been deployed or validated on customer data.
