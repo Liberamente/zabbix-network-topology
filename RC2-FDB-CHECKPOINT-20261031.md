@@ -84,6 +84,30 @@ upgrade or unrelated checker fix is included. Release gates are not all green.
 The source correction does not authorize deployment or assert that any real
 isolated host has been resolved.
 
+## Follow-up: textual IPv4 CDP identity for phone pass-through
+
+After the Cardinale group/proxy opt-in was enabled, the Moxa at
+`172.17.3.84` remained isolated. Read-only Zabbix evidence showed a fresh
+CDP Device ID of `172.17.2.84` on the same switch port where LLDP reports
+Bridge+Telephone capabilities and the FDB learns exactly the phone and Moxa
+MACs. The ARP table maps both addresses to unique MACs on the same proxy.
+
+The pass-through parser only accepted an observed byte-encoded CDP IPv4 form
+(`01` plus four octets) or a six-octet MAC. It rejected a valid dotted IPv4
+Device ID, so it could not identify the phone and produced no candidate.
+`PassThroughEvidence::cdpIPv4()` now accepts strictly validated dotted IPv4
+text as well, then applies the existing unique-IP, same-proxy checks. Evidence
+distinguishes `cdp_text_ipv4` from the byte-encoded form. Invalid IPv4, opaque
+CDP IDs, cross-proxy matches, and non-unique IPs still fail closed.
+
+Regression coverage: `tests/PassThroughEvidenceTest.php` passes for the
+dotted IPv4 case and rejects invalid dotted IPv4. The synthetic proposal
+remains inferred/shared, with no endpoint ports or fabricated metrics. The
+full five-switch FDB regression is unchanged. This is still source-only until
+the updated module is deployed; the stricter reciprocal-uplink and trunk
+checks may independently exclude the live endpoint, so the real graph result
+must be checked after that deployment.
+
 ## Remaining limits and next step
 
 The legacy inference of access on a capability-known switch remains: one LLDP row

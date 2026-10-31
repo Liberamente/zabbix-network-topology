@@ -66,6 +66,14 @@ verify($rows[0]['port_metrics']===[]&&$rows[0]['ports']===[],
     'no fabricated metrics or endpoint port');
 verify(serialize([$hosts,$walk,$caps,$cdp,$edges])===$before,
     'read-only inputs and original edges unchanged');
+$textCdp=$cdp;$textCdp[0]['lastvalue']='192.0.2.2';
+$textRows=PassThroughEvidence::propose($hosts,$walk,$caps,$textCdp,$edges,[],$now);
+verify(count($textRows)===1
+    && in_array('cdp_text_ipv4',$textRows[0]['evidence'],true),
+    'plain dotted IPv4 CDP Device ID resolves the unique same-proxy phone');
+$invalidCdp=$cdp;$invalidCdp[0]['lastvalue']='192.0.2.999';
+verify(PassThroughEvidence::propose($hosts,$walk,$caps,$invalidCdp,$edges,[],$now)===[],
+    'invalid dotted IPv4 CDP Device ID is rejected');
 
 $notPhone=$caps;$notPhone[0]['lastvalue']=chr(0x20).chr(0x00);
 verify(PassThroughEvidence::propose($hosts,$walk,$notPhone,$cdp,$edges,[],$now)===[],
