@@ -218,6 +218,75 @@ t('One known endpoint remains mapped with unknown second MAC',
 t('Unmonitored MAC on the same port still marks shared inference',
     $onlyKnown[0]['fdb_shared_port'] ?? null, true);
 
+// Five-switch cascade: upstream MAC copies are transit, never extra cables.
+$cascadeHosts = [];
+$cascadeRows = [];
+$cascadeEdges = [];
+for ($n = 1; $n <= 5; $n++) {
+    $id = (string) (100 + $n);
+    $cascadeHosts[$id] = ['host'=>'cascade' . $n, 'proxyid'=>'100', 'interfaces'=>[]];
+    $port = $n === 5 ? 3 : 24;
+    $cascadeRows[] = row($id, 'nt.fdb.dot1q', fdb('02:10:20:30:40:50', $port));
+    $cascadeRows[] = row($id, 'nt.fdb.baseport',
+        '.1.3.6.1.2.1.17.1.4.1.2.' . $port . ' = INTEGER: ' . $port);
+    $cascadeRows[] = row($id, 'nt.fdb.ifname',
+        '.1.3.6.1.2.1.31.1.1.1.1.' . $port . ' = STRING: "GE' . $port . '"');
+    if ($n < 5) $cascadeEdges[] = ['id'=>'cascade_' . $n,
+        'from'=>$id, 'to'=>(string)(101 + $n), 'src'=>['lldp'],
+        'ports'=>[$id=>'GE24', (string)(101 + $n)=>'GE23'],
+        'port_idx'=>[$id=>'24', (string)(101 + $n)=>'23']];
+}
+$cascadeHosts['13'] = $hosts['13'];
+$cascadeCaps = [row('105', 'lldpRemSysCapEnabled[0.23.1]', '20 00')];
+$cascade = runCase($cascadeHosts, $cascadeRows, $cascadeCaps, $cascadeEdges);
+t('Five switches: preserve all four original links', array_slice($cascade, 0, 4), $cascadeEdges);
+t('Five switches: missing transit caps with explicit LLDP ports adds one inference', count($cascade), 5);
+t('Five switches: access belongs only to final switch', (string)($cascade[4]['from'] ?? ''), '105');
+$diagnostics = [];
+$missingLink = array_slice($cascadeEdges, 1);
+$result = AutoFdbEdges::append($cascadeHosts, $cascadeRows, $cascadeCaps,
+    $missingLink, [], [], $now, $diagnostics);
+t('Five switches: unexplained upstream copy blocks inference', $result, $missingLink);
+t('Five switches: unknown port rejection explained', $diagnostics['rejected']['unclassified_switch'] ?? 0, 1);
+foreach (['cdp', 'wifi', 'fdb', 'manual'] as $source) {
+    $links = $cascadeEdges;
+    foreach ($links as &$link) $link['src'] = [$source];
+    unset($link);
+    $result = runCase($cascadeHosts, $cascadeRows, $cascadeCaps, $links);
+    t('Five switches: source ' . $source . ' transit eligibility', count($result), $source === 'cdp' ? 5 : 4);
+}
+$noAccessCaps = runCase($cascadeHosts, $cascadeRows, [], $cascadeEdges);
+t('Five switches: known transit never classifies final access switch', $noAccessCaps, $cascadeEdges);
+$outsideScope = $cascadeHosts;
+unset($outsideScope['105']);
+t('Five switches: outside selected hosts cannot create edge',
+    runCase($outsideScope, $cascadeRows, $cascadeCaps, $cascadeEdges), $cascadeEdges);
+$otherProxy = $cascadeHosts;
+$otherProxy['104']['proxyid'] = '200';
+t('Five switches: cross-proxy link cannot classify transit',
+    runCase($otherProxy, $cascadeRows, $cascadeCaps, $cascadeEdges), $cascadeEdges);
+
+$multiHosts = $cascadeHosts;
+$multiHosts['14'] = ['host'=>'cascade-client2', 'proxyid'=>'100',
+    'inventory'=>['macaddress_a'=>'02:10:20:30:40:51']];
+$multiRows = $cascadeRows;
+foreach ($multiRows as &$r) {
+    if ($r['key_'] === 'nt.fdb.dot1q') {
+        $r['lastvalue'] .= fdb('02:10:20:30:40:51', $r['hostid'] === '105' ? 3 : 24);
+    }
+}
+unset($r);
+$multi = runCase($multiHosts, $multiRows, $cascadeCaps, $cascadeEdges);
+t('Five switches: two MACs along cascade produce two inferred edges only', count($multi), 6);
+t('Five switches: shared-port inference preserves unknown cable metrics',
+    array_map(static fn($e) => [$e['confirmed'], $e['port_metrics'], $e['fdb_shared_port']],
+        array_slice($multi, 4)), [[false, [], true], [false, [], true]]);
+$diagnostics = [];
+AutoFdbEdges::append($cascadeHosts, $cascadeRows, $cascadeCaps,
+    $cascadeEdges, [], [], $now, $diagnostics);
+t('Five switches: four documented transit copies counted', $diagnostics['transit_copies_ignored'], 4);
+t('Five switches: one addition counted', $diagnostics['added'], 1);
+
 if ($failed) {
     fwrite(STDERR,"FAILURES: $failed\n");
     exit(1);
