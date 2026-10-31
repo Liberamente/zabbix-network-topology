@@ -55,7 +55,9 @@ final class AutoFdbEdges {
             }
             if ($key === 'nt.arp') {
                 $arpRows[] = $it;
-            } elseif (in_array($key, ['nt.wifi.zd.ap.1', 'nt.wifi.zd.ap.10'], true)) {
+            } elseif (in_array($key, [
+                'nt.wifi.zd.ap.1', 'nt.wifi.zd.ap.3', 'nt.wifi.zd.ap.10'
+            ], true)) {
                 $ruckusApRows[] = $it;
             } elseif (isset(self::KEYS[$key])) {
                 $role = self::KEYS[$key];
@@ -401,13 +403,15 @@ final class AutoFdbEdges {
                         && preg_match('/(?:IpAddress:\s*)?(\d{1,3}(?:\.\d{1,3}){3})/', $val, $m)
                         && filter_var($m[1], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
                     $zd[$proxy][$mac]['ip'] = $m[1];
+                } elseif ($key === 'nt.wifi.zd.ap.3' && ($val === '0' || $val === '1')) {
+                    $zd[$proxy][$mac]['active'] = $val === '1';
                 }
             }
         }
         foreach ($zd as $proxy => $entries) {
             foreach ($entries as $mac => $entry) {
                 $ip = (string) ($entry['ip'] ?? '');
-                if ($ip !== '' && !empty($entry['confirmed'])
+                if ($ip !== '' && !empty($entry['confirmed']) && !empty($entry['active'])
                         && isset($ips[$proxy][$ip]) && count($ips[$proxy][$ip]) === 1) {
                     $macsByIp[$proxy][$ip][$mac] = true;
                 }

@@ -168,15 +168,22 @@ $zdRows[]=row('14','nt.wifi.zd.ap.1',
     '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.1.6.2.16.32.48.64.80 = Hex-STRING: 02 10 20 30 40 50');
 $zdRows[]=row('14','nt.wifi.zd.ap.10',
     '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.10.6.2.16.32.48.64.80 = IpAddress: 192.0.2.8');
+$zdRows[]=row('14','nt.wifi.zd.ap.3',
+    '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.3.6.2.16.32.48.64.80 = INTEGER: 1');
 t('ZoneDirector mapping resolves host MAC',
-    AutoFdbEdges::macsByHost($zdHosts, [], $now, array_slice($zdRows, -2))['13'] ?? [],
+    AutoFdbEdges::macsByHost($zdHosts, [], $now, array_slice($zdRows, -3))['13'] ?? [],
     ['02:10:20:30:40:50'=>true]);
 t('Ruckus ZoneDirector AP identity (same proxy)',count(runCase($zdHosts,$zdRows,$caps)),1);
 $zdRows[]=row('14','nt.wifi.zd.ap.1',
     '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.1.6.2.16.32.48.64.81 = Hex-STRING: 02 10 20 30 40 51');
 $zdRows[]=row('14','nt.wifi.zd.ap.10',
     '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.10.6.2.16.32.48.64.81 = IpAddress: 192.0.2.8');
-t('Ruckus duplicate IP mapped to multiple AP MACs stays ambiguous',
+$zdRows[]=row('14','nt.wifi.zd.ap.3',
+    '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.3.6.2.16.32.48.64.81 = INTEGER: 0');
+t('Inactive duplicate Ruckus AP MAC is ignored',count(runCase($zdHosts,$zdRows,$caps)),1);
+$zdRows[]=row('14','nt.wifi.zd.ap.3',
+    '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.3.6.2.16.32.48.64.81 = INTEGER: 1');
+t('Two active Ruckus AP MACs on one IP stay ambiguous',
     count(runCase($zdHosts,$zdRows,$caps)),0);
 
 // Never synthesize a new edge when a switch does not classify its port.

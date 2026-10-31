@@ -21,10 +21,10 @@ script, private JSON file or shell utility is required in customer sites.
      `nt.fdb.baseport` (BRIDGE-MIB) and `nt.fdb.ifname` (IF-MIB);
    - existing `lldpRemSysCapEnabled` discovery, for distinguishing
      network uplinks from downstream access ports.
-   - Ruckus ZoneDirector AP identity items `nt.wifi.zd.ap.1` (AP MAC) and
-     `nt.wifi.zd.ap.10` (AP IPv4), when collected on a visible host in the
-     same proxy. These identify AP endpoints for the existing FDB path; they
-     do not create wireless-client associations.
+   - Ruckus ZoneDirector AP identity items `nt.wifi.zd.ap.1` (AP MAC),
+     `nt.wifi.zd.ap.3` (active state), and `nt.wifi.zd.ap.10` (AP IPv4), when
+     collected on a visible host in the same proxy. These identify active AP
+     endpoints for the existing FDB path; they do not create Wi-Fi client links.
 
    The module uses the **already implemented** `FdbParser`,
    `FdbResolver`, `LldpEdgeBuilder` and `ArpParser`. The existing
@@ -104,7 +104,8 @@ module directory is the rollback.
   inference, but Ruckus wireless-client associations and RSSI are not
   interpreted here.
 - ARP-only hosts lacking any MAC-to-port evidence stay disconnected.
-  A ZoneDirector IP mapped to multiple AP MACs remains ambiguous and is skipped.
+  Multiple active ZoneDirector AP MACs mapped to one IP remain ambiguous and
+  are skipped; inactive AP rows do not create endpoint identities.
   Absence of discovery must never be treated as a healthy or direct link.
 
 ## RC2 incomplete-capability regression checkpoint
