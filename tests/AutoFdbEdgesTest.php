@@ -156,6 +156,29 @@ $arp['15']=['host'=>'dupip','name'=>'Duplicate IP', 'proxyid'=>'100',
     'interfaces'=>[['ip'=>'192.0.2.8']]];
 t('Ambiguous IP: no ARP inference',count(runCase($arp,$rows,$caps)),0);
 
+// Ruckus ZoneDirector AP identity: its AP MAC/IP table can identify managed
+// access points even when the gateway ARP table has not learned their IP.
+$zdHosts=$hosts;
+$zdHosts['13']['tags']=[];
+$zdHosts['13']['interfaces']=[['ip'=>'192.0.2.8']];
+$zdHosts['14']=['host'=>'zd','name'=>'ZoneDirector','proxyid'=>'100',
+    'inventory'=>[],'interfaces'=>[]];
+$zdRows=sourceRows();
+$zdRows[]=row('14','nt.wifi.zd.ap.1',
+    '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.1.6.2.16.32.48.64.80 = Hex-STRING: 02 10 20 30 40 50');
+$zdRows[]=row('14','nt.wifi.zd.ap.10',
+    '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.10.6.2.16.32.48.64.80 = IpAddress: 192.0.2.8');
+t('ZoneDirector mapping resolves host MAC',
+    AutoFdbEdges::macsByHost($zdHosts, [], $now, array_slice($zdRows, -2))['13'] ?? [],
+    ['02:10:20:30:40:50'=>true]);
+t('Ruckus ZoneDirector AP identity (same proxy)',count(runCase($zdHosts,$zdRows,$caps)),1);
+$zdRows[]=row('14','nt.wifi.zd.ap.1',
+    '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.1.6.2.16.32.48.64.81 = Hex-STRING: 02 10 20 30 40 51');
+$zdRows[]=row('14','nt.wifi.zd.ap.10',
+    '.1.3.6.1.4.1.25053.1.2.2.1.1.2.1.1.10.6.2.16.32.48.64.81 = IpAddress: 192.0.2.8');
+t('Ruckus duplicate IP mapped to multiple AP MACs stays ambiguous',
+    count(runCase($zdHosts,$zdRows,$caps)),0);
+
 // Never synthesize a new edge when a switch does not classify its port.
 $partialCaps=[$caps[0]];
 t('Unclassified reporting switch: no edge',count(runCase($hosts,sourceRows(),$partialCaps)),0);

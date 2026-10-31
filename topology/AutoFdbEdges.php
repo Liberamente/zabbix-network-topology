@@ -39,6 +39,7 @@ final class AutoFdbEdges {
         $diagnostics = ['added' => 0, 'transit_copies_ignored' => 0, 'rejected' => []];
         $walks = [];
         $arpRows = [];
+        $ruckusApRows = [];
         foreach ($walkItems as $it) {
             $hid = (string) ($it['hostid'] ?? '');
             $key = (string) ($it['key_'] ?? '');
@@ -54,6 +55,8 @@ final class AutoFdbEdges {
             }
             if ($key === 'nt.arp') {
                 $arpRows[] = $it;
+            } elseif (in_array($key, ['nt.wifi.zd.ap.1', 'nt.wifi.zd.ap.10'], true)) {
+                $ruckusApRows[] = $it;
             } elseif (isset(self::KEYS[$key])) {
                 $role = self::KEYS[$key];
                 if (!isset($walks[$hid][$role]) || $ts > $walks[$hid][$role]['ts']) {
@@ -154,7 +157,7 @@ final class AutoFdbEdges {
             $portKey = (string) $hit['hostid'] . '|' . (string) $hit['port'];
             $learnedOnPort[$portKey][(string) $hit['mac']] = true;
         }
-        $identity = self::macsByHost($hosts, $arpRows, $now);
+        $identity = self::macsByHost($hosts, $arpRows, $now, $ruckusApRows);
         foreach ($hosts as $hid => $_host) {
             if (empty($identity[$hid])) self::reject($diagnostics, 'no_mac_identity');
         }
@@ -312,7 +315,8 @@ final class AutoFdbEdges {
     }
 
     /** Shared MAC identity for FDB and Wi-Fi: tags, inventory, scoped router ARP. */
-    public static function macsByHost(array $hosts, array $arpRows, int $now): array {
+    public static function macsByHost(array $hosts, array $arpRows, int $now,
+            array $ruckusApRows = []): array {
         $result = [];
         $ips = [];
         foreach ($hosts as $id => $host) {
@@ -340,7 +344,7 @@ final class AutoFdbEdges {
                 }
             }
         }
-        $arpByIp = [];
+        $macsByIp = [];
         foreach ($arpRows as $row) {
             $router = (string) ($row['hostid'] ?? '');
             $proxy = (string) ($hosts[$router]['proxyid'] ?? '0');
@@ -360,10 +364,56 @@ final class AutoFdbEdges {
                 if (count($mac) !== 1) {
                     continue;
                 }
-                $arpByIp[$proxy][$ip][$mac[0]] = true;
+                $macsByIp[$proxy][$ip][$mac[0]] = true;
             }
         }
-        foreach ($arpByIp as $proxy => $ipRows) {
+
+        // Ruckus ZoneDirector exposes AP MAC/IP pairs in nt.wifi.zd.ap.1/.10.
+        // Use these as endpoint identities (never as wireless-client links).
+        // A duplicate IP with multiple AP MACs stays ambiguous and is ignored.
+        $zd = [];
+        foreach ($ruckusApRows as $row) {
+            $controller = (string) ($row['hostid'] ?? '');
+            $proxy = (string) ($hosts[$controller]['proxyid'] ?? '0');
+            $key = (string) ($row['key_'] ?? '');
+            if ($proxy === '0' || !self::fresh((int) ($row['lastclock'] ?? 0), $now)
+                    || (string) ($row['status'] ?? '0') !== '0'
+                    || (string) ($row['state'] ?? '0') !== '0') {
+                continue;
+            }
+            foreach (FdbParser::lines((string) ($row['lastvalue'] ?? '')) as [$oid, $val]) {
+                // ZoneDirector AP identity table: index ends in six MAC octets;
+                // the preceding .6 is the string length and is deliberately ignored.
+                $octets = FdbParser::lastN($oid, 6);
+                if ($octets === null || max($octets) > 255) continue;
+                $mac = FdbResolver::normalizeMac(implode(':', array_map(
+                    static fn(int $part): string => str_pad(dechex($part), 2, '0', STR_PAD_LEFT),
+                    $octets)));
+                if ($mac === null || $mac === '00:00:00:00:00:00'
+                        || $mac === 'ff:ff:ff:ff:ff:ff'
+                        || (hexdec(substr($mac, 0, 2)) & 1) !== 0) continue;
+                if ($key === 'nt.wifi.zd.ap.1') {
+                    $reported = self::parseMacs($val);
+                    if (count($reported) === 1 && $reported[0] === $mac) {
+                        $zd[$proxy][$mac]['confirmed'] = true;
+                    }
+                } elseif ($key === 'nt.wifi.zd.ap.10'
+                        && preg_match('/(?:IpAddress:\s*)?(\d{1,3}(?:\.\d{1,3}){3})/', $val, $m)
+                        && filter_var($m[1], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                    $zd[$proxy][$mac]['ip'] = $m[1];
+                }
+            }
+        }
+        foreach ($zd as $proxy => $entries) {
+            foreach ($entries as $mac => $entry) {
+                $ip = (string) ($entry['ip'] ?? '');
+                if ($ip !== '' && !empty($entry['confirmed'])
+                        && isset($ips[$proxy][$ip]) && count($ips[$proxy][$ip]) === 1) {
+                    $macsByIp[$proxy][$ip][$mac] = true;
+                }
+            }
+        }
+        foreach ($macsByIp as $proxy => $ipRows) {
             foreach ($ipRows as $ip => $macs) {
                 if (count($macs) !== 1) {
                     continue; // Conflicting ARP reporters: do not guess.

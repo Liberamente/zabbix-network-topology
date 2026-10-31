@@ -165,3 +165,23 @@ so no production rollback is needed. Any future separately authorized rollout
 must first capture the actual frontend mount, backup/checksums and PHP handler
 as required by `BETA-RELEASE-CANDIDATE.md`; restoration must use that verified
 backup. Do not assume RC2 is the currently installed production version.
+
+## Follow-up: Ruckus ZoneDirector AP identities
+
+Live Cardinale inspection found fresh `nt.wifi.zd.ap.1` (AP MAC) and
+`nt.wifi.zd.ap.10` (AP IPv4) tables on the visible ZoneDirector host. The
+standard FDB path previously used host tags, inventory, or same-proxy ARP to
+identify endpoint MACs, so Ruckus APs missing from ARP remained unmatchable.
+
+`AutoFdbEdges` now accepts those two scoped ZoneDirector items as endpoint
+identity evidence. Both rows must confirm the same AP MAC, the mapped IP must
+resolve to exactly one visible host on the same proxy, and normal FDB freshness,
+port classification, duplicate-owner and aggregate-port checks still apply.
+This does not create Wi-Fi client associations or claim a direct cable. An IP
+mapped to multiple AP MACs stays ambiguous; live Cardinale `172.16.1.205` is
+currently in that state and will not receive an inferred edge.
+
+The query remains restricted to visible host IDs and the selected group. The
+existing FDB edge styling marks the result as inferred. No live UI diagnostic
+panel was added in this correction; the offline rejection counters remain in
+`tools/fdb-replay.php`.

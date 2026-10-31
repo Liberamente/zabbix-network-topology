@@ -819,6 +819,7 @@ class NetworkTopologyData extends NetworkTopologyController {
                 'filter'    => ['key_' => [
                     'nt.fdb.dot1d', 'nt.fdb.dot1q',
                     'nt.fdb.baseport', 'nt.fdb.ifname', 'nt.arp',
+                    'nt.wifi.zd.ap.1', 'nt.wifi.zd.ap.10',
                 ]],
                 'monitored' => true,
             ]);
