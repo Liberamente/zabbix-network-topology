@@ -101,3 +101,10 @@ module directory is the rollback.
   and the module gains a validated Ruckus-specific mapping.
 - ARP-only hosts lacking any MAC-to-port evidence stay disconnected.
   Absence of discovery must never be treated as a healthy or direct link.
+
+## RC2 incomplete-capability regression checkpoint
+
+See [2026-10-31 checkpoint](RC2-FDB-CHECKPOINT-20261031.md) for the five-switch
+synthetic regression, per-port LLDP/CDP transit correction, offline exclusion
+counters, exact code/rollback commits and remaining release gates. This is a
+source-only correction; it has not been deployed or validated on customer data.
