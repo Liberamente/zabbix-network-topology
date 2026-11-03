@@ -440,6 +440,10 @@ export function buildEdgeElements(edges, nodes) {
         // Keep inferred links distinct from LLDP and avoid borrowed host
         // traffic/health values, which would assert a measurement never made.
         if (e.match === 'fdb' || (Array.isArray(e.src) && e.src.includes('fdb'))) {
+            const fdbPort = String((e.ports && e.ports[src]) || '');
+            const shortPort = fdbPort.replace(/^GigabitEthernet(\d+)$/i, 'GE$1');
+            const showLabel = Boolean(window.NT_CONFIG && window.NT_CONFIG.fdb_labels === true);
+
             elements.push({
                 data: {
                     id: e.id || ('fdb_' + src + '_' + tgt),
@@ -454,7 +458,7 @@ export function buildEdgeElements(edges, nodes) {
                     trafficIn: 0, trafficOut: 0, capBps: 0,
                     perLink: false, portDown: null, portErr: null, portDrop: null,
                     ifaceDown: 0, ifaceErr: 0, ifaceDrop: 0, ifaceDownRatio: 0,
-                    tLabel: ''
+                    tLabel: showLabel ? ('FDB' + (shortPort ? ' · ' + shortPort : '')) : ''
                 }
             });
             return;

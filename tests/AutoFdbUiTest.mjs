@@ -61,6 +61,33 @@ const data = built[0].data;
 assert.equal(data.kind, 'fdb');
 assert.equal(data.isLLDP, false);
 assert.equal(data.portSrc, 'GigabitEthernet3');
+
+// FDB labels are opt-in and never imply a verified physical cable.
+assert.equal(data.tLabel, '', 'Default FDB label must remain empty');
+
+window.NT_CONFIG.fdb_labels = true;
+const labeledFdb = buildEdgeElements([apiEdge], nodes)[0].data;
+assert.equal(labeledFdb.tLabel, 'FDB · GE3');
+assert.equal(labeledFdb.confirmed, false);
+assert.equal(labeledFdb.perLink, false);
+assert.equal(labeledFdb.trafficIn, 0);
+assert.equal(labeledFdb.trafficOut, 0);
+
+// The same display option must not change radio association labels.
+const wifiEdge = {
+    id: 'wifi_31_32', from: '31', to: '32',
+    match: 'wifi', src: ['wifi'], signal_dbm: -45
+};
+const labeledWifi = buildEdgeElements([wifiEdge], nodes)[0].data;
+assert.equal(labeledWifi.kind, 'wifi');
+assert.equal(labeledWifi.tLabel, '-45 dBm');
+
+window.NT_CONFIG.fdb_labels = false;
+assert.equal(
+    buildEdgeElements([apiEdge], nodes)[0].data.tLabel,
+    '',
+    'Disabling the option must restore the old FDB display'
+);
 assert.equal(data.fdbSharedPort, true);
 assert.equal(data.perLink, false);
 assert.equal(data.trafficIn, 0);
