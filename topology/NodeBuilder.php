@@ -242,7 +242,8 @@ final class NodeBuilder {
         // Host-Labels die Anzeige praktisch. Hosts ohne Daten weglassen.
         $lldp_quality_out = [];
         foreach ($lldp_quality as $hid => $q) {
-            if ($q['matched'] === 0 && empty($q['unmatched']) && empty($q['ambiguous']) && $q['self'] === 0) continue;
+            if ($q['matched'] === 0 && empty($q['unmatched']) && empty($q['ambiguous'])
+                    && empty($q['excluded']) && $q['self'] === 0) continue;
             $h = $hosts[$hid] ?? null;
             $lldp_quality_out[] = [
                 'id'    => (string) $hid,
@@ -250,6 +251,7 @@ final class NodeBuilder {
                 'matched'   => $q['matched'],
                 'unmatched' => $q['unmatched'],
                 'ambiguous' => $q['ambiguous'],
+                'excluded'  => $q['excluded'] ?? [],
                 'self'      => $q['self'],
             ];
         }
