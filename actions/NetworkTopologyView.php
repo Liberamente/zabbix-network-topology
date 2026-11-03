@@ -39,7 +39,8 @@ class NetworkTopologyView extends CController {
             'hostid'   => 'id',
             'hops'     => 'int32',
             // Optional per-view display filter; not a host delete/disable.
-            'ping_only' => 'in 0,1'
+            'ping_only' => 'in 0,1',
+            'fdb_labels' => 'in 0,1'
         ];
 
         $ret = $this->validateInput($fields);
@@ -156,6 +157,7 @@ class NetworkTopologyView extends CController {
             'selected_host_name' => $selected_host_name,
             'hops'               => $hops,
             'ping_only'          => (int) $this->getInput('ping_only', 0) === 1,
+            'fdb_labels'         => (int) $this->getInput('fdb_labels', 0) === 1,
             'internet_label'    => trim($this->getInput('internet', '')),
             'wallboard'         => (int) $this->getInput('wallboard', 0) === 1,
             // Link color scales set by a Super admin (module.config); null =
