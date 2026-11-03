@@ -442,7 +442,7 @@ export function buildEdgeElements(edges, nodes) {
         if (e.match === 'fdb' || (Array.isArray(e.src) && e.src.includes('fdb'))) {
             const fdbPort = String((e.ports && e.ports[src]) || '');
             const shortPort = fdbPort.replace(/^GigabitEthernet(\d+)$/i, 'GE$1');
-            const showLabel = window.NT_CONFIG?.fdb_labels === true;
+            const showLabel = Boolean(window.NT_CONFIG && window.NT_CONFIG.fdb_labels === true);
 
             elements.push({
                 data: {
