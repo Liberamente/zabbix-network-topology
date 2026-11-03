@@ -52,11 +52,12 @@ function _noDataBlock(theme) {
 }
 
 function _aggregateBlock(perHost, theme) {
-    let totalMatched = 0, totalUnmatched = 0, totalAmbiguous = 0, totalSelf = 0;
+    let totalMatched = 0, totalUnmatched = 0, totalAmbiguous = 0, totalExcluded = 0, totalSelf = 0;
     perHost.forEach(function(h) {
         totalMatched   += h.matched;
         totalUnmatched += (h.unmatched || []).length;
         totalAmbiguous += (h.ambiguous || []).length;
+        totalExcluded += (h.excluded || []).length;
         totalSelf      += h.self || 0;
     });
     const total = totalMatched + totalUnmatched + totalAmbiguous;
@@ -96,6 +97,9 @@ function _aggregateBlock(perHost, theme) {
         + '<div><div style="font-size:10px;color:' + theme.sub + ';text-transform:uppercase">Ambiguous</div>'
         +   '<div style="font-size:20px;font-weight:700;color:' + (totalAmbiguous > 0 ? COL_WARN : theme.subSoft)
         +     ';font-family:monospace">' + totalAmbiguous + '</div></div>'
+        + '<div><div style="font-size:10px;color:' + theme.sub + ';text-transform:uppercase">' + esc(t('lldpq.excluded')) + '</div>'
+        +   '<div style="font-size:20px;font-weight:700;color:' + (totalExcluded > 0 ? COL_WARN : theme.subSoft)
+        +     ';font-family:monospace">' + totalExcluded + '</div></div>'
         + '<div><div style="font-size:10px;color:' + theme.sub + ';text-transform:uppercase">Self-Loops</div>'
         +   '<div style="font-size:20px;font-weight:700;color:' + theme.subSoft + ';font-family:monospace">'
         +     totalSelf + '</div></div>'
@@ -107,17 +111,17 @@ function _aggregateBlock(perHost, theme) {
 // kursive Zeile) ist damit weg — zwei Darstellungen fuer denselben Zustand
 // waeren eine zu viel.
 function _perHostTable(perHost, theme) {
-    // Sortierung: meiste Issues (unmatched+ambiguous) zuerst, dann nach matched desc
+    // Sortierung: meiste Issues (unmatched+ambiguous+excluded) zuerst, dann nach matched desc
     const sorted = perHost.slice().sort(function(a, b) {
-        const ia = (a.unmatched || []).length + (a.ambiguous || []).length;
-        const ib = (b.unmatched || []).length + (b.ambiguous || []).length;
+        const ia = (a.unmatched || []).length + (a.ambiguous || []).length + (a.excluded || []).length;
+        const ib = (b.unmatched || []).length + (b.ambiguous || []).length + (b.excluded || []).length;
         return ib - ia || b.matched - a.matched;
     });
     let html = '<h3 style="margin:18px 0 8px;font-size:13px;color:' + theme.sub
         + ';text-transform:uppercase;letter-spacing:0.04em">' + esc(t('lldpq.per_reporter')) + '</h3>'
         + '<table style="border-collapse:collapse;font-size:12px;width:100%">'
         + '<thead><tr style="border-bottom:1px solid ' + theme.border + '">'
-        + ['Reporter', 'Matched', 'Unmatched', 'Ambiguous', 'Self', 'Details'].map(function(h) {
+        + ['Reporter', 'Matched', 'Unmatched', 'Ambiguous', t('lldpq.excluded'), 'Self', 'Details'].map(function(h) {
             return '<th style="padding:6px 10px;text-align:left;color:' + theme.sub + ';font-weight:600">' + h + '</th>';
         }).join('') + '</tr></thead><tbody>';
     sorted.forEach(function(h) {
@@ -138,11 +142,21 @@ function _perHostTable(perHost, theme) {
                 + '<span style="color:' + theme.subSoft + ';font-size:10px">('
                 + ((x.candidates || []).length) + ' Kandidaten)</span></div>');
         });
+        (h.excluded || []).slice(0, 5).forEach(function(x) {
+            const reason = x.reason === 'local_port_zero'
+                ? t('lldpq.excluded.local_port_zero')
+                : t('lldpq.excluded.generic');
+            detailItems.push('<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
+                + _srcBadge(x.src) + '<span style="color:' + COL_WARN + '">⊘</span> '
+                + '<code style="font-size:11px">' + esc(x.raw) + '</code> '
+                + '<span style="color:' + theme.subSoft + ';font-size:10px">' + esc(reason) + '</span></div>');
+        });
         html += '<tr style="border-bottom:1px solid ' + theme.borderSoft + '">'
             + '<td style="padding:5px 10px;font-weight:600">' + esc(h.label) + '</td>'
             + '<td style="padding:5px 10px;text-align:right;color:' + COL_GOOD + ';font-family:monospace">' + h.matched + '</td>'
             + '<td style="padding:5px 10px;text-align:right;color:' + (u > 0 ? COL_BAD : theme.subSoft) + ';font-family:monospace">' + u + '</td>'
             + '<td style="padding:5px 10px;text-align:right;color:' + (a > 0 ? COL_WARN : theme.subSoft) + ';font-family:monospace">' + a + '</td>'
+            + '<td style="padding:5px 10px;text-align:right;color:' + ((h.excluded || []).length > 0 ? COL_WARN : theme.subSoft) + ';font-family:monospace">' + (h.excluded || []).length + '</td>'
             + '<td style="padding:5px 10px;text-align:right;color:' + theme.subSoft + ';font-family:monospace">' + (h.self || 0) + '</td>'
             + '<td style="padding:5px 10px">' + (detailItems.length ? detailItems.join('') : '<span style="color:' + theme.subSoft + '">—</span>') + '</td>'
             + '</tr>';

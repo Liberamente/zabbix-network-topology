@@ -124,6 +124,11 @@ $selected_data = array_map(
                                 (new CCheckBox('ping_only', '1'))
                                     ->setChecked((bool) ($data['ping_only'] ?? false))
                             )
+                            ->addRow(
+                                new CLabel(_('Show inferred FDB port labels'), 'fdb_labels'),
+                                (new CCheckBox('fdb_labels', '1'))
+                                    ->setChecked((bool) ($data['fdb_labels'] ?? false))
+                            )
                     )
                     ->addItem(
                         (new CDiv())
@@ -297,6 +302,9 @@ window.NT_CONFIG = <?= json_encode([
     'selected_host_name' => (string) ($data['selected_host_name'] ?? ''),
     'hops'               => (int) ($data['hops'] ?? 1),
     'ping_only'          => (bool) ($data['ping_only'] ?? false),
+    'fdb_labels'         => (bool) ($data['fdb_labels'] ?? false)
+        && count($data['selected_groupids']) === 1
+        && empty($data['selected_hostid']),
     'data_url'   => $data_url,
     'can_edit'       => (bool) $data['user']['can_edit'],
     'host_edit_popup' => (bool) ($data['user']['host_edit_popup'] ?? true),
