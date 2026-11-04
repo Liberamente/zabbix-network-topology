@@ -14,6 +14,10 @@ spl_autoload_register(static function (string $class): void {
 use Modules\NetworkTopology\Topology\LldpEdgeBuilder;
 
 $method = new ReflectionMethod(LldpEdgeBuilder::class, 'portContext');
+// PHP < 8.1 requires explicit access to private methods.
+if (PHP_VERSION_ID < 80100) {
+    $method->setAccessible(true);
+}
 $cases = [
     ['lldpRemSysName[0.0.42]', [], 'LLDP index 0', '0'],
     ['lldpRemSysName[0.0.42]', ['0' => 'bridge0'], 'bridge0', '0'],

@@ -738,6 +738,9 @@ export default {
     'lldpq.nodata.body': 'Kein Host meldet Nachbarn \u2014 es gibt also nichts zu bewerten. Das ist <b>kein Fehler dieses Tabs</b>: das Modul spricht kein SNMP, es liest Zabbix-Items. Fehlen die Items, bleibt die Karte ohne Kanten.<br><br>Der h\u00e4ufigste Grund: das mitgelieferte Template <code>nt_lldp_snmp_template.yaml</code> ist nicht gelinkt \u2014 die offiziellen Vendor-Templates (Huawei VRP, Cisco IOS, HP) sammeln die Nachbartabelle <b>nicht</b>. Der zweith\u00e4ufigste: es ist gelinkt, aber die Discovery lief noch nicht (Standard sind <b>3 Stunden</b>). Dann hilft <i>Discovery rules \u2192 LLDP neighbor discovery \u2192 Execute now</i>.<br><br>Pr\u00fcfen l\u00e4sst sich das in <i>Monitoring \u2192 Latest data</i>, Filter <code>lldpRemSysName</code>: stehen dort keine Werte, liegt es davor, nicht hier.',
     'lldpq.more_unmatched': '\u2026 und {n} weitere unmatched',
     'lldpq.more_distinct': '\u2026 und {n} weitere distinct',
+    'lldpq.excluded': 'Ausgeschlossen',
+    'lldpq.excluded.local_port_zero': 'Kein physischer lokaler Port (LLDP-Portnummer 0); Kante unterdrückt.',
+    'lldpq.excluded.generic': 'Zu wenige Hinweise für eine physische Kante.',
     'lldpq.intro': 'Wie zuverl\u00e4ssig kann Zabbix die LLDP-/CDP-Nachbarn auf bekannte Hosts mappen? Match-Quote &lt; 90\u202f% bedeutet meist: Nachbarn existieren in der echten Welt, aber nicht in Zabbix, oder die Naming-Konventionen weichen ab.',
     'positions.truncated': 'Zu viele Knoten: {n} Positionen wurden nicht gespeichert. Serverseitig sind 5000 Knoten je Ansicht m\u00f6glich \u2014 grenze die Hostgruppen enger ein.',
 

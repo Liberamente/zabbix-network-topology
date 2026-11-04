@@ -60,7 +60,7 @@ final class VerifiedTrunkAdapter {
         $logical = $report['logical_links'] ?? null;
         $issues = $report['logical_link_issues'] ?? null;
         $summary = $report['logical_link_summary'] ?? null;
-        self::assertThat(is_array($logical) && array_is_list($logical)
+        self::assertThat(is_array($logical) && (array_values($logical) === $logical)
             && count($logical) <= self::MAX_LINKS
             && is_array($issues) && $issues === []
             && is_array($summary), 'logical link evidence missing or has exclusions');
@@ -87,7 +87,7 @@ final class VerifiedTrunkAdapter {
                 'invalid or non-static logical link');
             $ends = $link['endpoints'] ?? null;
             self::assertThat(is_array($ends) && count($ends) === 2
-                && array_is_list($ends), 'invalid logical endpoints');
+                && (array_values($ends) === $ends), 'invalid logical endpoints');
             [$left, $right] = $ends;
             $a = self::aggregate($left, $allowed);
             $b = self::aggregate($right, $allowed);
@@ -122,7 +122,7 @@ final class VerifiedTrunkAdapter {
             }
             $pairs = $link['physical_member_links'] ?? null;
             $count = self::positiveInt($link['physical_member_count'] ?? null);
-            self::assertThat(is_array($pairs) && array_is_list($pairs)
+            self::assertThat(is_array($pairs) && (array_values($pairs) === $pairs)
                 && $count !== null && count($pairs) === $count
                 && $count >= 2 && $count <= self::MAX_MEMBERS
                 && count($a['members']) === $count

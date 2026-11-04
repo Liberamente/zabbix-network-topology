@@ -251,13 +251,13 @@ final class LldpEdgeBuilder {
         $host_caps = [];
         // LLDP-Quality-Sammlung: pro Host-Reporter detailliertere Statistik
         // fuer den Quality-Tab. Vereinheitlicht 4 Kategorien:
-        //   matched / unmatched / ambiguous / self
+        //   matched / unmatched / ambiguous / excluded / self
         // Strukturierte Liste plus aggregat: { hostid → { matched: N, unmatched: [{raw,src}],
-        //   ambiguous: [{raw,src,candidates:[hid]}], self_loops: N } }
+        //   ambiguous: [{raw,src,candidates:[hid]}], excluded: [{raw,src,index,reason}], self_loops: N } }
         $lldp_quality = [];   // hostid → counters + lists
         $ensureQ = function($hid) use (&$lldp_quality) {
             if (!isset($lldp_quality[$hid])) {
-                $lldp_quality[$hid] = ['matched' => 0, 'unmatched' => [], 'ambiguous' => [], 'self' => 0];
+                $lldp_quality[$hid] = ['matched' => 0, 'unmatched' => [], 'ambiguous' => [], 'excluded' => [], 'self' => 0];
             }
         };
 
@@ -575,6 +575,25 @@ final class LldpEdgeBuilder {
             [$idx, $port, $port_idx, $remote_port] = $row['ctx'];
             $src = $item['src'] ?? 'other';
             $ensureQ($rid);
+            // LLDP LocalPortNum 0 is the agent's zero/unspecified port, not
+            // a physical interface. Do not turn a one-sided observation on
+            // that pseudo-port into a cable edge. A peer's independent report
+            // can still create the valid edge from its own physical port.
+            // This is the case seen on RouterOS APs: the AP's SNMP LLDP table
+            // names a router on index 0.0.<remIndex>, while the router itself
+            // reports the AP only through CDP/MNDP and LLDP sees the switch.
+            if ($src === 'lldp'
+                    && $port_idx === '0'
+                    && preg_match('/^\d+\.0\.\d+$/D', (string) $idx)) {
+                $lldp_quality[$rid]['excluded'][] = [
+                    'raw' => $neighbor_raw,
+                    'src' => $src,
+                    'index' => $idx,
+                    'reason' => 'local_port_zero',
+                ];
+                continue;
+            }
+
             if (!$rhid) {
                 if ($ambiguous_candidates !== null) {
                     $lldp_quality[$rid]['ambiguous'][] = [
