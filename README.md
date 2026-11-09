@@ -169,6 +169,7 @@ Highlights: live graph with severity rings · **port-to-port weathermap** (measu
 **Custom host tags**
 
 - `nt:icon=<type>` — override the device type (firewall/router/switch/server/storage/…)
+- `nt:topology=exclude` — hide this specific Zabbix host from Network Topology nodes and edges in every group and host-hop view, **without disabling Zabbix monitoring**, history, triggers or graphs. The host still participates in neighbor identity resolution before the view-only filter, so hiding a duplicate does not manufacture a new LLDP ghost. No effect until the patched module is deployed; omit the tag to keep normal visibility.
 - `nt:link=<label>|<url>` — custom link in the context menu (repeatable)
 - `nt:show=<key>` — extra item value in the tooltip
 - `nt:parent=<hostname>` — declare a carrier host (VM→hypervisor, container→node). Draws a directed **hosts** edge, and the what-if simulation treats it as a **hard dependency**: if the parent dies, the child dies — regardless of the network path.
