@@ -79,7 +79,7 @@ jobs:
       - name: parity
         run: node tools/check-parity.mjs
       - name: templates
-        run: node tools/check-templates.mjs && node tools/check-template-logic.mjs
+        run: node tools/check-templates.mjs && node tools/check-template-logic.mjs && node tools/prepare-lldp-pilot.mjs --self-test
       - name: snmprec
         run: node tools/check-snmprec.mjs
       - name: frontend
