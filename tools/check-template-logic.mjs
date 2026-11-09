@@ -204,6 +204,72 @@ check('dieselbe Zeile unter zwei TimeMarks: die hoechste gewinnt',
       d.map((r) => r['{#NT_SYSNAME}']), ['new']);
 
 
+// LLDP #25: immutable neighbor identity across TimeMark/RemIndex relearn;
+// separate neighbors with the same SysName or on the same port.
+console.log('\n  LLDP stable neighbor identities (synthetic)');
+function discoverRows(rows) {
+    try {
+        return JSON.parse(new Function('value', js)(JSON.stringify(rows)));
+    } catch (e) {
+        check('LLDP stable identity JS executes: ' + e.message, false, true);
+        return [];
+    }
+}
+const mkRow = (index, chassis, remport, sysname='localhost') => ({
+    '{#SNMPINDEX}': index,
+    '{#NT_SYSNAME}': sysname,
+    '{#NT_CHASSIS}': chassis,
+    '{#NT_REMPORT}': remport,
+});
+const before = discoverRows([mkRow(
+    '0.67.12967', '02:11:22:33:44:55', '02:11:22:33:44:56'
+)]);
+const after = discoverRows([mkRow(
+    '12999.67.12982', '02-11-22-33-44-55', '02 11 22 33 44 56'
+)]);
+check('stable neighbor before and after relearn', before.length, 1);
+check('stable ID present', typeof before[0]?.['{#NT_NBR}'], 'string');
+check('same chassis/remote port -> same stable ID across RemIndex',
+    before[0]?.['{#NT_NBR}'], after[0]?.['{#NT_NBR}']);
+check('RemIndex lookup remains current',
+    [before[0]?.['{#NT_REMIDX}'], after[0]?.['{#NT_REMIDX}']],
+    ['12967', '12982']);
+check('SNMPINDEX retains port and current RemIndex',
+    after[0]?.['{#SNMPINDEX}'], '0.67.12982');
+
+const peers = discoverRows([
+    mkRow('0.67.7', '02:11:22:33:44:55', '02:11:22:33:44:56'),
+    mkRow('0.67.8', '02:11:22:33:44:66', '02:11:22:33:44:56')
+]);
+check('distinct chassis with same generic name stay separate',
+    new Set(peers.map(x => x['{#NT_NBR}'])).size, 2);
+
+const cascaded = discoverRows([
+    mkRow('0.67.7', '02:11:22:33:44:55', 'eth0'),
+    mkRow('0.67.8', '02:11:22:33:44:55', 'eth1')
+]);
+check('same chassis, distinct remote ports stay separate',
+    new Set(cascaded.map(x => x['{#NT_NBR}'])).size, 2);
+
+const otherLocal = discoverRows([
+    mkRow('0.7.1', '02:11:22:33:44:55', 'eth0'),
+    mkRow('0.8.1', '02:11:22:33:44:55', 'eth0')
+]);
+check('same peer on different local ports stays separate',
+    new Set(otherLocal.map(x => x['{#NT_NBR}'])).size, 2);
+
+const noIdentity = discoverRows([
+    mkRow('0.7.1', '', ''),
+    mkRow('0.7.2', '', '')
+]);
+check('without chassis or port, conservative RemIndex fallback',
+    noIdentity.map(x => x['{#NT_NBR}']), ['0.7.1', '0.7.2']);
+
+const llKeys = lines.filter(x =>
+    /^\s*key: 'lldpRem(?:SysName|PortId|PortDesc|SysDesc|SysCapEnabled|ChassisId)\[\{#NT_NBR\}\]'$/.test(x)
+);
+check('all six LLDP prototypes use stable neighbor key', llKeys.length, 6);
+
 // Optional LLDP local-port mapping: inspect the actual exported template.
 console.log('\n  LLDP local-port optional template');
 
