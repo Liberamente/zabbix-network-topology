@@ -106,6 +106,31 @@ $zero = runLldp($base, 'localhost', '02:11:22:33:44:55', 'lldp', '0.0.1');
 verify('LLDP zero local port does not create physical edge',
     count($zero['edges']), 0);
 
+// Two distinct devices can announce the SAME generic SysName. Their
+// independently and uniquely declared chassis MACs must not be collapsed.
+$twins = $base;
+$twins['202']['nt_aliases'] = ['02:11:22:33:44:66'];
+$twinsRaw = [
+    ['hostid'=>'101', 'key_'=>'lldpRemSysName[0.7.1]',
+        'lastvalue'=>'localhost', 'src'=>'lldp'],
+    ['hostid'=>'101', 'key_'=>'lldpRemSysName[0.8.1]',
+        'lastvalue'=>'localhost', 'src'=>'lldp'],
+];
+$twinsMeta = ['101'=>[
+    '0.7.1'=>['chassis'=>'02:11:22:33:44:55'],
+    '0.8.1'=>['chassis'=>'02:11:22:33:44:66'],
+]];
+$twinsResult = LldpEdgeBuilder::build($twins, $twinsRaw, [], [], [], $twinsMeta);
+verify('two identical generic names remain two distinct hosts',
+    count($twinsResult['edges']), 2);
+$destinations = array_map(
+    static fn(array $e): string => (string) ($e['to'] ?? ''),
+    $twinsResult['edges']
+);
+sort($destinations);
+verify('both explicit identities resolved independently',
+    $destinations, ['201','202']);
+
 if ($failed) {
     echo "LLDP_DECLARED_CHASSIS_TEST=FAIL $failed\n";
     exit(1);
