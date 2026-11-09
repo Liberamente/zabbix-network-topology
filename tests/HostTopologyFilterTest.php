@@ -33,7 +33,7 @@ topoCheck($excluded === ['101' => true, '104' => true],
 topoCheck(serialize($hosts) === $original, 'Tag scan does not mutate Zabbix host records');
 
 $visibleHostMap = HostTopologyFilter::visibleHosts($hosts, $excluded);
-topoCheck(array_keys($visibleHostMap) === ['102','103','105'],
+topoCheck(array_map('strval', array_keys($visibleHostMap)) === ['102','103','105'],
     'MAC/Wi-Fi association identity excludes hidden duplicates');
 topoCheck(isset($hosts['101'], $hosts['104']),
     'Original hosts remain available for LLDP/CDP resolution');
