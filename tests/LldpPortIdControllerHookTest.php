@@ -44,8 +44,12 @@ hookCheck('API reads restricted to selected switch IDs',
     && substr_count($block, '=> $scopeSwitchIds') === 2);
 hookCheck('Per-proxy filtering for restricted mode',
     strpos($block, 'PortIdPilotScope::eligibleHosts(') !== false);
-hookCheck('Global mode uses already scoped host set',
-    strpos($block, '? $hosts') !== false);
+hookCheck('Global mode uses scoped hosts, excluding explicit hidden identities',
+    strpos($block, '? $hosts') !== false
+    || (strpos($block, '? $associationHosts') !== false
+        && strpos($source,
+            '$associationHosts = HostTopologyFilter::visibleHosts($hosts, $excludedHostIds);'
+        ) !== false));
 hookCheck('Scoped host set enters candidate builder',
     strpos($block, 'LldpPortIdFeed::append(') !== false
     && strpos($block, '$pilotHosts,') !== false);
