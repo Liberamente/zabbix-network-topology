@@ -32,6 +32,12 @@ topoCheck($excluded === ['101' => true, '104' => true],
     'Only the exact nt:topology exclude tag hides a host');
 topoCheck(serialize($hosts) === $original, 'Tag scan does not mutate Zabbix host records');
 
+$visibleHostMap = HostTopologyFilter::visibleHosts($hosts, $excluded);
+topoCheck(array_keys($visibleHostMap) === ['102','103','105'],
+    'MAC/Wi-Fi association identity excludes hidden duplicates');
+topoCheck(isset($hosts['101'], $hosts['104']),
+    'Original hosts remain available for LLDP/CDP resolution');
+
 $nodes = [
     ['id' => '101', 'label' => 'hidden fixture'],
     ['id' => '102', 'label' => 'switch fixture'],
@@ -97,7 +103,9 @@ topoCheck(HostTopologyFilter::links($links, $excluded) === [$links[1]],
 $dataPhp = file_get_contents(__DIR__ . '/../actions/NetworkTopologyData.php');
 topoCheck(strpos($dataPhp, 'HostTopologyFilter::excludedIds($hosts)') !== false
     && strpos($dataPhp, 'HostTopologyFilter::apply($nodes, $edges, $excludedHostIds)') !== false
-    && strpos($dataPhp, 'HostTopologyFilter::links($links, $graph[') !== false,
+    && strpos($dataPhp, 'HostTopologyFilter::links($links, $graph[') !== false
+    && strpos($dataPhp, 'AutoFdbEdges::append($associationHosts,') !== false
+    && strpos($dataPhp, 'AutoWifiEdges::append($associationHosts,') !== false,
     'Both group response and hop scope are wired into the visibility policy');
 
 echo "HostTopologyFilterTest: all checks PASS\n";

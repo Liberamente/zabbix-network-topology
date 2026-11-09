@@ -43,6 +43,12 @@ final class HostTopologyFilter
         return $excluded;
     }
 
+    /** Keep the key-preserving host map without deliberately hidden hosts. */
+    public static function visibleHosts(array $hosts, array $excluded): array
+    {
+        return $excluded ? array_diff_key($hosts, $excluded) : $hosts;
+    }
+
     /** @return array{nodes:array,edges:array} */
     public static function apply(array $nodes, array $edges, array $excluded): array
     {

@@ -466,6 +466,11 @@ class NetworkTopologyData extends NetworkTopologyController {
             return;
         }
         $hostids = array_keys($hosts);
+        $excludedHostIds = HostTopologyFilter::excludedIds($hosts);
+        // Excluded duplicates must not compete with visible endpoints for
+        // MAC ownership during optional FDB/ARP and Wi-Fi inference.
+        // The original full $hosts remains available for LLDP/CDP matching.
+        $associationHosts = HostTopologyFilter::visibleHosts($hosts, $excludedHostIds);
 
         // hostid → ['Group A', 'Group B', ...] aus dem schon geholten Host.get
         $host_group_names = [];
@@ -834,7 +839,7 @@ class NetworkTopologyData extends NetworkTopologyController {
                 'monitored' => true,
             ]);
             if (is_array($wifi_items) && $wifi_items) {
-                $edges = AutoWifiEdges::append($hosts, $wifi_items,
+                $edges = AutoWifiEdges::append($associationHosts, $wifi_items,
                     is_array($fdb_items) ? $fdb_items : [], $edges, $host_uplink, time());
             }
             if (is_array($fdb_items) && $fdb_items) {
@@ -851,8 +856,8 @@ class NetworkTopologyData extends NetworkTopologyController {
                 // nt.fdb item.get result. Never search installation-wide.
                 if ($pilotScope !== null && $fdb_switches) {
                     $pilotHosts = $pilotScope === 'all'
-                        ? $hosts
-                        : PortIdPilotScope::eligibleHosts($hosts, $pilotScope);
+                        ? $associationHosts
+                        : PortIdPilotScope::eligibleHosts($associationHosts, $pilotScope);
                     $scopeSwitchIds = array_values(array_filter(
                         array_keys($fdb_switches),
                         static fn($id): bool => isset($pilotHosts[(string) $id])
@@ -935,7 +940,7 @@ class NetworkTopologyData extends NetworkTopologyController {
                         $caps = $caps_result;
                     }
                 }
-                $edges = AutoFdbEdges::append($hosts, $fdb_items, $caps, $edges,
+                $edges = AutoFdbEdges::append($associationHosts, $fdb_items, $caps, $edges,
                     $host_uplink, $metrics, time());
 
                 // Opt-in once per group/proxy, not once per phone or endpoint.
@@ -945,7 +950,7 @@ class NetworkTopologyData extends NetworkTopologyController {
                 // nt:pass_through=<numeric selected group ID> host tag.
                 if (self::PASS_THROUGH_GROUP_OPT_IN && $fdb_switches && $caps) {
                     $passScope = PassThroughGroupScope::eligible(
-                        $hosts, array_keys($fdb_switches), $groupids, $host_mode
+                        $associationHosts, array_keys($fdb_switches), $groupids, $host_mode
                     );
                     if ($passScope['switch_ids']) {
                         $passHosts = $passScope['hosts'];
@@ -1092,7 +1097,6 @@ class NetworkTopologyData extends NetworkTopologyController {
         // nt:topology=exclude participates in LLDP/CDP identity resolution
         // above (so it does not turn into a ghost), but is absent from the
         // rendered graph and from the physical-change baseline below.
-        $excludedHostIds = HostTopologyFilter::excludedIds($hosts);
         $filteredGraph = HostTopologyFilter::apply($nodes, $edges, $excludedHostIds);
         $nodes = $filteredGraph['nodes'];
         $edges = $filteredGraph['edges'];
