@@ -562,6 +562,7 @@ final class LldpEdgeBuilder {
         }
 
         self::resolveByChassis($rows, $lldp_meta);
+        self::resolveByDeclaredChassisAlias($rows, $lldp_meta, $hosts);
         self::resolveByPort($rows, $port_names);
 
         // ── Durchgang 2: Kanten, Qualitaet, Geister ───────────────────────────
@@ -1026,6 +1027,56 @@ final class LldpEdgeBuilder {
             }
         }
         unset($r);
+    }
+
+    /**
+     * Resolve an unmatched LLDP neighbor by its chassis MAC only when
+     * exactly one in-scope host explicitly declares that address as an
+     * nt:lldp alias. Generic SysNames such as "localhost" are not identities.
+     * Do not infer a cable from a MAC learned by FDB or ARP.
+     */
+    private static function resolveByDeclaredChassisAlias(
+            array &$rows, array $lldp_meta, array $hosts): void {
+        $owners = [];
+        foreach ($hosts as $hid => $host) {
+            foreach ($host['nt_aliases'] ?? [] as $alias) {
+                $mac = self::macForm((string) $alias);
+                if (!self::macUsable($mac)) {
+                    continue;
+                }
+                $owners[$mac][(string) $hid] = true;
+            }
+        }
+        if (!$owners) {
+            return;
+        }
+
+        foreach ($rows as &$row) {
+            if ($row['rhid'] || $row['ambiguous'] !== null
+                    || ($row['item']['src'] ?? '') !== 'lldp') {
+                continue;
+            }
+            $mac = self::rowChassis($row, $lldp_meta);
+            if ($mac === null || count($owners[$mac] ?? []) !== 1) {
+                continue;
+            }
+
+            $target = (string) array_key_first($owners[$mac]);
+            $reporter = (string) $row['rid'];
+            if ($target === $reporter) {
+                continue;
+            }
+            $srcProxy = (string) ($hosts[$reporter]['proxyid'] ?? '');
+            $dstProxy = (string) ($hosts[$target]['proxyid'] ?? '');
+            if ($srcProxy === '' || $srcProxy === '0'
+                    || $srcProxy !== $dstProxy) {
+                continue;
+            }
+
+            $row['rhid'] = $target;
+            $row['match'] = 'alias';
+        }
+        unset($row);
     }
 
     /**
