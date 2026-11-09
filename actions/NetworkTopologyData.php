@@ -17,6 +17,7 @@ use Modules\NetworkTopology\Topology\AutoWifiEdges;
 use Modules\NetworkTopology\Topology\LldpPortIdFeed;
 use Modules\NetworkTopology\Topology\PortIdPilotScope;
 use Modules\NetworkTopology\Topology\HostTagParser;
+use Modules\NetworkTopology\Topology\HostTopologyFilter;
 use Modules\NetworkTopology\Topology\HopScope;
 use Modules\NetworkTopology\Topology\ManualLinks;
 use Modules\NetworkTopology\Topology\NodeBuilder;
@@ -417,7 +418,7 @@ class NetworkTopologyData extends NetworkTopologyController {
         //                   Schluessel steckt: zwei Anfragen mit 150 und 100
         //                   Gruppen teilen sich nach dem Kuerzen denselben
         //                   Eintrag, muessen aber verschieden warnen.
-        $cached = NtCache::get('data_payload', $cache_parts);
+        $cached = NtCache::get('data_payload_excluded_v1', $cache_parts);
         if (is_array($cached)) {
             $this->respondData($cached, $cache_parts, $requested_groups, count($groupids), $_t0, true, $scope_info);
             return;
@@ -465,6 +466,11 @@ class NetworkTopologyData extends NetworkTopologyController {
             return;
         }
         $hostids = array_keys($hosts);
+        $excludedHostIds = HostTopologyFilter::excludedIds($hosts);
+        // Excluded duplicates must not compete with visible endpoints for
+        // MAC ownership during optional FDB/ARP and Wi-Fi inference.
+        // The original full $hosts remains available for LLDP/CDP matching.
+        $associationHosts = HostTopologyFilter::visibleHosts($hosts, $excludedHostIds);
 
         // hostid → ['Group A', 'Group B', ...] aus dem schon geholten Host.get
         $host_group_names = [];
@@ -833,7 +839,7 @@ class NetworkTopologyData extends NetworkTopologyController {
                 'monitored' => true,
             ]);
             if (is_array($wifi_items) && $wifi_items) {
-                $edges = AutoWifiEdges::append($hosts, $wifi_items,
+                $edges = AutoWifiEdges::append($associationHosts, $wifi_items,
                     is_array($fdb_items) ? $fdb_items : [], $edges, $host_uplink, time());
             }
             if (is_array($fdb_items) && $fdb_items) {
@@ -850,8 +856,8 @@ class NetworkTopologyData extends NetworkTopologyController {
                 // nt.fdb item.get result. Never search installation-wide.
                 if ($pilotScope !== null && $fdb_switches) {
                     $pilotHosts = $pilotScope === 'all'
-                        ? $hosts
-                        : PortIdPilotScope::eligibleHosts($hosts, $pilotScope);
+                        ? $associationHosts
+                        : PortIdPilotScope::eligibleHosts($associationHosts, $pilotScope);
                     $scopeSwitchIds = array_values(array_filter(
                         array_keys($fdb_switches),
                         static fn($id): bool => isset($pilotHosts[(string) $id])
@@ -934,7 +940,7 @@ class NetworkTopologyData extends NetworkTopologyController {
                         $caps = $caps_result;
                     }
                 }
-                $edges = AutoFdbEdges::append($hosts, $fdb_items, $caps, $edges,
+                $edges = AutoFdbEdges::append($associationHosts, $fdb_items, $caps, $edges,
                     $host_uplink, $metrics, time());
 
                 // Opt-in once per group/proxy, not once per phone or endpoint.
@@ -944,7 +950,7 @@ class NetworkTopologyData extends NetworkTopologyController {
                 // nt:pass_through=<numeric selected group ID> host tag.
                 if (self::PASS_THROUGH_GROUP_OPT_IN && $fdb_switches && $caps) {
                     $passScope = PassThroughGroupScope::eligible(
-                        $hosts, array_keys($fdb_switches), $groupids, $host_mode
+                        $associationHosts, array_keys($fdb_switches), $groupids, $host_mode
                     );
                     if ($passScope['switch_ids']) {
                         $passHosts = $passScope['hosts'];
@@ -1087,6 +1093,16 @@ class NetworkTopologyData extends NetworkTopologyController {
         );
         $nodes            = $built['nodes'];
         $lldp_quality_out = $built['lldp_quality'];
+        // Zabbix host monitoring stays enabled. A host tagged
+        // nt:topology=exclude participates in LLDP/CDP identity resolution
+        // above (so it does not turn into a ghost), but is absent from the
+        // rendered graph and from the physical-change baseline below.
+        $filteredGraph = HostTopologyFilter::apply($nodes, $edges, $excludedHostIds);
+        $nodes = $filteredGraph['nodes'];
+        $edges = $filteredGraph['edges'];
+        $lldp_quality_out = HostTopologyFilter::quality($lldp_quality_out, $excludedHostIds);
+        $lldp_unmatched = HostTopologyFilter::unmatched($lldp_unmatched, $excludedHostIds);
+
         // ── Health-Score (Server-Spiegel der Formel aus render-health.js) ──
         // 100 − offline%·40 − stale%·15 − critical%·25 − unacked%·20 pro
         // Gruppe; avg/min ueber alle Gruppen. Der Sender-Cron pusht beides
@@ -1154,12 +1170,13 @@ class NetworkTopologyData extends NetworkTopologyController {
             'lldp_quality'   => $lldp_quality_out,
             'cdp_unmatched_evidence' => $cdp_unmatched_evidence,
             'health'         => $health,
+            'topology_excluded_hostids' => $excludedHostIds,
             // Hat die Obergrenze im Kantenbau zugeschlagen? Gehoert IN den
             // Cache-Eintrag, nicht daneben: sonst verschwindet der Hinweis
             // beim ersten Cache-Treffer, waehrend die gekappte Karte bleibt.
             'edges_truncated' => LldpEdgeBuilder::lastTruncated(),
         ];
-        NtCache::set('data_payload', $cache_parts, $core, self::CACHE_TTL);
+        NtCache::set('data_payload_excluded_v1', $cache_parts, $core, self::CACHE_TTL);
 
         $this->respondData($core, $cache_parts, $requested_groups, count($groupids), $_t0, false, $scope_info);
     }
@@ -1192,6 +1209,7 @@ class NetworkTopologyData extends NetworkTopologyController {
 
         $nodes = $core['nodes'] ?? [];
         $edges = $core['edges'] ?? [];
+        $excludedHostIds = $core['topology_excluded_hostids'] ?? [];
 
         // Labels aus den Knoten statt aus dem Host-API-Ergebnis: bei einem
         // Cache-Treffer gibt es Letzteres nicht, und der Knoten traegt
@@ -1267,7 +1285,9 @@ class NetworkTopologyData extends NetworkTopologyController {
                     ]);
                     if (is_array($noch)) {
                         foreach ($noch as $hid => $_) {
-                            $sichtbar[(string) $hid] = true;
+                            if (!isset($excludedHostIds[(string) $hid])) {
+                                $sichtbar[(string) $hid] = true;
+                            }
                         }
                     }
                 }
@@ -1545,7 +1565,7 @@ class NetworkTopologyData extends NetworkTopologyController {
      *               if the focus host itself is not visible/monitored.
      */
     private function hopScope(string $hostid, int $hops): array {
-        $graph = NtCache::get('edge_graph', []);
+        $graph = NtCache::get('edge_graph_excluded_v1', []);
         if (!is_array($graph) || !isset($graph['edges'], $graph['visible'])) {
             $hosts = API::Host()->get([
                 'output'           => ['hostid', 'host', 'name'],
@@ -1654,14 +1674,18 @@ class NetworkTopologyData extends NetworkTopologyController {
                     }
                 }
             }
+            $excludedHopIds = HostTopologyFilter::excludedIds($hosts);
+            $edges = HostTopologyFilter::apply([], $edges, $excludedHopIds)['edges'];
+            $visibleHostIds = array_fill_keys(array_map('strval', array_keys($hosts)), true);
             $graph = [
                 'edges'      => $edges,
-                'visible'    => array_fill_keys(array_map('strval', array_keys($hosts)), true),
+                'visible'    => array_diff_key($visibleHostIds, $excludedHopIds),
+                'excluded'   => $excludedHopIds,
                 // Im Cache-Eintrag mitfuehren, damit auch ein Cache-Treffer im
                 // 60-s-Fenster die Unvollstaendigkeit weitermeldet.
                 'incomplete' => $fehlende_chunks,
             ];
-            NtCache::set('edge_graph', [], $graph, self::EDGE_GRAPH_TTL);
+            NtCache::set('edge_graph_excluded_v1', [], $graph, self::EDGE_GRAPH_TTL);
         }
 
         // Fehlende Chunks aus Aufbau ODER Cache-Treffer (?? 0 fuer alte
@@ -1672,6 +1696,7 @@ class NetworkTopologyData extends NetworkTopologyController {
             return ['graph_incomplete' => $incomplete] + HopScope::cap([], self::MAX_HOP_HOSTS);
         }
         $links = array_merge(ManualLinks::loadShared(), ManualLinks::loadPersonal());
+        $links = HostTopologyFilter::links($links, $graph['excluded'] ?? []);
         $dist  = HopScope::distances($hostid, $hops, $graph['edges'], $links);
 
         // Manual links may reference nodes that are no monitored hosts (ghost
