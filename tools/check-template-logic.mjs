@@ -331,6 +331,63 @@ const llKeys = lines.filter(x =>
 );
 check('all six LLDP prototypes preserve installed SNMPINDEX key', llKeys.length, 6);
 
+
+console.log('\n  Installed key migration replay (synthetic, read-only)');
+const migrateOne = discoverRows([
+    mkRow('10.24.1', '02:00:00:00:00:44', 'lan', 'peer')
+]);
+const migrateTwo = discoverRows([
+    mkRow('11.24.9', '02:00:00:00:00:44', 'lan', 'peer'),
+    mkRow('11.24.10', '02:00:00:00:00:44', 'vlan100', 'peer')
+]);
+const migrateAddedEarlier = discoverRows([
+    mkRow('12.24.19', '02:00:00:00:00:44', 'aaa', 'peer'),
+    mkRow('12.24.20', '02:00:00:00:00:44', 'lan', 'peer'),
+    mkRow('12.24.21', '02:00:00:00:00:44', 'vlan100', 'peer')
+]);
+const migrateReordered = discoverRows([
+    mkRow('11.24.10', '02:00:00:00:00:44', 'vlan100', 'peer'),
+    mkRow('11.24.9', '02:00:00:00:00:44', 'lan', 'peer')
+]);
+function logicalPortKey(rows, port) {
+    const rec = rows.find(r => r['{#NT_REMPORT}'] === port);
+    return rec && rec['{#SNMPINDEX}'];
+}
+function allKeys(rows) {
+    return new Set(rows.map(r => r['{#SNMPINDEX}']));
+}
+const originalKey = logicalPortKey(migrateOne, 'lan');
+check('1 to 2 Port-IDs retains the original logical-port item key',
+    logicalPortKey(migrateTwo, 'lan'), originalKey);
+check('1 to 2 Port-IDs introduces exactly one new logical item key',
+    [...allKeys(migrateTwo)].filter(k => !allKeys(migrateOne).has(k)).length, 1);
+check('order of walk rows does not affect logical-port identity',
+    ['lan', 'vlan100'].map(p => logicalPortKey(migrateTwo, p)),
+    ['lan', 'vlan100'].map(p => logicalPortKey(migrateReordered, p)));
+check('an earlier-sorting third Port-ID reassigns legacy item key (KNOWN RISK)',
+    logicalPortKey(migrateAddedEarlier, 'aaa'), originalKey);
+check('legacy port gets a different key after primary reassignment (KNOWN RISK)',
+    logicalPortKey(migrateAddedEarlier, 'lan') !== originalKey, true);
+check('new third-port set retains three distinct observations',
+    allKeys(migrateAddedEarlier).size, 3);
+const llPrefixes = ['lldpRemSysName', 'lldpRemPortId', 'lldpRemPortDesc',
+    'lldpRemSysDesc', 'lldpRemSysCapEnabled', 'lldpRemChassisId'];
+function keysForRows(rows) {
+    return new Set(rows.flatMap(r =>
+        llPrefixes.map(p => p + '[' + r['{#SNMPINDEX}'] + ']')));
+}
+check('one logical neighbor produces six distinct item keys',
+    keysForRows(migrateOne).size, 6);
+check('two logical neighbor observations produce twelve distinct item keys',
+    keysForRows(migrateTwo).size, 12);
+check('primary reassignment affects six prior item keys (KNOWN RISK)',
+    [...keysForRows(migrateTwo)].filter(k =>
+        !keysForRows(migrateAddedEarlier).has(k)).length, 6);
+check('CDP item prototype keys remain unchanged',
+    ["key: 'cdpCacheDeviceId[{#SNMPINDEX}]'",
+     "key: 'cdpCacheDevicePort[{#SNMPINDEX}]'"]
+        .every(key => lines.some(l => l.trim() === key)), true);
+
 // Optional LLDP local-port mapping: inspect the actual exported template.
 console.log('\n  LLDP local-port optional template');
 
