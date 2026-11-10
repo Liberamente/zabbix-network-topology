@@ -265,6 +265,35 @@ const noIdentity = discoverRows([
 check('without chassis or port, conservative RemIndex fallback',
     noIdentity.map(x => x['{#NT_NBR}']), ['0.7.1', '0.7.2']);
 
+
+const sameEpoch = discoverRows([
+    mkRow('0.12.1', '02:00:00:00:00:01', 'ge12', 'peer-old'),
+    mkRow('0.12.8', '02:00:00:00:00:01', 'ge12', 'peer-new')
+]);
+check('relearn with equal TimeMark selects highest RemIndex',
+    sameEpoch.map(x => x['{#NT_REMIDX}']), ['8']);
+check('relearn with equal TimeMark selects most recent SysName',
+    sameEpoch.map(x => x['{#NT_SYSNAME}']), ['peer-new']);
+
+const sharedPort = discoverRows([
+    mkRow('0.14.1', '02:00:00:00:00:02', 'LAN', 'router'),
+    mkRow('0.14.2', '02:00:00:00:00:02', 'vlan100', 'router'),
+    mkRow('0.14.3', '02:00:00:00:00:02', 'LAN', 'router')
+]);
+check('shared local port retains two distinct logical Port-ID advertisements',
+    sharedPort.length, 2);
+check('shared local port logical ports have unique stable identities',
+    new Set(sharedPort.map(x => x['{#NT_NBR}'])).size, 2);
+check('duplicate logical Port-ID prefers newest RemIndex',
+    sharedPort.find(x => x['{#NT_REMPORT}'] === 'LAN')?.['{#NT_REMIDX}'], '3');
+
+const nameChanged = discoverRows([
+    mkRow('0.14.99', '02:00:00:00:00:02', 'LAN', 'renamed')
+]);
+check('SysName change does not change chassis/Port-ID stable identity',
+    nameChanged[0]?.['{#NT_NBR}'],
+    sharedPort.find(x => x['{#NT_REMPORT}'] === 'LAN')?.['{#NT_NBR}']);
+
 const llKeys = lines.filter(x =>
     /^\s*key: 'lldpRem(?:SysName|PortId|PortDesc|SysDesc|SysCapEnabled|ChassisId)\[\{#NT_NBR\}\]'$/.test(x)
 );
