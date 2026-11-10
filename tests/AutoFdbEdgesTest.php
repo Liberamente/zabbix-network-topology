@@ -210,6 +210,50 @@ t('Logical HPE Trk1 FDB is NOT an access link',count($lagResult),1);
 t('Only physical access port survives aggregate filtering',
     $lagResult[0]['ports']['12'] ?? null, 'GigabitEthernet3');
 
+// HPE Comware reports a logical trunk as Bridge-Aggregation1. Its FDB
+// sees transit MACs, but no LLDP-capability items are present for this
+// synthetic switch. That transit copy must not block an independently
+// classified access port, nor be promoted to a physical cable.
+$comwareHosts = $hosts;
+$comwareHosts['15'] = ['host'=>'comware', 'name'=>'Synthetic Comware switch',
+    'proxyid'=>'100', 'inventory'=>[], 'interfaces'=>[]];
+$comwareRows = sourceRows();
+$comwareRows[] = row('15', 'nt.fdb.dot1q', fdb('02:10:20:30:40:50', 716));
+$comwareRows[] = row('15', 'nt.fdb.baseport',
+    '.1.3.6.1.2.1.17.1.4.1.2.716 = INTEGER: 909');
+$comwareRows[] = row('15', 'nt.fdb.ifname',
+    '.1.3.6.1.2.1.31.1.1.1.1.909 = STRING: "Bridge-Aggregation1"');
+$comwareResult = runCase($comwareHosts, $comwareRows, $caps);
+t('Comware logical aggregation is ignored as transit without LLDP', count($comwareResult), 1);
+t('Comware transit copy preserves the classified access port',
+    (string) ($comwareResult[0]['from'] ?? ''), '12');
+t('Comware transit copy never confirms a cable',
+    $comwareResult[0]['confirmed'] ?? null, false);
+
+// A genuinely unclassified physical port on the same device must still
+// prevent automatic inference; the fix only recognizes logical bundles.
+$unclassifiedPhysicalRows = $comwareRows;
+foreach ($unclassifiedPhysicalRows as &$physicalRow) {
+    if ($physicalRow['hostid'] === '15' && $physicalRow['key_'] === 'nt.fdb.ifname') {
+        $physicalRow['lastvalue'] = str_replace(
+            'Bridge-Aggregation1', 'GigabitEthernet1/0/1', $physicalRow['lastvalue']);
+    }
+}
+unset($physicalRow);
+t('Comware unknown physical port remains ambiguous',
+    count(runCase($comwareHosts, $unclassifiedPhysicalRows, $caps)), 0);
+
+$spacedAggregateRows = $comwareRows;
+foreach ($spacedAggregateRows as &$spacedRow) {
+    if ($spacedRow['hostid'] === '15' && $spacedRow['key_'] === 'nt.fdb.ifname') {
+        $spacedRow['lastvalue'] = str_replace(
+            'Bridge-Aggregation1', 'Bridge Aggregation 1', $spacedRow['lastvalue']);
+    }
+}
+unset($spacedRow);
+t('Comware spaced logical aggregate name is also excluded',
+    count(runCase($comwareHosts, $spacedAggregateRows, $caps)), 1);
+
 // If two distinct monitored MACs share one switch access port, show two
 // INFERRED associations with an explicit shared-port warning. Do not guess
 // whether an IP phone, unmanaged switch or wireless AP lies between them.

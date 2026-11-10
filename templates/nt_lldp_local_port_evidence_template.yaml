@@ -1,0 +1,39 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 83a2b741d78b42c3a662e07819613e15
+      name: 'Templates/Network Topology'
+  templates:
+    - uuid: c4185b32a1054b8b809584bdf60e0a24
+      template: 'NT - LLDP Local Ports by SNMP'
+      name: 'NT - LLDP Local Ports by SNMP'
+      description: 'Standard LLDP-MIB local port labels for ARP/FDB/LLDP offline topology correlation. Does not publish topology edges.'
+      groups:
+        - name: 'Templates/Network Topology'
+      items:
+        - uuid: b234669142f84fcf966bfc6fd49f6b12
+          name: 'NT LLDP: local Port Description walk'
+          type: SNMP_AGENT
+          snmp_oid: 'walk[1.0.8802.1.1.2.1.3.7.1.4]'
+          key: nt.lldp.local.portdesc
+          delay: 5m
+          history: 1d
+          value_type: TEXT
+          trends: '0'
+          description: 'lldpLocPortDesc indexed by lldpLocPortNum, for explicit unique matching to ifName.'
+          tags:
+            - tag: component
+              value: topology
+        - uuid: 7d249284b08d49e49be7f106670dc11a
+          name: 'NT LLDP: local Port ID walk'
+          type: SNMP_AGENT
+          snmp_oid: 'walk[1.0.8802.1.1.2.1.3.7.1.3]'
+          key: nt.lldp.local.portid
+          delay: 5m
+          history: 1d
+          value_type: TEXT
+          trends: '0'
+          description: 'lldpLocPortId indexed by lldpLocPortNum. Local port numbering is not assumed equal to ifIndex.'
+          tags:
+            - tag: component
+              value: topology

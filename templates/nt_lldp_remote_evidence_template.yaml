@@ -1,0 +1,26 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 83a2b741d78b42c3a662e07819613e15
+      name: 'Templates/Network Topology'
+  templates:
+    - uuid: 04f0dc38d64148b3b27fdaac61586b4b
+      template: 'NT - LLDP Remote Evidence by SNMP'
+      name: 'NT - LLDP Remote Evidence by SNMP'
+      description: 'Independent 2-minute read-only LLDP-MIB remote neighbor raw walk for offline topology evidence; does not replace or alter existing LLDP discovery.'
+      groups:
+        - name: 'Templates/Network Topology'
+      items:
+        - uuid: 61ad7c1f869642f49a0d6caecb26852c
+          name: 'NT LLDP: Remote neighbor evidence walk'
+          type: SNMP_AGENT
+          snmp_oid: 'walk[1.0.8802.1.1.2.1.4.1.1.7,1.0.8802.1.1.2.1.4.1.1.8,1.0.8802.1.1.2.1.4.1.1.9]'
+          key: nt.lldp.remote.walk
+          delay: 2m
+          history: 1d
+          value_type: TEXT
+          trends: '0'
+          description: 'Raw lldpRemPortId, lldpRemPortDesc, lldpRemSysName with native timemark/localPortNum/remIndex; used for offline correlation under strict sample-skew gates. No preprocessing or automatic topology publishing.'
+          tags:
+            - tag: component
+              value: topology

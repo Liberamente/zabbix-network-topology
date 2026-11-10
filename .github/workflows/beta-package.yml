@@ -1,4 +1,4 @@
-name: candidate-package-p3-rc1
+name: candidate-package-p4-rc1
 
 on:
   pull_request:
@@ -14,12 +14,18 @@ on:
       - "package.json"
       - "package-lock.json"
       - "tools/**"
+      - "templates/**"
+      - "CONSOLIDATED-RELEASE-CANDIDATE.md"
+      - "RELEASE-NOTES-P4-RC1.md"
       - "widget/**"
       - "widget_health/**"
       - "widget_table/**"
       - "widget_kpi/**"
       - "widget_items/**"
   workflow_dispatch:
+  push:
+    branches:
+      - release/topology-v5.5.27-p4-rc1-20261110
 
 permissions:
   contents: read
@@ -40,12 +46,11 @@ jobs:
       - name: Verify pinned source and build tools
         shell: bash
         run: |
-          set -euo pipefail
           for tool in rsync zip unzip sha256sum; do
             command -v "$tool" >/dev/null || { echo "$tool missing"; exit 1; }
           done
-          git status --porcelain
-          git rev-parse HEAD
+          git status --porcelain || exit 1
+          git rev-parse HEAD || exit 1
       - name: Clean install and compile
         run: |
           npm ci
@@ -56,8 +61,7 @@ jobs:
       - name: Package main frontend module only, excluding development source
         shell: bash
         run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/beta-stage/network_topology" "$GITHUB_WORKSPACE/dist"
+          mkdir -p "$RUNNER_TEMP/beta-stage/network_topology" "$GITHUB_WORKSPACE/dist" || exit 1
           rsync -a \
             --exclude '.git' --exclude '.claude' --exclude '.vscode' --exclude '.idea' \
             --exclude '.github' --exclude 'screenshots' --exclude 'dashboards' \
@@ -71,24 +75,86 @@ jobs:
             --exclude 'CLAUDE.md' --exclude 'ROADMAP.md' \
             --exclude 'eslint.config.mjs' --exclude 'eslint-suppressions.json' \
             --exclude 'BETA-RELEASE-CANDIDATE.md' \
-            "$GITHUB_WORKSPACE/" "$RUNNER_TEMP/beta-stage/network_topology/"
-          printf 'Candidate: liberamente-v5.5.27-p3-rc1\nSource commit: %s\nManifest version: 5.5.27\nStatus: NOT DEPLOYED / NOT APPROVED\n' \
+            --exclude 'CONSOLIDATED-RELEASE-CANDIDATE.md' \
+            --exclude 'RELEASE-NOTES-P4-RC1.md' \
+            "$GITHUB_WORKSPACE/" "$RUNNER_TEMP/beta-stage/network_topology/" || exit 1
+          printf 'Candidate: liberamente-v5.5.27-p4-rc1\nSource commit: %s\nManifest version: 5.5.27\nStatus: NOT DEPLOYED / NOT APPROVED\n' \
             "$(git rev-parse HEAD)" > "$RUNNER_TEMP/beta-stage/network_topology/BETA-BUILD-INFO.txt"
-          test -f "$RUNNER_TEMP/beta-stage/network_topology/manifest.json"
-          test -s "$RUNNER_TEMP/beta-stage/network_topology/assets/js/dist/nt-bundle.js"
-          (cd "$RUNNER_TEMP/beta-stage" && zip -qr "$GITHUB_WORKSPACE/dist/network_topology-liberamente-v5.5.27-p3-rc1.zip" network_topology)
-          unzip -t "$GITHUB_WORKSPACE/dist/network_topology-liberamente-v5.5.27-p3-rc1.zip" >/dev/null
-          if unzip -Z1 "$GITHUB_WORKSPACE/dist/network_topology-liberamente-v5.5.27-p3-rc1.zip" | \
+          test -f "$RUNNER_TEMP/beta-stage/network_topology/manifest.json" || exit 1
+          test -s "$RUNNER_TEMP/beta-stage/network_topology/assets/js/dist/nt-bundle.js" || exit 1
+          (cd "$RUNNER_TEMP/beta-stage" && zip -qr "$GITHUB_WORKSPACE/dist/network_topology-liberamente-v5.5.27-p4-rc1.zip" network_topology) || exit 1
+          unzip -t "$GITHUB_WORKSPACE/dist/network_topology-liberamente-v5.5.27-p4-rc1.zip" >/dev/null || exit 1
+          if unzip -Z1 "$GITHUB_WORKSPACE/dist/network_topology-liberamente-v5.5.27-p4-rc1.zip" | \
             grep -E '(^|/)(\\.git|\\.github|node_modules|tests|tools|templates)/|\\.map$|/\\.env'; then
             echo "Forbidden path inside webroot ZIP" >&2
             exit 1
           fi
-          (cd "$GITHUB_WORKSPACE/dist" && sha256sum network_topology-liberamente-v5.5.27-p3-rc1.zip > network_topology-liberamente-v5.5.27-p3-rc1.zip.sha256)
+          (cd "$GITHUB_WORKSPACE/dist" && sha256sum network_topology-liberamente-v5.5.27-p4-rc1.zip > network_topology-liberamente-v5.5.27-p4-rc1.zip.sha256) || exit 1
+          # Package the three selected portable templates separately from webroot.
+          mkdir -p "$RUNNER_TEMP/template-stage/nt-topology-templates" || exit 1
+          for file in nt_lldp_snmp_template.yaml nt_lldp_local_port_evidence_template.yaml nt_lldp_remote_evidence_template.yaml; do
+            cp "templates/$file" "$RUNNER_TEMP/template-stage/nt-topology-templates/$file" || exit 1
+          done
+          cp CONSOLIDATED-RELEASE-CANDIDATE.md "$RUNNER_TEMP/template-stage/nt-topology-templates/README.md" || exit 1
+          (cd "$RUNNER_TEMP/template-stage" && zip -qr "$GITHUB_WORKSPACE/dist/network_topology-templates-liberamente-v5.5.27-p4-rc1.zip" nt-topology-templates) || exit 1
+          unzip -t "$GITHUB_WORKSPACE/dist/network_topology-templates-liberamente-v5.5.27-p4-rc1.zip" >/dev/null || exit 1
+          (cd "$GITHUB_WORKSPACE/dist" && sha256sum network_topology-templates-liberamente-v5.5.27-p4-rc1.zip > network_topology-templates-liberamente-v5.5.27-p4-rc1.zip.sha256) || exit 1
       - uses: actions/upload-artifact@v4
         with:
-          name: network-topology-liberamente-v5.5.27-p3-rc1
+          name: network-topology-liberamente-v5.5.27-p4-rc1
           path: |
-            dist/network_topology-liberamente-v5.5.27-p3-rc1.zip
-            dist/network_topology-liberamente-v5.5.27-p3-rc1.zip.sha256
+            dist/network_topology-liberamente-v5.5.27-p4-rc1.zip
+            dist/network_topology-liberamente-v5.5.27-p4-rc1.zip.sha256
+            dist/network_topology-templates-liberamente-v5.5.27-p4-rc1.zip
+            dist/network_topology-templates-liberamente-v5.5.27-p4-rc1.zip.sha256
           if-no-files-found: error
           retention-days: 14
+  publish-prerelease:
+    name: Publish immutable P4 RC1 pre-release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/release/topology-v5.5.27-p4-rc1-20261110'
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: network-topology-liberamente-v5.5.27-p4-rc1
+          path: dist
+      - name: Verify packaged files and pinned source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA" || exit 1
+          cd dist || exit 1
+          sha256sum -c network_topology-liberamente-v5.5.27-p4-rc1.zip.sha256 || exit 1
+          sha256sum -c network_topology-templates-liberamente-v5.5.27-p4-rc1.zip.sha256 || exit 1
+          unzip -t network_topology-liberamente-v5.5.27-p4-rc1.zip >/dev/null || exit 1
+          unzip -t network_topology-templates-liberamente-v5.5.27-p4-rc1.zip >/dev/null || exit 1
+          unzip -Z1 network_topology-templates-liberamente-v5.5.27-p4-rc1.zip | grep -Fq 'nt-topology-templates/nt_lldp_snmp_template.yaml' || exit 1
+          unzip -Z1 network_topology-templates-liberamente-v5.5.27-p4-rc1.zip | grep -Fq 'nt-topology-templates/nt_lldp_local_port_evidence_template.yaml' || exit 1
+          unzip -Z1 network_topology-templates-liberamente-v5.5.27-p4-rc1.zip | grep -Fq 'nt-topology-templates/nt_lldp_remote_evidence_template.yaml' || exit 1
+      - name: Publish GitHub pre-release, never overwrite an existing tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="liberamente-v5.5.27-p4-rc1"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "PRE_RELEASE_TAG_ALREADY_EXISTS=STOP" >&2
+            exit 1
+          fi
+          gh release create "$TAG" \
+            dist/network_topology-liberamente-v5.5.27-p4-rc1.zip \
+            dist/network_topology-liberamente-v5.5.27-p4-rc1.zip.sha256 \
+            dist/network_topology-templates-liberamente-v5.5.27-p4-rc1.zip \
+            dist/network_topology-templates-liberamente-v5.5.27-p4-rc1.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Liberamente Network Topology 5.5.27-p4 RC1" \
+            --notes-file RELEASE-NOTES-P4-RC1.md \
+            --prerelease || exit 1
+
