@@ -448,7 +448,7 @@ check('changed RemIndex is propagated for current-value lookup',
 check('two logical evidence observations are not physical-link assertions',
     rawDiscovered.every(r => r['{#NT_PORT}'] === '32'), true);
 
-// SOA-like locally assigned chassis rotation (synthetic subtype 7).
+// Locally assigned chassis rotation (synthetic subtype 7).
 // Two local ports advertise constant Port-ID and SysName while one byte
 // in each distinct six-byte Chassis-ID changes in synchrony. No MAC
 // interpretation or physical-link assertion follows from subtype 7.
