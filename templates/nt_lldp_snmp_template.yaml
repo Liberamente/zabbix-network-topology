@@ -112,27 +112,41 @@ zabbix_export:
                       return String(v === undefined || v === null ? '' : v)
                           .replace(/0x/ig, '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
                   }
-                  var rows = JSON.parse(value), best = {}, order = [];
+                  var rows = JSON.parse(value), best = Object.create(null), order = [];
                   for (var i = 0; i < rows.length; i++) {
                       var r = rows[i];
                       var m = /^(?:(\d+)\.)?(\d+)\.(\d+)$/.exec(r['{#SNMPINDEX}'] || '');
                       if (!m) continue;
                       var tm = m[1] === undefined ? 0 : parseInt(m[1], 10);
-                      r['{#SNMPINDEX}'] = '0.' + m[2] + '.' + m[3];
-                      r['{#NT_PORT}'] = m[2];
-                      r['{#NT_REMIDX}'] = m[3];
+                      var localPort = m[2], remIdx = m[3];
+                      r['{#SNMPINDEX}'] = '0.' + localPort + '.' + remIdx;
+                      r['{#NT_PORT}'] = localPort;
+                      r['{#NT_REMIDX}'] = remIdx;
                       var chassis = nbrNorm(r['{#NT_CHASSIS}']);
                       var remport = nbrNorm(r['{#NT_REMPORT}']);
+                      // Preserve distinct Port-ID observations on a shared local port.
+                      // Multiple logical observations are not proof of physical cables.
+                      var identity = chassis + '|' + remport;
                       var token = (chassis !== '' || remport !== '')
-                          ? nbrHash(chassis + '|' + remport) : m[3];
-                      var nbr = '0.' + m[2] + '.' + token;
+                          ? nbrHash(identity) : remIdx;
+                      var nbr = '0.' + localPort + '.' + token;
                       r['{#NT_NBR}'] = nbr;
+                      if (Object.prototype.hasOwnProperty.call(best, nbr) &&
+                          best[nbr].identity !== identity) {
+                          // Never merge different peers on a 32-bit hash collision.
+                          throw 'LLDP StableId collision: ambiguous discovery blocked';
+                      }
                       if (!Object.prototype.hasOwnProperty.call(best, nbr)) {
                           order.push(nbr);
-                          best[nbr] = {tm: tm, row: r};
+                          best[nbr] = {tm: tm, rem: parseInt(remIdx, 10),
+                                       identity: identity, row: r};
                       }
-                      else if (tm > best[nbr].tm) {
-                          best[nbr] = {tm: tm, row: r};
+                      else if (tm > best[nbr].tm ||
+                               (tm === best[nbr].tm &&
+                                parseInt(remIdx, 10) > best[nbr].rem)) {
+                          // Some agents increment RemIndex without changing TimeMark.
+                          best[nbr] = {tm: tm, rem: parseInt(remIdx, 10),
+                                       identity: identity, row: r};
                       }
                   }
                   var out = [];
