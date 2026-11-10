@@ -49,6 +49,21 @@ User-supplied Zabbix 7.0 export `zbx_export_templates (2).yaml` has been inspect
 
 The export proves the template content but not its deployment scope; the connected Zabbix API does not expose `template.get` for the current identity. The installed export must remain private and is not included in the public repo.
 
+## Isolated synthetic migration replay — 2026-11-10
+
+GitHub head `862c6d3173d6eaa54345ffafdc9c7d0e224fb766` passed `gates` run #68 and `candidate-package-p3-rc1` run #45. The `tools/check-template-logic.mjs` suite now explicitly replays changes in advertised Port-ID membership using fixture-only observations; no Zabbix API writes, uploads or customer network identifiers.
+
+- One neighbor with a changed TimeMark/RemIndex retains its installed stable key.
+- A newly added lexicographically later Port-ID creates one additional logical observation while retaining the original port's key.
+- Reordering SNMP walk rows does not alter identities.
+- Adding a lexicographically **earlier** Port-ID reassigns the original chassis-only key to the new logical port: the original port gets a different key.
+- Importantly, an unchanged set of historical item keys does **not** imply unchanged key-to-logical-port associations; existing history may silently become attributed to the wrong logical interface.
+- Six LLDP prototype item key patterns and both CDP item key patterns are preserved.
+
+**Safety gate: unresolved.** Although CI passes, the current lexicographic-primary policy MUST NOT be imported into the common globally linked template until a deterministic no-reassignment policy or an explicitly accepted migration strategy is implemented and tested. CI passing confirms this known-risk test behaves as expected; it does NOT certify live Zabbix history or graph correctness.
+
+The synthetic replay is distinct from the yet-unperformed isolated Zabbix 7.0 instance import, LLD item-ID reconciliation, frontend visual inspection, and host/proxy scope validation.
+
 ## Controlled pilot and rollback (not executed)
 
 - Import a separately named pilot only into a test host, never onto the globally linked template; capture template/item count diffs and LLD results, then restore the isolated test host.
