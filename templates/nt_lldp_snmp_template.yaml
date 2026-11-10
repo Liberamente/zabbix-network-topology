@@ -82,7 +82,7 @@ zabbix_export:
                   // neighbor and the dependent items get recreated (GitHub #25, mmajer).
                   //
                   // Installed-key compatibility: {#SNMPINDEX} is the persistent identity.
-                  // LocalPort + installed FNV hash; one chassis-only key is preserved. It
+                  // LocalPort + installed FNV hash for one port per chassis. It
                   // stays a 3-part NUMERIC index (0.Port.<hash>) so the module still
                   // reads the local port from the middle and correlates the six columns
                   // by it. RemIndex is kept only as {#NT_REMIDX}: the prototype regexes
@@ -146,10 +146,13 @@ zabbix_export:
                       var identity = s.identity;
                       if (s.chassis) {
                           var ports = Object.keys(groups[s.group]).sort();
-                          if (ports.length > 1 && s.remotePort !== ports[0]) {
-                              // Exactly one deterministic observation retains the
-                              // installed chassis-only key. Other logical ports
-                              // get distinct keys; never imply distinct cables.
+                          if (ports.length > 1) {
+                              // Ambiguous chassis with multiple remote Port-IDs:
+                              // every logical observation gets its own identity.
+                              // Never reassign the installed chassis-only item key
+                              // to whichever Port-ID sorts first. The old aggregate
+                              // LLD item may become lost on this transition, which
+                              // must be reviewed as an explicit migration.
                               identity += '|port=' + s.remotePort;
                           }
                       }
@@ -185,7 +188,7 @@ zabbix_export:
             LLDP-MIB lldpRemSysName (1.0.8802.1.1.2.1.4.1.1.9). The {#SNMPINDEX}
             retains the installed 0.LocalPort.StableId identity (Chassis-ID first,
             with Port-ID/SysName fallbacks). Multiple remote Port-ID advertisements
-            can be distinguished, while one chassis-only identity remains.
+            use port-specific identities to avoid reassigning the chassis-only item key.
             Current raw port/RemIndex are in {#NT_PORT}/{#NT_REMIDX}.
             Over the same raw index the discovery also fetches:
 
