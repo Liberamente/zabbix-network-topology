@@ -50,7 +50,7 @@ async function waitForApi() {
     throw new Error('Isolated Zabbix API not ready: ' + last);
 }
 const rules = {
-    template_groups: {createMissing: true, updateExisting: true},
+    template_groups: {createMissing: false, updateExisting: false},
     templates: {createMissing: true, updateExisting: true},
     items: {createMissing: true, updateExisting: true, deleteMissing: false},
     discoveryRules: {createMissing: true, updateExisting: true, deleteMissing: false}
