@@ -100,6 +100,21 @@ GitHub source-test commit `4f375e7c97d6335d751091b21a49269f9a7717ae` passed `gat
 
 **Current gate:** GitHub tests complete; an actual isolated Zabbix 7.0 installation/template import, reconciliation of item IDs/history, and visual frontend/backend topology validation remain **NOT EXECUTED**. The available Zabbix connector is read-only and must not be used to mutate a production template.
 
+## PHP backend evidence-to-edge replay — 2026-11-10
+
+Source-level replay `tests/LldpMultiportEvidenceReplayTest.php` invokes the **actual** `LldpEdgeBuilder::build()` with synthetic host/neighbor/port data (not an approximation of the backend). The test is included automatically in the existing PHP CI test loop. Exact code commit `b33fb6943e54dc11c5b5ba5e9a83b901b8b51bcb` passed GitHub `gates` run #77 and packaging #54.
+
+- Two distinct LLDP Port-ID rows from one reporter, on one local physical port, toward **the same monitored host** yield **one** backend host-pair edge, not two falsely distinct physical trunk members. Neither observation alone confirms the edge.
+- Reversing observation order preserves edge count and the unconfirmed result.
+- Two LLDP reports on one local port targeting **different monitored hosts** yield two distinct reported associations; neither is confirmed by the single reporter. These are observations rather than proof of two distinct cables.
+- Two distinct local reporter ports toward the same neighbor preserve two independent edge members; unilateral LLDP does not confirm them.
+- Reporter list and local-port identity remain attached to the resulting edges.
+- The backend's confirmed bit is derived from **two distinct reporters**, not the number of neighbor observations or available port labels.
+
+**Important limitation:** `LldpEdgeBuilder` merges multiple same-pair/same-local-port reports into one edge; the full list of distinct remote Port-ID observations remains in Zabbix items, but is **not represented as a per-observation port list** on that merged backend edge. The tests do not establish that the current UI can display or drill down into every individual Port-ID when multiple logical interfaces share a physical uplink. Do not represent one merged edge as proof that all remote port evidence was retained on the graphic.
+
+**Not an isolated Zabbix deployment test.** The CI PHP runner exercises real backend code in isolation, but does not start a Zabbix 7.0 database/frontend or import/update the template. Item-history migration and visual graph inspection still need explicit isolated-environment validation.
+
 ## Controlled pilot and rollback (not executed)
 
 - Import a separately named pilot only into a test host, never onto the globally linked template; capture template/item count diffs and LLD results, then restore the isolated test host.
