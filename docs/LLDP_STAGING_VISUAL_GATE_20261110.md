@@ -29,6 +29,24 @@ Collected using connected Zabbix 7.0.32 API `discoveryrule.get`, `itemprototype.
 
 These are point-in-time totals. Group membership overlaps; they are **not** an approval to operate on all 245 hosts. `host.get` returned no parentTemplates for the inspected API identity, so template ownership/linkage still needs an authorized `template.get` and export inspection. Discovered item count is not an estimate of how many item IDs will change on import.
 
+## Read-only LLDP identity risk classification (2026-11-10, subsequent check)
+
+This additional aggregate query paired existing `lldpRemPortId` and `lldpRemChassisId` item keys by host and the numeric **local port** in `0.LocalPort.StableId`, without writing or publishing any private identifier.
+
+| Measurement | Observed |
+| --- | ---: |
+| Port-ID / Chassis-ID / SysName discovered items | 265 / 265 / 265 |
+| Nonempty Port-ID / Chassis-ID / SysName last values | 234 / 237 / 174 |
+| Host+local-port groups with Port-ID items | 204 |
+| Groups holding multiple Port-ID items | 22 |
+| Groups with multiple distinct nonempty Port-ID values | 15 |
+| Groups with different Port-IDs and identical populated Chassis-IDs | **0** |
+| Groups with repeated equal Port-ID+Chassis evidence (among distinct item keys) | **3** |
+
+**Interpretation:** zero same-chassis/different-Port-ID groups were observed in this item snapshot, so there is no live evidence here of an active primary-selection collision. However this does **not** predict future observations, prove that all source items are current, or establish that all discovered items are associated with the currently installed template. Repeated equal evidence does not prove repeated physical cables; old/lost LLD items, independent advertisements, or collection quirks remain possible.
+
+**Risk gate:** the previous Zabbix 7.0.32 isolated import showed that a one→many Port-ID transition generates new item IDs and leaves prior items/history accessible during observed lost-resource retention. Before any production template import, compare **actual live keys and LLD state** host-by-host against the candidate algorithm using only private, authorized data; record exact projected additions, retained keys, retiring keys, and item history policies. Do not infer a zero-churn migration from the aggregate 0 count above.
+
 ## Mandatory staging scope
 
 1. Choose an **isolated Zabbix 7.0 instance** or staging frontend that is demonstrably not connected to the live Zabbix DB, production API, production server, or production discovery timers. Record its version, URL (privately), exact module SHA, and template-export checksum in an internal checkpoint.
