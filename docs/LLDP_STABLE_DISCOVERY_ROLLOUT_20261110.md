@@ -115,6 +115,33 @@ Source-level replay `tests/LldpMultiportEvidenceReplayTest.php` invokes the **ac
 
 **Not an isolated Zabbix deployment test.** The CI PHP runner exercises real backend code in isolation, but does not start a Zabbix 7.0 database/frontend or import/update the template. Item-history migration and visual graph inspection still need explicit isolated-environment validation.
 
+## Actual isolated Zabbix 7.0.32 API/LLD integration test — 2026-11-10
+
+**Verified SUCCESS** at PR #23 code commit `2bbd9f3399da1f0b2dc894831a31458a074a588f`, GitHub Actions:
+- `isolated-zabbix70-lldp-import` run #8: **PASS**
+- `gates` run #88: **PASS**
+- `candidate-package-p3-rc1` run #65: **PASS**
+
+The new reproducible harness runs a **disposable** PostgreSQL 16, Zabbix 7.0.32 server and frontend on a GitHub-hosted runner with loopback-only API and sender endpoints. Test-only synthetic credentials, synthetic host names and synthetic LLDP identifiers are used. A cleanup step removes all containers, the ephemeral database and network even on failure.
+
+**Real Zabbix API checks:**
+1. Import the **unmodified repository YAML** `templates/nt_lldp_snmp_template.yaml` through `configuration.import`; verify the expected template UUID and all six original `lldpRem*[{#SNMPINDEX}]` item prototypes.
+2. Import the unmodified YAML **a second time**; verify that the template ID and all six prototype item IDs are unchanged (import idempotence).
+3. **Isolated test adaptation only:** change the `nt.lldp.walk` master item from `SNMP_AGENT` to `TRAP` **inside the disposable instance**. The LLDP discovery, its preprocessing and all six dependent item prototype definitions remain unchanged. Verify the prototype item IDs survive this transport-only test adaptation and that the CDP discovery remains inherited.
+4. Create a synthetic host linked to the isolated template and transmit complete six-column LLDP walk payloads through Zabbix's native sender protocol, with retries for server configuration cache synchronization and a second value after LLD creation.
+5. Verify an initial Port-ID `eth0` produces its discovered item; verify the real one→two-Port-ID transition creates distinct `eth0`/`eth1` stable keys and **new item IDs**, while the previous chassis-only item remains in Zabbix with its old ID and last value during LLD lost-resource retention.
+6. Add a third alphabetically earlier Port-ID `aaa`; verify that the two already discovered port-specific keys **and their item IDs** remain unchanged, with no reattribution of a historical key. The final query returned 24 LLDP items, including retained historical/lost LLD resources.
+7. Confirm the CI cleanup destroys the database and all containers.
+
+**Scope and limitations:**
+- This is a real Zabbix 7.0.32 API/import/discovery/item-ID lifecycle test, **not** a test of physical SNMP connectivity or the actual configured customer network.
+- The import test uses the exact common YAML. To drive discovery with synthetic payloads the *temporary test instance alone* changes the master transport to `TRAP`; production template source remains `SNMP_AGENT`.
+- The test validates retention of the prior item's ID and **last value** during the observed transition. It does not query `history.get`, audit history retention over the configured LLD expiry period, or guarantee restoration after deletion.
+- A 1→many transition is **intentionally a migration** with new discovered item IDs. Any wide deployment requires a host-by-host diff, backup, LLD lost-resource retention policy review and explicit change approval.
+- The backend/JS evidence tests remain separate. A genuine frontend screenshot/replay against the isolated instance, plus end-to-end validation of multiple Port-ID observation drill-down, has **not** been performed.
+
+**Updated release gate:** isolated Zabbix import and the synthetic LLD key-to-port association checks are now PASS. Do not equate these results with production deployment authorization. Leave PR #23 draft until an authorized staging frontend/visual inspection and migration impact review are complete.
+
 ## Controlled pilot and rollback (not executed)
 
 - Import a separately named pilot only into a test host, never onto the globally linked template; capture template/item count diffs and LLD results, then restore the isolated test host.
