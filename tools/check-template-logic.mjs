@@ -299,9 +299,9 @@ check('duplicate logical Port-ID prefers newest RemIndex',
 const nameChanged = discoverRows([
     mkRow('0.14.99', '02:00:00:00:00:02', 'LAN', 'renamed')
 ]);
-check('SysName change does not change chassis/Port-ID stable identity',
-    nameChanged[0]?.['{#NT_NBR}'],
-    sharedPort.find(x => x['{#NT_REMPORT}'] === 'LAN')?.['{#NT_NBR}']);
+check('single-neighbor SysName change preserves its installed chassis key',
+    nameChanged[0]?.['{#SNMPINDEX}'],
+    discoverRows([mkRow('0.14.1', '02:00:00:00:00:02', 'LAN', 'router')])[0]['{#SNMPINDEX}']);
 
 
 // Known installed export algorithm for a single chassis (independent
@@ -319,8 +319,8 @@ const installedOne = '0.14.' +
     installedHash('14|chassis=02:00:00:00:00:02');
 check('single chassis keeps the exported installed key',
     nameChanged[0]?.['{#SNMPINDEX}'], installedOne);
-check('multiport keeps one legacy chassis-only key',
-    sharedPort.some(x => x['{#SNMPINDEX}'] === installedOne), true);
+check('multiport never reassigns the historical chassis-only key',
+    sharedPort.some(x => x['{#SNMPINDEX}'] === installedOne), false);
 check('all other multiport keys are distinct',
     new Set(sharedPort.map(x => x['{#SNMPINDEX}'])).size, sharedPort.length);
 check('all six existing item prototype keys are unchanged',
@@ -357,17 +357,17 @@ function allKeys(rows) {
     return new Set(rows.map(r => r['{#SNMPINDEX}']));
 }
 const originalKey = logicalPortKey(migrateOne, 'lan');
-check('1 to 2 Port-IDs retains the original logical-port item key',
-    logicalPortKey(migrateTwo, 'lan'), originalKey);
-check('1 to 2 Port-IDs introduces exactly one new logical item key',
-    [...allKeys(migrateTwo)].filter(k => !allKeys(migrateOne).has(k)).length, 1);
+check('1 to 2 Port-IDs retires the aggregate identity instead of reassigning it',
+    allKeys(migrateTwo).has(originalKey), false);
+check('1 to 2 Port-IDs creates two explicit logical identities',
+    [...allKeys(migrateTwo)].filter(k => !allKeys(migrateOne).has(k)).length, 2);
 check('order of walk rows does not affect logical-port identity',
     ['lan', 'vlan100'].map(p => logicalPortKey(migrateTwo, p)),
     ['lan', 'vlan100'].map(p => logicalPortKey(migrateReordered, p)));
-check('an earlier-sorting third Port-ID reassigns legacy item key (KNOWN RISK)',
-    logicalPortKey(migrateAddedEarlier, 'aaa'), originalKey);
-check('legacy port gets a different key after primary reassignment (KNOWN RISK)',
-    logicalPortKey(migrateAddedEarlier, 'lan') !== originalKey, true);
+check('new earlier-sorting Port-ID cannot take over old aggregate key',
+    allKeys(migrateAddedEarlier).has(originalKey), false);
+check('multiport identity is stable on the original port after a third appears',
+    logicalPortKey(migrateAddedEarlier, 'lan'), logicalPortKey(migrateTwo, 'lan'));
 check('new third-port set retains three distinct observations',
     allKeys(migrateAddedEarlier).size, 3);
 const llPrefixes = ['lldpRemSysName', 'lldpRemPortId', 'lldpRemPortDesc',
@@ -380,11 +380,21 @@ check('one logical neighbor produces six distinct item keys',
     keysForRows(migrateOne).size, 6);
 check('two logical neighbor observations produce twelve distinct item keys',
     keysForRows(migrateTwo).size, 12);
-check('primary reassignment silently retains all previous keys (KNOWN RISK)',
+check('2 to 3 Port-IDs preserves all existing logical item keys',
     [...keysForRows(migrateTwo)].filter(k =>
         !keysForRows(migrateAddedEarlier).has(k)).length, 0);
-check('the reassigned historical key now reports a different Port-ID (KNOWN RISK)',
-    migrateAddedEarlier.find(r => r['{#SNMPINDEX}'] === originalKey)['{#NT_REMPORT}'], 'aaa');
+check('old chassis-only key cannot be attributed to a new Port-ID',
+    migrateAddedEarlier.some(r => r['{#SNMPINDEX}'] === originalKey), false);
+const migrateBackToOne = discoverRows([
+    mkRow('18.24.200', '02:00:00:00:00:44', 'lan', 'peer')
+]);
+check('2 to 1 Port-ID restores the original chassis aggregate key',
+    logicalPortKey(migrateBackToOne, 'lan'), originalKey);
+check('2 to 1 Port-ID does not preserve per-port keys accidentally',
+    [...allKeys(migrateBackToOne)].filter(k => allKeys(migrateTwo).has(k)).length, 0);
+check('2 to 3 Port-IDs keeps the same item-to-port association for every old port',
+    ['lan', 'vlan100'].map(p => logicalPortKey(migrateAddedEarlier, p)),
+    ['lan', 'vlan100'].map(p => logicalPortKey(migrateTwo, p)));
 check('CDP item prototype keys remain unchanged',
     ["key: 'cdpCacheDeviceId[{#SNMPINDEX}]'",
      "key: 'cdpCacheDevicePort[{#SNMPINDEX}]'"]
