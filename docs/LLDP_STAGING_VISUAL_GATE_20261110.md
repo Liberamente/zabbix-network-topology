@@ -251,3 +251,37 @@ Release gate: a successful synthetic CI and isolated Zabbix import support
 **candidate source publication** only. Global template import and module
 deployment remain blocked until host-by-host churn inventory, visible topology
 acceptance tests, explicit production approval and a reversible rollout plan.
+
+## Rapid SNMP source-side rotation — read-only confirmation
+
+A host-only SNMP diagnostic compared independently sampled raw LLDP data
+without changing any shared Zabbix template. On 2026-11-10, five complete
+direct SNMPv2c queries using the **same configured working community** over an
+approximately eight-second observation window returned two distinct opaque
+Chassis-ID values on each of two local ports. At the second sample both ports
+changed; in the fifth sample only one port returned to its earlier value.
+All five samples were complete. The three other configured candidate
+community slots were not used to obtain these samples; the previously tested
+two additional communities did not respond.
+
+This establishes **variability at the SNMP source interface independent of
+Zabbix discovery and the Topology module**, but does not distinguish changes
+to the remote LLDP information from faulty/stale/inconsistent SNMP agent
+presentation, nor establish physical cabling. A locally assigned (subtype 7)
+six-octet Chassis-ID must remain an opaque identifier, not an assumed MAC.
+StableId item churn arising from changes in the advertised Chassis-ID is an
+expected consequence of the current chassis-first identity algorithm,
+not itself proof of a template defect.
+
+The temporary single-host diagnostic SNMP item recorded raw walks with
+one-hour history, using the same SNMP interface and six OIDs as the
+inherited production LLDP master. **Cleanup remains required**: delete
+only the standalone diagnostic item once its needed observations have
+been summarized, confirm it is absent, and verify the inherited master
+still has history disabled. No credential or site-specific network
+identifier belongs in this public record. The frozen release candidate
+branch may remain unchanged while this diagnostic report is added to
+the working PR branch.
+
+This result does not waive the separate UI / group and proxy isolation /
+history-migration gates required before stable release or global deployment.
