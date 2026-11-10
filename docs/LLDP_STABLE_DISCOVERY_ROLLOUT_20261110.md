@@ -3,19 +3,22 @@
 Source: `production/v5.5.27` @ `f9f4f2999d0e21d56573c02ba98e04408ee78a0d`.
 Consolidation: draft PR #23, incorporating closed unmerged PR #21 and safeguards from #10.
 
-## Scope
+## Scope and source compatibility
 
-- One generic `templates/nt_lldp_snmp_template.yaml` shared across sites.
-- Preserve the six existing LLDP prototype UUIDs, CDP discovery, and existing SNMP walk regex lookup.
-- `{#NT_NBR}` derives its stable neighbor identity from local port, chassis and remote Port-ID. `{#SNMPINDEX}` still represents current local port/RemIndex for diagnostics; `{#NT_PORT}` and `{#NT_REMIDX}` select raw walk rows.
-- Multiple LLDP Port-ID advertisements may indicate logical interfaces or a shared segment; they DO NOT imply separate verified physical cables.
-- Non-LLDP FDB/ARP inferred, Wi-Fi and trunk/LAG semantics are outside the scope of this change.
+- One common `templates/nt_lldp_snmp_template.yaml`; preserve all six installed LLDP prototype UUIDs and original `[{#SNMPINDEX}]` prototype keys.
+- Installed Zabbix 7.0 export (user supplied) already derives `{#SNMPINDEX}` from `0.LocalPort.FNV32(LocalPort|identity)`, where `identity` is `chassis=<normalized chassis>` when present, otherwise `port=<normalized Port-ID>|name=<normalized SysName>`, otherwise `name=<normalized SysName>`, otherwise `rem=<RemIndex>`. Normalization trims, lowercases, and collapses whitespace; MAC separator variations are **not** normalized away.
+- Revised PR #23 uses the **installed normalization and hashing** for the unique-neighbor and selected multiport-primary cases; `{#NT_NBR}` is an informational alias, not a prototype key. `{#NT_PORT}` and `{#NT_REMIDX}` remain current raw-walk selectors.
+- For multiple Port-ID observations with one Chassis-ID and local port, lexicographically first Port-ID retains the installed chassis-only identity. Other Port-IDs get distinct `|port=`-suffixed identities. This preserves one pre-existing item identity when a second Port-ID appears but can reassign which Port-ID is primary when the set changes. That risk is unresolved without durable state.
+- No automatic physical link is proven by more than one LLDP observation on a local port. Frontend behavior for parallel advertisements must be confirmed before importing.
+- CDP discovery and two CDP prototype keys remain unchanged. Other LLDP local-port and remote-evidence templates remain separate optional collectors.
 
-## Compatibility warning — mandatory approval before import
+## Compatibility warning — approval mandatory before Zabbix import
 
-**The six item prototype keys change their discovery token from `{#SNMPINDEX}` to `{#NT_NBR}`.** Keeping their UUIDs does not preserve discovered item IDs or historical continuity: existing discovered items may be marked lost and replacements may be created, including across all linked tenants, groups and proxies. The installed Zabbix template and the reported 244 linked hosts have not yet been queried or changed as part of this PR.
+**The prototype keys are now unchanged**, addressing the high-impact source of churn in the original PR #21. Tests on synthetic inputs compare candidate stable identities with the exported installed algorithm for a unique chassis and the selected primary multiport observation.
 
-The standalone `NT - LLDP Local Ports by SNMP` and `NT - LLDP Remote Evidence by SNMP` templates in the exported three-template bundle serve different evidence-collection roles and are not replaced by this discovery template.
+This is NOT a global no-churn guarantee: a multi-Port-ID set can reassign the primary identity when its sorted membership changes, missing or reformatted chassis identifiers can change keys, hash collisions fail closed, and earlier device-level installed variants are not all independently verified. Changes in observed logical-port count can create new discovered items on some hosts. The 245 hosts with inherited LLDP rules must not be imported automatically.
+
+The template export alone does not prove that every inherited host uses the same revision. Keep the source PR separate from any production rollout.
 
 ## Required preflight (read-only)
 
@@ -42,11 +45,9 @@ Read-only queries against the connected Zabbix API returned:
 
 User-supplied Zabbix 7.0 export `zbx_export_templates (2).yaml` has been inspected **outside GitHub** (do not commit customer exports or network data). It contains `NT LLDP Neighbors by SNMP` UUID `38caefc2777a4ea5a8e2f9a2060c0660`, a six-column `nt.lldp.walk`, one LLDP discovery and one Cisco CDP discovery, six LLDP item prototypes and two CDP prototypes.
 
-**Correction to previous assumption:** the installed/exported LLDP discovery already has stable `{#SNMPINDEX}=0.LocalPort.StableId`, derived primarily from Chassis-ID with fallback to Port-ID/SysName. The six LLDP item prototype keys use `{#SNMPINDEX}`, not raw RemIndex. The current PR derives `{#NT_NBR}` from normalized Chassis-ID + remote Port-ID instead. The two identity algorithms are not equivalent, and normalization also differs. Upgrading can change existing keys even if RemIndex is unchanged. CDP prototype keys remain `{#SNMPINDEX}`.
+**Resolution in the current candidate:** item prototype keys remain `{#SNMPINDEX}` and the installed hash algorithm is reproduced for unique chassis neighbors. For multiple logical Port-IDs, one deterministic primary observation keeps the installed chassis-only key, while additional variants receive separate keys. The selection of a primary Port-ID remains a potentially disruptive edge case and requires read-only replay before rollout.
 
-The current PR must NOT be represented as a no-churn update to this installed template. A compatibility-preserving solution needs either (a) a verified stable-key transition mapping that retains existing keys where possible while distinguishing multiple Port-ID observations, or (b) explicit one-time LLD migration with host/item/history impact accepted before import. Retaining one old key during a single-to-multiple Port-ID transition may itself cause ambiguity; never silently create multiple physical edges.
-
-The export proves template contents but does not by itself prove that every one of the 245 host-inherited rules uses exactly the exported revision. Verify source template and scope with authorized API access before a deployment decision.
+The export proves the template content but not its deployment scope; the connected Zabbix API does not expose `template.get` for the current identity. The installed export must remain private and is not included in the public repo.
 
 ## Controlled pilot and rollback (not executed)
 
