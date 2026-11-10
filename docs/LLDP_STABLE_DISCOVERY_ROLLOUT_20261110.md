@@ -77,6 +77,29 @@ The synthetic replay is distinct from the yet-unperformed isolated Zabbix 7.0 in
 
 The above is a **source-level compatibility policy**, not proof that Zabbix's installed LLD will retain all historical item IDs. No live import has been executed.
 
+## Additional isolated logic/UI replay and live read-only inventory — 2026-11-10
+
+GitHub source-test commit `4f375e7c97d6335d751091b21a49269f9a7717ae` passed `gates` #74 and `candidate-package-p3-rc1` #51.
+
+**Synthetic logic replay** (`tools/check-template-logic.mjs`):
+- Exercise all six LLDP remote-walk columns for two Port-ID advertisements on one local SNMP port. Assert correct raw RemIndex value binding, distinct stable item keys, stable association across subsequent TimeMark/RemIndex changes.
+- RemIndex selection is evidence retrieval, not physical topology confirmation.
+
+**Synthetic frontend replay** (`tests/LldpPortIdUiTest.mjs`):
+- Feed two separate, explicitly *inferred* LLDP Port-ID associations on one local physical port to the existing build-elements renderer.
+- Both must remain inferred, preserve separate targets, have no per-link metrics and not contribute to physical trunk count.
+- This test checks the renderer's existing `match=lldp_portid` path; it does **not** assert that arbitrary backend multiple-LLDP observations are automatically classified as inferred. The backend's edge creation and real Zabbix UI still need separate verification.
+
+**Read-only Zabbix API aggregation** on current item last values:
+- 265 `lldpRemPortId[...]` items across 22 hosts; 220 enabled, 234 with nonempty last values.
+- 265 `lldpRemChassisId[...]` items across 22 hosts; 220 enabled, 237 with nonempty last values.
+- 204 host+local-port groups with Port-ID items; 22 groups with multiple observations; 15 groups with multiple *distinct* nonempty Port-ID values across four hosts.
+- **0** groups among those 15 had at least two populated identical Chassis-ID values across the observations.
+- This is an aggregate of existing item `lastvalue`, not a fresh LLDP walk or current topology proof. Stale/disabled items, missing Chassis-IDs, or differing chassis formatting limit completeness. These counts do not demonstrate a zero-risk import, nor imply that multiple logical observations equal separate cables.
+- No hostnames, IPs, MACs or other private identifiers were committed to this public repository.
+
+**Current gate:** GitHub tests complete; an actual isolated Zabbix 7.0 installation/template import, reconciliation of item IDs/history, and visual frontend/backend topology validation remain **NOT EXECUTED**. The available Zabbix connector is read-only and must not be used to mutate a production template.
+
 ## Controlled pilot and rollback (not executed)
 
 - Import a separately named pilot only into a test host, never onto the globally linked template; capture template/item count diffs and LLD results, then restore the isolated test host.
