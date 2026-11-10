@@ -8,7 +8,7 @@ Consolidation: draft PR #23, incorporating closed unmerged PR #21 and safeguards
 - One common `templates/nt_lldp_snmp_template.yaml`; preserve all six installed LLDP prototype UUIDs and original `[{#SNMPINDEX}]` prototype keys.
 - Installed Zabbix 7.0 export (user supplied) already derives `{#SNMPINDEX}` from `0.LocalPort.FNV32(LocalPort|identity)`, where `identity` is `chassis=<normalized chassis>` when present, otherwise `port=<normalized Port-ID>|name=<normalized SysName>`, otherwise `name=<normalized SysName>`, otherwise `rem=<RemIndex>`. Normalization trims, lowercases, and collapses whitespace; MAC separator variations are **not** normalized away.
 - Revised PR #23 uses the **installed normalization and hashing** for the unique-neighbor and selected multiport-primary cases; `{#NT_NBR}` is an informational alias, not a prototype key. `{#NT_PORT}` and `{#NT_REMIDX}` remain current raw-walk selectors.
-- For multiple Port-ID observations with one Chassis-ID and local port, lexicographically first Port-ID retains the installed chassis-only identity. Other Port-IDs get distinct `|port=`-suffixed identities. This preserves one pre-existing item identity when a second Port-ID appears but can reassign which Port-ID is primary when the set changes. That risk is unresolved without durable state.
+- For multiple Port-ID observations with one Chassis-ID and local port, **every** observation gets a distinct `|port=`-suffixed identity. No record inherits the legacy chassis-only identity while the group is ambiguous. This deliberately avoids silently reassigning an existing item's historical data to a different Port-ID. Going from one to multiple Port-IDs (or back) is an explicit key migration: LLD can mark historical items lost and create new ones.
 - No automatic physical link is proven by more than one LLDP observation on a local port. Frontend behavior for parallel advertisements must be confirmed before importing.
 - CDP discovery and two CDP prototype keys remain unchanged. Other LLDP local-port and remote-evidence templates remain separate optional collectors.
 
@@ -16,7 +16,7 @@ Consolidation: draft PR #23, incorporating closed unmerged PR #21 and safeguards
 
 **The prototype keys are now unchanged**, addressing the high-impact source of churn in the original PR #21. Tests on synthetic inputs compare candidate stable identities with the exported installed algorithm for a unique chassis and the selected primary multiport observation.
 
-This is NOT a global no-churn guarantee: a multi-Port-ID set can reassign the primary identity when its sorted membership changes, missing or reformatted chassis identifiers can change keys, hash collisions fail closed, and earlier device-level installed variants are not all independently verified. Changes in observed logical-port count can create new discovered items on some hosts. The 245 hosts with inherited LLDP rules must not be imported automatically.
+This is NOT a no-churn guarantee: transitions between one and multiple Port-IDs explicitly change item keys; missing or reformatted chassis identifiers can also change identities, hash collisions fail closed, and earlier device-level installed variants are not all independently verified. A key transition must never be mistaken for loss of the underlying physical neighbor. The 245 hosts with inherited LLDP rules must not be updated automatically.
 
 The template export alone does not prove that every inherited host uses the same revision. Keep the source PR separate from any production rollout.
 
@@ -45,7 +45,7 @@ Read-only queries against the connected Zabbix API returned:
 
 User-supplied Zabbix 7.0 export `zbx_export_templates (2).yaml` has been inspected **outside GitHub** (do not commit customer exports or network data). It contains `NT LLDP Neighbors by SNMP` UUID `38caefc2777a4ea5a8e2f9a2060c0660`, a six-column `nt.lldp.walk`, one LLDP discovery and one Cisco CDP discovery, six LLDP item prototypes and two CDP prototypes.
 
-**Resolution in the current candidate:** item prototype keys remain `{#SNMPINDEX}` and the installed hash algorithm is reproduced for unique chassis neighbors. For multiple logical Port-IDs, one deterministic primary observation keeps the installed chassis-only key, while additional variants receive separate keys. The selection of a primary Port-ID remains a potentially disruptive edge case and requires read-only replay before rollout.
+**Resolution in the current candidate:** item prototype keys remain `{#SNMPINDEX}` and the installed hash algorithm is reproduced for unique chassis neighbors. For multiple logical Port-IDs, each observation receives its own deterministic port-specific key. The chassis-only legacy key is not assigned to any one port during ambiguity. This prevents silent historical key-to-port reassignment but requires explicit one-to-many/many-to-one migration review.
 
 The export proves the template content but not its deployment scope; the connected Zabbix API does not expose `template.get` for the current identity. The installed export must remain private and is not included in the public repo.
 
@@ -56,13 +56,26 @@ GitHub head `862c6d3173d6eaa54345ffafdc9c7d0e224fb766` passed `gates` run #68 an
 - One neighbor with a changed TimeMark/RemIndex retains its installed stable key.
 - A newly added lexicographically later Port-ID creates one additional logical observation while retaining the original port's key.
 - Reordering SNMP walk rows does not alter identities.
-- Adding a lexicographically **earlier** Port-ID reassigns the original chassis-only key to the new logical port: the original port gets a different key.
-- Importantly, an unchanged set of historical item keys does **not** imply unchanged key-to-logical-port associations; existing history may silently become attributed to the wrong logical interface.
+- Adding a lexicographically **earlier** Port-ID leaves all existing port-specific keys stable once the group is already multiport; the original chassis-only key is never reassigned.
+- The previous implementation could silently reassign an unchanged historical key to a different Port-ID. The revised implementation prevents that by retiring the legacy chassis-only key in multiport state. **The new risk is visible item-key churn**, not silent misattribution, during transitions.
 - Six LLDP prototype item key patterns and both CDP item key patterns are preserved.
 
-**Safety gate: unresolved.** Although CI passes, the current lexicographic-primary policy MUST NOT be imported into the common globally linked template until a deterministic no-reassignment policy or an explicitly accepted migration strategy is implemented and tested. CI passing confirms this known-risk test behaves as expected; it does NOT certify live Zabbix history or graph correctness.
+**Safety gate: unresolved for live import.** The deterministic no-reassignment policy is implemented and covered by synthetic tests, but host-level item churn, Zabbix 7.0 LLD lifecycle, evidence-to-edge rendering, and rollback need isolated validation before importing a globally linked template. Passing CI does NOT certify history continuity, UI semantics, or safe production rollout.
 
 The synthetic replay is distinct from the yet-unperformed isolated Zabbix 7.0 instance import, LLD item-ID reconciliation, frontend visual inspection, and host/proxy scope validation.
+
+## No-silent-reassignment policy — decision record
+
+- **Single advertised Port-ID per chassis/local port:** continue using the exact installed chassis-only StableId, preserving existing key and per-neighbor history as long as Chassis-ID representation remains unchanged.
+- **Two or more distinct advertised Port-IDs:** use `chassis=<id>|port=<port-id>` in the existing FNV32 identity formula for **all** observations. Never select a primary based on string ordering. This gives independent and order-insensitive port-specific evidence identities.
+- **One → many:** the old chassis-only key is not reused by any new Port-ID. The original aggregate item may become lost; new LLDP discoveries create port-specific items. The change must be counted, previewed and approved before production import.
+- **Many → more (or fewer, remaining many):** existing port-specific keys stay stable regardless of which Port-ID sorts first.
+- **Many → one:** the installed chassis-only key returns, with another explicit LLD identity transition.
+- **No Chassis-ID:** installed Port-ID/SysName/RemIndex fallbacks remain; these may be less stable. A collision between distinct identity strings fails closed rather than joining evidence.
+- **Physical topology:** multiple logical port observations are not proof of multiple physical cables or verified separate physical edges. This template only records evidence; module rendering must be visually checked in an isolated replay.
+- **Privacy:** synthetic fixtures only in the public repository; customer exports and real MAC/IP addresses remain out of Git.
+
+The above is a **source-level compatibility policy**, not proof that Zabbix's installed LLD will retain all historical item IDs. No live import has been executed.
 
 ## Controlled pilot and rollback (not executed)
 
