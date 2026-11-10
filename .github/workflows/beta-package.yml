@@ -16,12 +16,16 @@ on:
       - "tools/**"
       - "templates/**"
       - "CONSOLIDATED-RELEASE-CANDIDATE.md"
+      - "RELEASE-NOTES-P4-RC1.md"
       - "widget/**"
       - "widget_health/**"
       - "widget_table/**"
       - "widget_kpi/**"
       - "widget_items/**"
   workflow_dispatch:
+  push:
+    branches:
+      - release/topology-v5.5.27-p4-rc1-20261110
 
 permissions:
   contents: read
@@ -72,6 +76,7 @@ jobs:
             --exclude 'eslint.config.mjs' --exclude 'eslint-suppressions.json' \
             --exclude 'BETA-RELEASE-CANDIDATE.md' \
             --exclude 'CONSOLIDATED-RELEASE-CANDIDATE.md' \
+            --exclude 'RELEASE-NOTES-P4-RC1.md' \
             "$GITHUB_WORKSPACE/" "$RUNNER_TEMP/beta-stage/network_topology/" || exit 1
           printf 'Candidate: liberamente-v5.5.27-p4-rc1\nSource commit: %s\nManifest version: 5.5.27\nStatus: NOT DEPLOYED / NOT APPROVED\n' \
             "$(git rev-parse HEAD)" > "$RUNNER_TEMP/beta-stage/network_topology/BETA-BUILD-INFO.txt"
@@ -104,3 +109,52 @@ jobs:
             dist/network_topology-templates-liberamente-v5.5.27-p4-rc1.zip.sha256
           if-no-files-found: error
           retention-days: 14
+publish-prerelease:
+    name: Publish immutable P4 RC1 pre-release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/release/topology-v5.5.27-p4-rc1-20261110'
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: network-topology-liberamente-v5.5.27-p4-rc1
+          path: dist
+      - name: Verify packaged files and pinned source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA" || exit 1
+          cd dist || exit 1
+          sha256sum -c network_topology-liberamente-v5.5.27-p4-rc1.zip.sha256 || exit 1
+          sha256sum -c network_topology-templates-liberamente-v5.5.27-p4-rc1.zip.sha256 || exit 1
+          unzip -t network_topology-liberamente-v5.5.27-p4-rc1.zip >/dev/null || exit 1
+          unzip -t network_topology-templates-liberamente-v5.5.27-p4-rc1.zip >/dev/null || exit 1
+          unzip -Z1 network_topology-templates-liberamente-v5.5.27-p4-rc1.zip | grep -Fq 'nt-topology-templates/nt_lldp_snmp_template.yaml' || exit 1
+          unzip -Z1 network_topology-templates-liberamente-v5.5.27-p4-rc1.zip | grep -Fq 'nt-topology-templates/nt_lldp_local_port_evidence_template.yaml' || exit 1
+          unzip -Z1 network_topology-templates-liberamente-v5.5.27-p4-rc1.zip | grep -Fq 'nt-topology-templates/nt_lldp_remote_evidence_template.yaml' || exit 1
+      - name: Publish GitHub pre-release, never overwrite an existing tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="liberamente-v5.5.27-p4-rc1"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "PRE_RELEASE_TAG_ALREADY_EXISTS=STOP" >&2
+            exit 1
+          fi
+          gh release create "$TAG" \
+            dist/network_topology-liberamente-v5.5.27-p4-rc1.zip \
+            dist/network_topology-liberamente-v5.5.27-p4-rc1.zip.sha256 \
+            dist/network_topology-templates-liberamente-v5.5.27-p4-rc1.zip \
+            dist/network_topology-templates-liberamente-v5.5.27-p4-rc1.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Liberamente Network Topology 5.5.27-p4 RC1" \
+            --notes-file RELEASE-NOTES-P4-RC1.md \
+            --prerelease || exit 1
+
