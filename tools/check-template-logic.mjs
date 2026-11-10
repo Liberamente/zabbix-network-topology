@@ -448,6 +448,49 @@ check('changed RemIndex is propagated for current-value lookup',
 check('two logical evidence observations are not physical-link assertions',
     rawDiscovered.every(r => r['{#NT_PORT}'] === '32'), true);
 
+// SOA-like locally assigned chassis rotation (synthetic subtype 7).
+// Two local ports advertise constant Port-ID and SysName while one byte
+// in each distinct six-byte Chassis-ID changes in synchrony. No MAC
+// interpretation or physical-link assertion follows from subtype 7.
+console.log('\n  Locally assigned chassis rotation replay (synthetic)');
+function localAssignedRow(port, remIndex, sharedByte) {
+    const hex = sharedByte.toString(16).padStart(2, '0');
+    const chassis = port === '1'
+        ? '02 11 ' + hex + ' 33 44 55'
+        : '06 77 88 99 ' + hex + ' AA';
+    return mkRow('0.' + port + '.' + remIndex, chassis,
+        port === '1' ? 'port-a' : 'port-b', 'same-advertised-name');
+}
+const soaFirst = discoverRows([
+    localAssignedRow('1', '1', 17),
+    localAssignedRow('2', '1', 17)
+]);
+const soaRelearn = discoverRows([
+    localAssignedRow('1', '99', 17),
+    localAssignedRow('2', '200', 17)
+]);
+const soaRotated = discoverRows([
+    localAssignedRow('1', '1', 18),
+    localAssignedRow('2', '1', 18)
+]);
+check('locally assigned chassis: unchanged identity survives RemIndex change',
+    soaRelearn.map(r => r['{#SNMPINDEX}']),
+    soaFirst.map(r => r['{#SNMPINDEX}']));
+check('locally assigned chassis: real chassis change rotates both LLD keys',
+    soaRotated.every((r, i) =>
+        r['{#SNMPINDEX}'] !== soaFirst[i]['{#SNMPINDEX}']), true);
+check('locally assigned chassis: stable Port-ID and SysName do not override chassis',
+    soaRotated.map(r => [r['{#NT_REMPORT}'], r['{#NT_SYSNAME}']]),
+    soaFirst.map(r => [r['{#NT_REMPORT}'], r['{#NT_SYSNAME}']]));
+check('locally assigned chassis: separate local ports remain separate',
+    new Set(soaRotated.map(r => r['{#SNMPINDEX}'])).size, 2);
+check('locally assigned chassis: old keys not silently reassigned to new evidence',
+    soaRotated.some(r => allKeys(soaFirst).has(r['{#SNMPINDEX}'])), false);
+check('locally assigned chassis: six prototype keys change together per port',
+    [...keysForRows(soaFirst)].filter(k => keysForRows(soaRotated).has(k)).length, 0);
+// Explicitly record that subtype 7 is not a MAC nor proof that an apparently
+// similar observation refers to the same physical neighbor.
+
 // Optional LLDP local-port mapping: inspect the actual exported template.
 console.log('\n  LLDP local-port optional template');
 
