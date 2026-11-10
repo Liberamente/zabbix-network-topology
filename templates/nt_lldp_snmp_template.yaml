@@ -81,8 +81,8 @@ zabbix_export:
                   // If RemIndex sits in the LLD identity, each relearn looks like a new
                   // neighbor and the dependent items get recreated (GitHub #25, mmajer).
                   //
-                  // So the identity {#NT_NBR} is built from the STABLE attributes:
-                  // LocalPort + a 32-bit hash of the remote ChassisId and PortId. It
+                  // Installed-key compatibility: {#SNMPINDEX} is the persistent identity.
+                  // LocalPort + installed FNV hash; one chassis-only key is preserved. It
                   // stays a 3-part NUMERIC index (0.Port.<hash>) so the module still
                   // reads the local port from the middle and correlates the six columns
                   // by it. RemIndex is kept only as {#NT_REMIDX}: the prototype regexes
@@ -108,45 +108,72 @@ zabbix_export:
                       }
                       return (h >>> 0).toString();
                   }
-                  function nbrNorm(v) {               // hex / string / mac -> stable token
-                      return String(v === undefined || v === null ? '' : v)
-                          .replace(/0x/ig, '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
+                  // Compatibility: hash and normalize exactly as the installed
+                  // 2026-11-10 Zabbix export. Keep {#SNMPINDEX} as the item key.
+                  function norm(v) {
+                      if (v === null || v === undefined) return '';
+                      return String(v).replace(/^\s+|\s+$/g, '')
+                          .toLowerCase().replace(/\s+/g, ' ');
                   }
-                  var rows = JSON.parse(value), best = Object.create(null), order = [];
+                  var rows = JSON.parse(value), staged = [], groups = Object.create(null);
                   for (var i = 0; i < rows.length; i++) {
                       var r = rows[i];
                       var m = /^(?:(\d+)\.)?(\d+)\.(\d+)$/.exec(r['{#SNMPINDEX}'] || '');
                       if (!m) continue;
-                      var tm = m[1] === undefined ? 0 : parseInt(m[1], 10);
                       var localPort = m[2], remIdx = m[3];
-                      r['{#SNMPINDEX}'] = '0.' + localPort + '.' + remIdx;
-                      r['{#NT_PORT}'] = localPort;
-                      r['{#NT_REMIDX}'] = remIdx;
-                      var chassis = nbrNorm(r['{#NT_CHASSIS}']);
-                      var remport = nbrNorm(r['{#NT_REMPORT}']);
-                      // Preserve distinct Port-ID observations on a shared local port.
-                      // Multiple logical observations are not proof of physical cables.
-                      var identity = chassis + '|' + remport;
-                      var token = (chassis !== '' || remport !== '')
-                          ? nbrHash(identity) : remIdx;
-                      var nbr = '0.' + localPort + '.' + token;
-                      r['{#NT_NBR}'] = nbr;
-                      if (Object.prototype.hasOwnProperty.call(best, nbr) &&
-                          best[nbr].identity !== identity) {
-                          // Never merge different peers on a 32-bit hash collision.
-                          throw 'LLDP StableId collision: ambiguous discovery blocked';
+                      var chassis = norm(r['{#NT_CHASSIS}']);
+                      var remotePort = norm(r['{#NT_REMPORT}']);
+                      var sysName = norm(r['{#NT_SYSNAME}']);
+                      var identity = chassis ? 'chassis=' + chassis
+                          : remotePort ? 'port=' + remotePort + '|name=' + sysName
+                          : sysName ? 'name=' + sysName : 'rem=' + remIdx;
+                      var group = localPort + '|' + identity;
+                      if (chassis) {
+                          if (!Object.prototype.hasOwnProperty.call(groups, group)) {
+                              groups[group] = Object.create(null);
+                          }
+                          // Capture the full set of distinct advertised Port-IDs.
+                          groups[group][remotePort] = true;
                       }
-                      if (!Object.prototype.hasOwnProperty.call(best, nbr)) {
-                          order.push(nbr);
-                          best[nbr] = {tm: tm, rem: parseInt(remIdx, 10),
-                                       identity: identity, row: r};
+                      staged.push({row: r, localPort: localPort, remIdx: remIdx,
+                          tm: m[1] === undefined ? 0 : parseInt(m[1], 10),
+                          chassis: chassis, remotePort: remotePort,
+                          identity: identity, group: group});
+                  }
+                  var best = Object.create(null), order = [];
+                  for (var i = 0; i < staged.length; i++) {
+                      var s = staged[i];
+                      var identity = s.identity;
+                      if (s.chassis) {
+                          var ports = Object.keys(groups[s.group]).sort();
+                          if (ports.length > 1 && s.remotePort !== ports[0]) {
+                              // Exactly one deterministic observation retains the
+                              // installed chassis-only key. Other logical ports
+                              // get distinct keys; never imply distinct cables.
+                              identity += '|port=' + s.remotePort;
+                          }
                       }
-                      else if (tm > best[nbr].tm ||
-                               (tm === best[nbr].tm &&
-                                parseInt(remIdx, 10) > best[nbr].rem)) {
-                          // Some agents increment RemIndex without changing TimeMark.
-                          best[nbr] = {tm: tm, rem: parseInt(remIdx, 10),
-                                       identity: identity, row: r};
+                      var idx = '0.' + s.localPort + '.' +
+                          nbrHash(s.localPort + '|' + identity);
+                      // Preserve the installed prototype keys and frontend index.
+                      s.row['{#SNMPINDEX}'] = idx;
+                      s.row['{#NT_NBR}'] = idx; // compatibility alias for tests
+                      s.row['{#NT_PORT}'] = s.localPort;
+                      s.row['{#NT_REMIDX}'] = s.remIdx;
+                      if (Object.prototype.hasOwnProperty.call(best, idx) &&
+                          best[idx].identity !== identity) {
+                          throw 'LLDP StableId collision: discovery blocked';
+                      }
+                      if (!Object.prototype.hasOwnProperty.call(best, idx)) {
+                          order.push(idx);
+                          best[idx] = {tm: s.tm, rem: parseInt(s.remIdx, 10),
+                                       identity: identity, row: s.row};
+                      }
+                      else if (s.tm > best[idx].tm ||
+                          (s.tm === best[idx].tm &&
+                              parseInt(s.remIdx, 10) > best[idx].rem)) {
+                          best[idx] = {tm: s.tm, rem: parseInt(s.remIdx, 10),
+                                       identity: identity, row: s.row};
                       }
                   }
                   var out = [];
@@ -172,7 +199,7 @@ zabbix_export:
             - uuid: 71e0268303f9471796f291808b05293b
               name: 'LLDP neighbor [{#SNMPINDEX}]: {#NT_SYSNAME}'
               type: DEPENDENT
-              key: 'lldpRemSysName[{#NT_NBR}]'
+              key: 'lldpRemSysName[{#SNMPINDEX}]'
               value_type: CHAR
               delay: '0'
               master_item:
@@ -192,7 +219,7 @@ zabbix_export:
             - uuid: 33e111c96b2e4ab4a5e0047ba739d05f
               name: 'LLDP neighbor port-id [{#SNMPINDEX}]: {#NT_SYSNAME}'
               type: DEPENDENT
-              key: 'lldpRemPortId[{#NT_NBR}]'
+              key: 'lldpRemPortId[{#SNMPINDEX}]'
               value_type: CHAR
               delay: '0'
               master_item:
@@ -214,7 +241,7 @@ zabbix_export:
             - uuid: 296934a9b576433095c087dbdeb383e6
               name: 'LLDP neighbor port-desc [{#SNMPINDEX}]: {#NT_SYSNAME}'
               type: DEPENDENT
-              key: 'lldpRemPortDesc[{#NT_NBR}]'
+              key: 'lldpRemPortDesc[{#SNMPINDEX}]'
               value_type: CHAR
               delay: '0'
               master_item:
@@ -234,7 +261,7 @@ zabbix_export:
             - uuid: ae103ab500594d00bc368f47749fac2e
               name: 'LLDP neighbor sys-desc [{#SNMPINDEX}]: {#NT_SYSNAME}'
               type: DEPENDENT
-              key: 'lldpRemSysDesc[{#NT_NBR}]'
+              key: 'lldpRemSysDesc[{#SNMPINDEX}]'
               value_type: CHAR
               delay: '0'
               master_item:
@@ -259,7 +286,7 @@ zabbix_export:
             - uuid: 36a88ecbea114b5e89f55f7aa684f43d
               name: 'LLDP neighbor capabilities [{#SNMPINDEX}]: {#NT_SYSNAME}'
               type: DEPENDENT
-              key: 'lldpRemSysCapEnabled[{#NT_NBR}]'
+              key: 'lldpRemSysCapEnabled[{#SNMPINDEX}]'
               value_type: CHAR
               delay: '0'
               master_item:
@@ -284,7 +311,7 @@ zabbix_export:
             - uuid: e62a93c7791f47aa8f49bb21e7da9136
               name: 'LLDP neighbor chassis-id [{#SNMPINDEX}]: {#NT_SYSNAME}'
               type: DEPENDENT
-              key: 'lldpRemChassisId[{#NT_NBR}]'
+              key: 'lldpRemChassisId[{#SNMPINDEX}]'
               value_type: CHAR
               delay: '0'
               master_item:
