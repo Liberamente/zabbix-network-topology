@@ -109,7 +109,7 @@ jobs:
             dist/network_topology-templates-liberamente-v5.5.27-p4-rc1.zip.sha256
           if-no-files-found: error
           retention-days: 14
-publish-prerelease:
+  publish-prerelease:
     name: Publish immutable P4 RC1 pre-release
     if: github.event_name == 'push' && github.ref == 'refs/heads/release/topology-v5.5.27-p4-rc1-20261110'
     needs: package
