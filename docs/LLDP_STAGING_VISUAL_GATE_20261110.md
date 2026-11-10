@@ -25,7 +25,7 @@ Collected using connected Zabbix 7.0.32 API `discoveryrule.get`, `itemprototype.
 | Inherited `lldpRemPortId[{#SNMPINDEX}]` item prototypes | 245 |
 | Existing `lldpRemPortId[...]` items | 265 |
 | Hosts with those discovered Port-ID items | 22 |
-| Enabled/disabed Port-ID items | 218 / 47 |
+| Enabled/disabled Port-ID items | 218 / 47 |
 
 These are point-in-time totals. Group membership overlaps; they are **not** an approval to operate on all 245 hosts. `host.get` returned no parentTemplates for the inspected API identity, so template ownership/linkage still needs an authorized `template.get` and export inspection. Discovered item count is not an estimate of how many item IDs will change on import.
 
