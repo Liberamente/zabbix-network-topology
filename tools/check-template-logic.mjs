@@ -200,8 +200,8 @@ check('TM 5 / Port 1 / Rem 7 ist nicht Port 5 / Rem 1',
 console.log('\n  Seen-Guard');
 d = discover('.1.0.8802.1.1.2.1.4.1.1.9.10.25.1 = STRING: "old"\n'
            + '.1.0.8802.1.1.2.1.4.1.1.9.99.25.1 = STRING: "new"');
-check('dieselbe Zeile unter zwei TimeMarks: die hoechste gewinnt',
-      d.map((r) => r['{#NT_SYSNAME}']), ['new']);
+check('different names without chassis remain separate under installed fallback',
+      d.map((r) => r['{#NT_SYSNAME}']), ['old', 'new']);
 
 
 // LLDP #25: immutable neighbor identity across TimeMark/RemIndex relearn;
@@ -268,8 +268,8 @@ check('same peer on different local ports stays separate',
     new Set(otherLocal.map(x => x['{#NT_NBR}'])).size, 2);
 
 const noIdentity = discoverRows([
-    mkRow('0.7.1', '', ''),
-    mkRow('0.7.2', '', '')
+    mkRow('0.7.1', '', '', ''),
+    mkRow('0.7.2', '', '', '')
 ]);
 check('without chassis or port, conservative RemIndex fallback',
     new Set(noIdentity.map(x => x['{#SNMPINDEX}'])).size, 2);
