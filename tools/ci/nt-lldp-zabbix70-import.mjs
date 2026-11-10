@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { connect } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 
-const URL = 'http://127.0.0.1:18080/api_jsonrpc.php';
+const API_URL = 'http://127.0.0.1:18080/api_jsonrpc.php';
 const HOST = 'nt-lldp-ci-synthetic-host';
 const TEMPLATE = 'NT LLDP Neighbors by SNMP';
 const SOURCE = readFileSync(new URL('../../templates/nt_lldp_snmp_template.yaml', import.meta.url), 'utf8');
@@ -25,7 +25,7 @@ function assert(ok, description, details = '') {
 async function rpc(method, params = {}, useAuth = true) {
     const payload = {jsonrpc: '2.0', method, params, id: ++seq};
     if (useAuth && auth) payload.auth = auth;
-    const res = await fetch(URL, {method: 'POST', headers: {'content-type': 'application/json'},
+    const res = await fetch(API_URL, {method: 'POST', headers: {'content-type': 'application/json'},
         body: JSON.stringify(payload), signal: AbortSignal.timeout(15000)});
     if (!res.ok) throw new Error(method + ' HTTP ' + res.status);
     const data = await res.json();
