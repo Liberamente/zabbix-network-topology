@@ -47,6 +47,27 @@ This additional aggregate query paired existing `lldpRemPortId` and `lldpRemChas
 
 **Risk gate:** the previous Zabbix 7.0.32 isolated import showed that a one→many Port-ID transition generates new item IDs and leaves prior items/history accessible during observed lost-resource retention. Before any production template import, compare **actual live keys and LLD state** host-by-host against the candidate algorithm using only private, authorized data; record exact projected additions, retained keys, retiring keys, and item history policies. Do not infer a zero-churn migration from the aggregate 0 count above.
 
+## Additional model-vs-installed-key comparison — 2026-11-10
+
+**Read-only API method:** correlate `lldpRemPortId`, `lldpRemChassisId`, and `lldpRemSysName` discovered items by the same host and already stored `0.LocalPort.StableId` index. Reconstruct the candidate's current single-neighbor FNV-1a 32-bit key using the normalized stored Chassis-ID (or the documented Port-ID/SysName fallbacks); compare only key *equality*, never publish actual LLDP values, MACs, host IDs or port labels.
+
+| Aggregated check | Result |
+| --- | ---: |
+| Existing Port-ID item records considered | 265 |
+| Records with at least one identity observation | 237 |
+| Records lacking identity values needed by the projection | 28 |
+| Matching existing key and modeled candidate key | **221** |
+| Different existing key versus modeled candidate key | **16** |
+| Distinct hosts accounting for all 16 differences | **1** |
+| Distinct local ports accounting for those 16 differences | **2** |
+| Distinct same-chassis/multi-Port-ID modeled records | **0** |
+
+All 16 mismatching items had populated Chassis-ID, Port-ID and SysName values. The Chassis-ID and Port-ID values were each 17 characters long in these records, with separators in the chassis representation. Their Port-ID, Chassis-ID and SysName timestamps coincided at the API precision reported. None of the 16 existing keys could be reproduced by the small set of alternative legacy identity recipes checked (raw/stripped/separator-swapped Chassis-ID, port+name, name-only, port-only, chassis+port, chassis+name).
+
+**Interpretation and blocker:** the 16 differences are a **potential compatibility problem** on one host and require a private targeted check of its installed discovery preprocessing and item-discovery metadata before any global import. They are **not** proof that 16 item IDs would be replaced: the analysis does not have the current raw SNMP walk, full historical LLD state or guaranteed same-epoch preprocessing semantics. Also, a matching item key across a mixed historical item snapshot does not prove it is currently discovered, supported or visible on the map.
+
+**Critical data limitation:** `nt.lldp.walk` exists on 245 hosts but `item.get` reported no nonempty `lastvalue` (and no nonzero `lastclock`) for these master items; the template sets master walk `history: '0'`. Therefore a direct current-walk replay of all 245 hosts cannot be honestly claimed from this read-only API snapshot. The 16-item discrepancy must be resolved or explicitly accepted through an approved, host-scoped migration plan. Do not silently normalize or rewrite existing keys.
+
 ## Mandatory staging scope
 
 1. Choose an **isolated Zabbix 7.0 instance** or staging frontend that is demonstrably not connected to the live Zabbix DB, production API, production server, or production discovery timers. Record its version, URL (privately), exact module SHA, and template-export checksum in an internal checkpoint.
