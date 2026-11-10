@@ -260,9 +260,9 @@ direct SNMPv2c queries using the **same configured working community** over an
 approximately eight-second observation window returned two distinct opaque
 Chassis-ID values on each of two local ports. At the second sample both ports
 changed; in the fifth sample only one port returned to its earlier value.
-All five samples were complete. The three other configured candidate
-community slots were not used to obtain these samples; the previously tested
-two additional communities did not respond.
+All five samples were complete. The two other configured candidate
+communities were not used to obtain these samples; both had failed to
+respond in the preceding community comparison.
 
 This establishes **variability at the SNMP source interface independent of
 Zabbix discovery and the Topology module**, but does not distinguish changes
