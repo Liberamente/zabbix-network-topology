@@ -40,7 +40,7 @@ function parseWalk(content) {
         // chassis identity, never as a MAC even when it is six bytes long.
         let value = m[6].trim();
         if (type === 'HEX-STRING') {
-            const octets = value.split(/\\s+/);
+            const octets = value.split(/\s+/);
             if (!octets.length || !octets.every(o => /^[0-9a-f]{2}$/i.test(o))) {
                 ambiguous++;
                 continue;
@@ -125,7 +125,7 @@ function selftest() {
       '.1.0.8802.1.1.2.1.4.1.1.5.20.2.1 = Hex-STRING: 02 00 aa BB 20 7F',
       '.1.0.8802.1.1.2.1.4.1.1.7.20.2.1 = STRING: "port-b"',
       '.1.0.8802.1.1.2.1.4.1.1.9.20.2.1 = STRING: "same-peer"'
-    ].join('\\n');
+    ].join('\n');
     const hexParsed=parseWalk(hexWalk);
     if(hexParsed.ambiguous!==0||hexParsed.rows.length!==2) {
         throw new Error('opaque HEX-STRING parsing');
