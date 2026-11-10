@@ -183,3 +183,32 @@ The local checker supports textual numeric-OID `STRING` lines only; it intention
 ## Checkpoint for canonical project documents
 
 After the staging session, update the private canonical `01_STATO_CORRENTE.md`, `02_ARCHITETTURA.md` (only if a rule changed), `03_DECISIONI.md` (if applicable), `04_GIT_E_RELEASE.md`, the backlog, and `08_CHECKPOINT_MODELLO.md` using the project's actual document locations. Do not create public stand-ins or claim the canonical files were updated when they were not accessible. Record exact SHA, screenshots kept privately, pass/fail matrix, item-ID migration results, known gaps, and rollback outcome.
+
+## Anonymized locally assigned Chassis-ID rotation — synthetic gate
+
+An anonymized read-only LLDP investigation found two distinct local ports,
+each with one complete remote LLDP row per snapshot. Both advertise Chassis-ID
+subtype **7 (locally assigned)** and six-octet Chassis-IDs. In sampled history,
+the two advertised Port-IDs and SysNames stayed unchanged while each Chassis-ID
+cycled among seven values, with 14 synchronous changes across the same 22
+intervals. One octet changed per chassis; the changing octet position differed
+between the two local ports, while its observed value varied in synchrony.
+Two subsequent raw SNMP snapshots were identical. These observations **do not
+establish** whether the variability originates in the LLDP agent, its remote
+peers, or acquisition/preprocessing, and do not prove any physical link.
+
+The common synthetic regression in `tools/check-template-logic.mjs` captures
+the following approved *observation*, not a new reconciliation policy:
+- A changed RemIndex with unchanged identity must preserve the installed
+  StableId and update the current row selectors.
+- A changed locally assigned Chassis-ID currently produces new stable LLD keys,
+  even if Port-ID and SysName remain constant.
+- Do not silently reuse the old item key for different Chassis-ID evidence,
+  conflate two local ports, interpret six-byte subtype-7 values as MACs, or
+  promote an uncertain observation into a verified cable.
+
+The effect on existing items must be reviewed separately from a release:
+item history and LLD lifecycle can diverge during key rotation. A future
+candidate may add conservative reconciliation only after proving unambiguous
+identity and retaining provenance/confidence; such a change needs its own tests,
+rollback plan and approval. No production import is authorized by this note.
