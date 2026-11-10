@@ -380,9 +380,11 @@ check('one logical neighbor produces six distinct item keys',
     keysForRows(migrateOne).size, 6);
 check('two logical neighbor observations produce twelve distinct item keys',
     keysForRows(migrateTwo).size, 12);
-check('primary reassignment affects six prior item keys (KNOWN RISK)',
+check('primary reassignment silently retains all previous keys (KNOWN RISK)',
     [...keysForRows(migrateTwo)].filter(k =>
-        !keysForRows(migrateAddedEarlier).has(k)).length, 6);
+        !keysForRows(migrateAddedEarlier).has(k)).length, 0);
+check('the reassigned historical key now reports a different Port-ID (KNOWN RISK)',
+    migrateAddedEarlier.find(r => r['{#SNMPINDEX}'] === originalKey)['{#NT_REMPORT}'], 'aaa');
 check('CDP item prototype keys remain unchanged',
     ["key: 'cdpCacheDeviceId[{#SNMPINDEX}]'",
      "key: 'cdpCacheDevicePort[{#SNMPINDEX}]'"]
