@@ -212,3 +212,42 @@ item history and LLD lifecycle can diverge during key rotation. A future
 candidate may add conservative reconciliation only after proving unambiguous
 identity and retaining provenance/confidence; such a change needs its own tests,
 rollback plan and approval. No production import is authorized by this note.
+
+## Production-safe raw LLDP comparison protocol (read-only template)
+
+The inherited `nt.lldp.walk` master may have history retention disabled. In
+that case its raw past values cannot be recovered from item history. Do **not**
+enable history on the shared inherited template merely to investigate one host:
+that change would propagate to all linked hosts. A host-inherited item may not
+support a per-host override.
+
+For an explicitly approved single-host diagnostic, create a separate **temporary
+SNMP_AGENT item on only the pilot host** (distinct key, e.g.
+`nt.lldp.raw.diag`, value type TEXT, same existing SNMP interface, same
+six-OID `walk[...]` expression as the live master, 1-minute update, 1-hour
+history). Do not create a discovery rule, trigger, or item prototypes. Record
+the pilot item ID and verify it is not inherited; preserve the original master
+item's `history`, status and template link.
+
+Capture the diagnostic item's timestamped raw walk and a proxy-side SNMP walk
+of the same OIDs within a short bounded time window. Record source timestamps,
+not file modification times alone. Do not assume adjacent polls are atomic or
+claim packet-level simultaneity. Compare local-port/RemIndex/TimeMark, subtype 7,
+opaque Chassis-ID bytes, Port-ID and SysName in a **private** analyzer; publish
+only counts, key matches, time skew, and evidence classification. If values
+differ, retry with independently timestamped samples before attributing blame
+to device, proxy or Zabbix.
+
+Before: record pilot template SHA/export, master item ID/history/status and
+discovery key inventory. After: ensure the original master/discovery/items are
+unchanged, delete **only** the temporary diagnostic item, confirm it is gone
+and that the inherited master still has history=0. Deleting a temporary item
+also discards its diagnostic history; retain only anonymized summary privately.
+The Zabbix API connector in the project may be read-only: inability to create
+the host-only item is a **blocked diagnostic**, not approval to alter the
+shared template or to import a new release.
+
+Release gate: a successful synthetic CI and isolated Zabbix import support
+**candidate source publication** only. Global template import and module
+deployment remain blocked until host-by-host churn inventory, visible topology
+acceptance tests, explicit production approval and a reversible rollout plan.
