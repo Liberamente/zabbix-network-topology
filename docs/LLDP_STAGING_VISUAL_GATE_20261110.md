@@ -85,6 +85,25 @@ The effective `nt.lldp.rem.discovery` preprocessing on the affected host was the
 
 **Release gate:** two currently discovered key mismatches remain **unresolved** pending scoped raw-walk correlation; do not declare zero-churn or release-ready. Full production template ownership and visual staging QA are separately pending.
 
+## Active LLDP mismatch historical-data diagnostic — 2026-11-10
+
+This check did **not** perform SNMP polling, production changes or Zabbix API writes. The two active item key mismatches from the preceding read-only inventory were cross-referenced with their matching `lldpRemChassisId` and `lldpRemSysName` item IDs, and Zabbix `history.get` was used with `history=1` (CHAR) on those items.
+
+| Privacy-safe result | Observation |
+| --- | ---: |
+| Currently discovered discrepant Port-ID items | 2 |
+| Hosts and local ports involved | 1 host / 2 ports |
+| Chassis-ID history samples available for each | 1 |
+| Distinct historic Chassis-ID values for each | 1 |
+| Historic Chassis-ID values reproducing stored item key | **0** |
+| Time difference: LLD `itemDiscovery.lastcheck` minus corresponding Chassis-ID `lastclock` | **18,001 seconds** for each |
+
+The older 14 mismatches remain `itemDiscovery.status=1` (lost-resource retention). The two current items are still `itemDiscovery.status=0`, so the mismatch cannot be dismissed entirely as retired history.
+
+The affected host's `nt.lldp.walk` master item is enabled and in supported state, with no reported error, but has `history=0` and no accessible last-value timestamp. Its dependent LLDP discovery rule is also enabled/supported without error; it is template-inherited and uses `lifetime=7d` for lost resources. This **does not** establish that its current walk contains or lacks the relevant rows. The observed five-hour item/discovery timestamp gap is evidence of differing update epochs, not proof of the underlying reason.
+
+**Diagnostic conclusion:** no available historic Chassis-ID sample reconstructs either current item key. The current installed preprocessing was previously confirmed chassis-first FNV-1a with remote Port-ID fallback, but the actual SNMP_WALK_TO_JSON macro value used at key creation cannot be reconstructed from the stored dependent-item value alone. Potential format or time-epoch differences remain **unverified hypotheses**. Do not rewrite hashes, clear LLD resources, or treat these two keys as a known migration until a private, authorized raw-walk capture is paired with the discovery macro output. This remains separate from the pending visual staging gate.
+
 ## Mandatory staging scope
 
 1. Choose an **isolated Zabbix 7.0 instance** or staging frontend that is demonstrably not connected to the live Zabbix DB, production API, production server, or production discovery timers. Record its version, URL (privately), exact module SHA, and template-export checksum in an internal checkpoint.
