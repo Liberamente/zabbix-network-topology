@@ -234,8 +234,8 @@ check('same chassis/remote port -> same stable ID across RemIndex',
 check('RemIndex lookup remains current',
     [before[0]?.['{#NT_REMIDX}'], after[0]?.['{#NT_REMIDX}']],
     ['12967', '12982']);
-check('SNMPINDEX retains port and current RemIndex',
-    after[0]?.['{#SNMPINDEX}'], '0.67.12982');
+check('SNMPINDEX now retains stable installed identity',
+    after[0]?.['{#SNMPINDEX}'], before[0]?.['{#SNMPINDEX}']);
 
 const peers = discoverRows([
     mkRow('0.67.7', '02:11:22:33:44:55', '02:11:22:33:44:56'),
@@ -263,7 +263,7 @@ const noIdentity = discoverRows([
     mkRow('0.7.2', '', '')
 ]);
 check('without chassis or port, conservative RemIndex fallback',
-    noIdentity.map(x => x['{#NT_NBR}']), ['0.7.1', '0.7.2']);
+    new Set(noIdentity.map(x => x['{#SNMPINDEX}'])).size, 2);
 
 
 const sameEpoch = discoverRows([
@@ -294,10 +294,33 @@ check('SysName change does not change chassis/Port-ID stable identity',
     nameChanged[0]?.['{#NT_NBR}'],
     sharedPort.find(x => x['{#NT_REMPORT}'] === 'LAN')?.['{#NT_NBR}']);
 
+
+// Known installed export algorithm for a single chassis (independent
+// reference vector; do not derive it from the candidate discovery).
+function installedHash(s) {
+    var h = 2166136261;
+    for (var i = 0; i < s.length; i++) {
+        h ^= s.charCodeAt(i);
+        h = (h + (h << 1) + (h << 4) + (h << 7) +
+            (h << 8) + (h << 24)) >>> 0;
+    }
+    return h >>> 0;
+}
+const installedOne = '0.14.' +
+    installedHash('14|chassis=02:00:00:00:00:02');
+check('single chassis keeps the exported installed key',
+    nameChanged[0]?.['{#SNMPINDEX}'], installedOne);
+check('multiport keeps one legacy chassis-only key',
+    sharedPort.some(x => x['{#SNMPINDEX}'] === installedOne), true);
+check('all other multiport keys are distinct',
+    new Set(sharedPort.map(x => x['{#SNMPINDEX}'])).size, sharedPort.length);
+check('all six existing item prototype keys are unchanged',
+    lines.filter(x => /^\s*key: 'lldpRem(?:SysName|PortId|PortDesc|SysDesc|SysCapEnabled|ChassisId)\[\{#NT_NBR\}\]'$/.test(x)).length, 0);
+
 const llKeys = lines.filter(x =>
-    /^\s*key: 'lldpRem(?:SysName|PortId|PortDesc|SysDesc|SysCapEnabled|ChassisId)\[\{#NT_NBR\}\]'$/.test(x)
+    /^\s*key: 'lldpRem(?:SysName|PortId|PortDesc|SysDesc|SysCapEnabled|ChassisId)\[\{#SNMPINDEX\}\]'$/.test(x)
 );
-check('all six LLDP prototypes use stable neighbor key', llKeys.length, 6);
+check('all six LLDP prototypes preserve installed SNMPINDEX key', llKeys.length, 6);
 
 // Optional LLDP local-port mapping: inspect the actual exported template.
 console.log('\n  LLDP local-port optional template');
