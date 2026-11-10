@@ -89,7 +89,7 @@ zabbix_export:
                   // use it to grab the value from the CURRENT walk, and when it changes
                   // LLD re-syncs that macro on the next poll while the item (its key)
                   // stays put. If a neighbor advertises neither Chassis nor PortId, the
-                  // token falls back to RemIndex - the old, less-stable behaviour.
+                  // identity uses the installed Port-ID/SysName fallbacks, then RemIndex.
                   //
                   // MISSING TIMEMARK: TP-Link JetStream omits it and returns a 2-part
                   // index (25.1 instead of 1234.25.1). A missing TimeMark counts as 0.
@@ -98,8 +98,8 @@ zabbix_export:
                   //
                   // SEEN GUARD: a relearn can leave a stale AND a fresh row in one walk
                   // (or TimeFilter returns the row under two TimeMarks). Deduplicated
-                  // per {#NT_NBR}, keeping the HIGHEST TimeMark so the newest RemIndex
-                  // wins for value extraction.
+                  // per stable {#SNMPINDEX}, choosing the highest TimeMark and
+                  // breaking equal-TimeMark ties with the highest RemIndex.
                   function nbrHash(s) {
                       var h = 2166136261;              // FNV-1a, 32-bit, Duktape-safe
                       for (var k = 0; k < s.length; k++) {
@@ -183,9 +183,11 @@ zabbix_export:
                   return JSON.stringify(out);
           description: |
             LLDP-MIB lldpRemSysName (1.0.8802.1.1.2.1.4.1.1.9). The {#SNMPINDEX}
-            is normalized to 0.LocalPort.RemIndex - the TimeMark, if the device
-            sends one at all, is dropped - and the module reads the local port
-            from it. Over the same index it also fetches:
+            retains the installed 0.LocalPort.StableId identity (Chassis-ID first,
+            with Port-ID/SysName fallbacks). Multiple remote Port-ID advertisements
+            can be distinguished, while one chassis-only identity remains.
+            Current raw port/RemIndex are in {#NT_PORT}/{#NT_REMIDX}.
+            Over the same raw index the discovery also fetches:
 
               .7  lldpRemPortId       remote port (fallback)
               .8  lldpRemPortDesc     remote port, readable -> port-to-port labels
