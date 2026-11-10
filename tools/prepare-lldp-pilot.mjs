@@ -82,7 +82,7 @@ function makePilot(original, suffix) {
         'lldpRemSysName', 'lldpRemPortId', 'lldpRemPortDesc',
         'lldpRemSysDesc', 'lldpRemSysCapEnabled', 'lldpRemChassisId'
     ]) {
-        requireCondition(pilot.includes("key: '" + key + "[{#NT_NBR}]'"),
+        requireCondition(pilot.includes("key: '" + key + "[{#SNMPINDEX}]'"),
             'Missing stable LLDP item prototype key ' + key);
     }
     requireCondition(!pilot.includes('key: nt.cdp.cache.discovery'),
@@ -106,7 +106,7 @@ function selfTest() {
         'Source template mutated');
     requireCondition(!first.pilot.includes('key: nt.cdp.cache.discovery'),
         'Pilot must omit CDP');
-    requireCondition(first.pilot.includes("key: 'lldpRemSysName[{#NT_NBR}]'"),
+    requireCondition(first.pilot.includes("key: 'lldpRemSysName[{#SNMPINDEX}]'"),
         'Stable neighbor key was lost');
     console.log('LLDP_PILOT_TEMPLATE_SELF_TEST=PASS');
 }
