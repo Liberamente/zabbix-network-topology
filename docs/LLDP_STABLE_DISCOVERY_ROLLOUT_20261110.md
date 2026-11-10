@@ -53,7 +53,7 @@ The export proves the template content but not its deployment scope; the connect
 
 - Import a separately named pilot only into a test host, never onto the globally linked template; capture template/item count diffs and LLD results, then restore the isolated test host.
 - Obtain explicit approval for global import only after pilot results and inventory are reviewed.
-- During any authorized import: retain the before-export, record start time, templates, host linkage, lost/discovered items and item statuses. Verify CDP and LLDP separately, and review topology semantics in Techsigno, Cardinale and SOA.
+- During any authorized import: retain the before-export, record start time, templates, host linkage, lost/discovered items and item statuses. Verify CDP and LLDP separately, and review topology semantics in the authorized validation groups and proxies.
 - For failure: stop rollout, recover template definition from the before-export and compare LLD-discovered resources; note that merely reimporting a template does not automatically recover deleted historical items or item IDs. Restore from a verified Zabbix database backup only under a separately approved recovery procedure.
 
 ## Publication gate
