@@ -1,0 +1,41 @@
+name: nt-lldp-ci-isolated
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: synthetic-ci-only
+      POSTGRES_DB: zabbix
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zabbix -d zabbix"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  server:
+    image: zabbix/zabbix-server-pgsql:alpine-7.0-latest
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_SERVER_HOST: db
+      POSTGRES_DB: zabbix
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: synthetic-ci-only
+    ports:
+      - "127.0.0.1:10051:10051"
+  web:
+    image: zabbix/zabbix-web-nginx-pgsql:alpine-7.0-latest
+    depends_on:
+      db:
+        condition: service_healthy
+      server:
+        condition: service_started
+    environment:
+      DB_SERVER_HOST: db
+      POSTGRES_DB: zabbix
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: synthetic-ci-only
+      ZBX_SERVER_HOST: server
+      PHP_TZ: UTC
+    ports:
+      - "127.0.0.1:18080:8080"
