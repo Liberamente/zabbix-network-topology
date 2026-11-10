@@ -38,6 +38,16 @@ Read-only queries against the connected Zabbix API returned:
 
 **Release blocker for live template import:** inventory host linkage via an account authorized for `template.get`, collect a backup export and plan key migration. The CI result only validates repository code, not live Zabbix item/history continuity.
 
+## Installed template export comparison (2026-11-10)
+
+User-supplied Zabbix 7.0 export `zbx_export_templates (2).yaml` has been inspected **outside GitHub** (do not commit customer exports or network data). It contains `NT LLDP Neighbors by SNMP` UUID `38caefc2777a4ea5a8e2f9a2060c0660`, a six-column `nt.lldp.walk`, one LLDP discovery and one Cisco CDP discovery, six LLDP item prototypes and two CDP prototypes.
+
+**Correction to previous assumption:** the installed/exported LLDP discovery already has stable `{#SNMPINDEX}=0.LocalPort.StableId`, derived primarily from Chassis-ID with fallback to Port-ID/SysName. The six LLDP item prototype keys use `{#SNMPINDEX}`, not raw RemIndex. The current PR derives `{#NT_NBR}` from normalized Chassis-ID + remote Port-ID instead. The two identity algorithms are not equivalent, and normalization also differs. Upgrading can change existing keys even if RemIndex is unchanged. CDP prototype keys remain `{#SNMPINDEX}`.
+
+The current PR must NOT be represented as a no-churn update to this installed template. A compatibility-preserving solution needs either (a) a verified stable-key transition mapping that retains existing keys where possible while distinguishing multiple Port-ID observations, or (b) explicit one-time LLD migration with host/item/history impact accepted before import. Retaining one old key during a single-to-multiple Port-ID transition may itself cause ambiguity; never silently create multiple physical edges.
+
+The export proves template contents but does not by itself prove that every one of the 245 host-inherited rules uses exactly the exported revision. Verify source template and scope with authorized API access before a deployment decision.
+
 ## Controlled pilot and rollback (not executed)
 
 - Import a separately named pilot only into a test host, never onto the globally linked template; capture template/item count diffs and LLD results, then restore the isolated test host.
