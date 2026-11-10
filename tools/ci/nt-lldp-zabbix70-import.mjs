@@ -53,8 +53,7 @@ const rules = {
     template_groups: {createMissing: true, updateExisting: true},
     templates: {createMissing: true, updateExisting: true},
     items: {createMissing: true, updateExisting: true, deleteMissing: false},
-    discoveryRules: {createMissing: true, updateExisting: true, deleteMissing: false},
-    itemPrototypes: {createMissing: true, updateExisting: true, deleteMissing: false}
+    discoveryRules: {createMissing: true, updateExisting: true, deleteMissing: false}
 };
 async function importTemplate(source) {
     return rpc('configuration.import', {format: 'yaml', source, rules});
