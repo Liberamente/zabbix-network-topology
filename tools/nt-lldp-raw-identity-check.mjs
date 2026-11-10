@@ -35,16 +35,25 @@ function parseWalk(content) {
         const localPort = m[3], remIndex = m[4];
         const suffix = tm + '.' + localPort + '.' + remIndex;
         const type = m[5].trim().toUpperCase();
-        // Only STRING and textual variants. Hex representations and escaped
-        // values must be confirmed against SNMP_WALK_TO_JSON, not assumed.
-        if (!['STRING','OCTET STRING'].includes(type)) {
-            ambiguous++;
-            continue;
-        }
+        // Zabbix 7.0 SNMP_WALK_TO_JSON (format 0) represents hex octets
+        // as upper-case, space-separated bytes. Treat binary as opaque
+        // chassis identity, never as a MAC even when it is six bytes long.
         let value = m[6].trim();
-        if (value.startsWith('"') && value.endsWith('"')) {
-            value = value.slice(1, -1);
-        } else if (value.startsWith('"') || value.endsWith('"')) {
+        if (type === 'HEX-STRING') {
+            const octets = value.split(/\\s+/);
+            if (!octets.length || !octets.every(o => /^[0-9a-f]{2}$/i.test(o))) {
+                ambiguous++;
+                continue;
+            }
+            value = octets.join(' ');
+        } else if (['STRING','OCTET STRING'].includes(type)) {
+            if (value.startsWith('"') && value.endsWith('"')) {
+                value = value.slice(1, -1);
+            } else if (value.startsWith('"') || value.endsWith('"')) {
+                ambiguous++;
+                continue;
+            }
+        } else {
             ambiguous++;
             continue;
         }
@@ -109,6 +118,28 @@ function selftest() {
     if(!one.storedKeyMatchesInstalled||!one.storedKeyMatchesCandidate) {
         throw new Error('single port installed compatibility');
     }
+    const hexWalk=[
+      '.1.0.8802.1.1.2.1.4.1.1.5.20.1.1 = Hex-STRING: 02 00 aa BB 10 7F',
+      '.1.0.8802.1.1.2.1.4.1.1.7.20.1.1 = STRING: "port-a"',
+      '.1.0.8802.1.1.2.1.4.1.1.9.20.1.1 = STRING: "same-peer"',
+      '.1.0.8802.1.1.2.1.4.1.1.5.20.2.1 = Hex-STRING: 02 00 aa BB 20 7F',
+      '.1.0.8802.1.1.2.1.4.1.1.7.20.2.1 = STRING: "port-b"',
+      '.1.0.8802.1.1.2.1.4.1.1.9.20.2.1 = STRING: "same-peer"'
+    ].join('\\n');
+    const hexParsed=parseWalk(hexWalk);
+    if(hexParsed.ambiguous!==0||hexParsed.rows.length!==2) {
+        throw new Error('opaque HEX-STRING parsing');
+    }
+    for(const row of hexParsed.rows) {
+        const installed='0.'+row.localPort+'.'+hash32(row.localPort+'|chassis='+row[5]);
+        const outcome=expected(hexParsed.rows,row.localPort,installed);
+        if(!outcome.storedKeyMatchesInstalled||!outcome.storedKeyMatchesCandidate||
+            outcome.relevantRows!==1) {
+            throw new Error('binary chassis keeps Zabbix text identity');
+        }
+    }
+    const invalidHex=parseWalk('.1.0.8802.1.1.2.1.4.1.1.5.20.1.1 = Hex-STRING: 02 0Z');
+    if(invalidHex.ambiguous!==1) throw new Error('malformed binary must fail closed');
     console.log('LLDP_RAW_IDENTITY_SELF_TEST=PASS');
 }
 function main(args) {
