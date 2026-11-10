@@ -104,6 +104,24 @@ The affected host's `nt.lldp.walk` master item is enabled and in supported state
 
 **Diagnostic conclusion:** no available historic Chassis-ID sample reconstructs either current item key. The current installed preprocessing was previously confirmed chassis-first FNV-1a with remote Port-ID fallback, but the actual SNMP_WALK_TO_JSON macro value used at key creation cannot be reconstructed from the stored dependent-item value alone. Potential format or time-epoch differences remain **unverified hypotheses**. Do not rewrite hashes, clear LLD resources, or treat these two keys as a known migration until a private, authorized raw-walk capture is paired with the discovery macro output. This remains separate from the pending visual staging gate.
 
+## Historic chassis correlation for two active key mismatches — 2026-11-10
+
+A further **read-only Zabbix API** check compared the existing `0.LocalPort.StableId` hashes on the two currently discovered but model-mismatched `lldpRemPortId` items to normalized Chassis-ID values already stored under other item keys **on the same host and local port**. The exact installed FNV-1a-32 identity was used for each candidate; no raw identifiers were published.
+
+| Observation for each of the two affected local ports | Count |
+| --- | ---: |
+| Currently discovered Chassis-ID item records | 1 |
+| No-longer-discovered, retained Chassis-ID records | 10 |
+| Retained Chassis-ID records whose value reproduces the current Port-ID item's stored hash | **5** |
+| Distinct matching retained Chassis-ID values | **1** |
+| Currently discovered Chassis-ID item that carries the matching historic value | **0** |
+
+**Finding:** both existing active Port-ID hashes correspond **exactly** to a Chassis-ID value still present in historic/lost LLD Chassis-ID records from the **same local port**. For both, the Chassis-ID value in the currently discovered companion item differs from the older value that recreates the key. This is strong evidence of a **historical identity/value mismatch**, not an unexplained hash collision.
+
+**Not established:** the original macro values at the instant of discovery, whether the different Chassis-ID reflects a genuine peer replacement, stale SNMP agent data, a different subtype/representation, or a changed dependency during item lifecycle. The master walk uses `history=0`, and these observations are from retained dependent item data. Do not claim that the current key is wrong or rewrite it without an authorized same-epoch raw-walk/LLD macro comparison.
+
+**Next bounded action:** on the affected device only, capture the six LLDP-MIB remote-table columns from an authorized read-only SNMP walk **privately** and compare their TimeMark.LocalPort.RemIndex, Chassis-ID and remote Port-ID with the installed discovery output and the two current item keys. Use the existing authorized SNMP configuration, without echoing secrets, network addresses, MACs, or customer names in logs, tickets or the public repository. Store only aggregate pass/fail counts in the public checkpoint. This collection has **not** been executed in this session.
+
 ## Mandatory staging scope
 
 1. Choose an **isolated Zabbix 7.0 instance** or staging frontend that is demonstrably not connected to the live Zabbix DB, production API, production server, or production discovery timers. Record its version, URL (privately), exact module SHA, and template-export checksum in an internal checkpoint.
