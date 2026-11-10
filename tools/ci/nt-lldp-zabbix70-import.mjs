@@ -157,14 +157,15 @@ async function neighborItems(hostid) {
     return all.filter(row => PREFIXES.some(prefix =>
         row.key_.startsWith(prefix + '[')));
 }
-async function waitForStage(hostid, expectedNewValues, sourceWalk) {
+async function waitForStage(hostid, expectedNewValues, sourceWalk, oldKeys = []) {
     let last = [];
     for (let n = 0; n < 65; n++) {
         // A first walk discovers item prototypes; subsequent walks populate
         // their dependent values after the Zabbix server cache has synced.
         if (n > 0 && n % 5 === 0) await sendWhenCached(sourceWalk);
         last = await neighborItems(hostid);
-        const names = last.filter(r => r.key_.startsWith('lldpRemPortId['));
+        const names = last.filter(r => r.key_.startsWith('lldpRemPortId[')
+            && !oldKeys.includes(r.key_));
         if (expectedNewValues.every(port => names.some(r => r.lastvalue === port))) {
             return last;
         }
@@ -176,9 +177,9 @@ async function waitForStage(hostid, expectedNewValues, sourceWalk) {
                 .map(r => ({lastvalue: r.lastvalue, state: r.state,
                     status: r.status, error: r.error || '', lastclock: r.lastclock}))}));
 }
-function portKey(items, port) {
+function portKey(items, port, oldKeys = []) {
     const matches = items.filter(x => x.key_.startsWith('lldpRemPortId[')
-        && x.lastvalue === port);
+        && x.lastvalue === port && !oldKeys.includes(x.key_));
     assert(matches.length === 1, 'exactly one item with Port-ID ' + port,
         'found=' + matches.length);
     return matches[0];
@@ -237,9 +238,11 @@ async function main() {
         'single Port-ID uses numeric legacy-compatible StableId');
 
     await sendWalk(walk([[70, 'eth0'], [80, 'eth1']]));
-    const multi = await waitForStage(hostid, ['eth0', 'eth1'], walk([[70, 'eth0'], [80, 'eth1']]));
-    const a = portKey(multi, 'eth0');
+    const multi = await waitForStage(hostid, ['eth0', 'eth1'], walk([[70, 'eth0'], [80, 'eth1']]), [legacyKey]);
+    const a = portKey(multi, 'eth0', [legacyKey]);
     const b = portKey(multi, 'eth1');
+    assert(multi.some(x => x.itemid === legacyId && x.lastvalue === 'eth0'),
+        'legacy item retains its historical value during LLD transition');
     assert(a.key_ !== b.key_, 'multiport creates distinct stable item keys');
     assert(a.key_ !== legacyKey && b.key_ !== legacyKey,
         'legacy aggregate key is never reattributed to a logical Port-ID');
@@ -247,8 +250,8 @@ async function main() {
         'multiport LLD migration creates distinct item IDs');
 
     await sendWalk(walk([[700, 'eth0'], [800, 'eth1'], [900, 'aaa']]));
-    const triple = await waitForStage(hostid, ['eth0', 'eth1', 'aaa'], walk([[700, 'eth0'], [800, 'eth1'], [900, 'aaa']]));
-    const a2 = portKey(triple, 'eth0');
+    const triple = await waitForStage(hostid, ['eth0', 'eth1', 'aaa'], walk([[700, 'eth0'], [800, 'eth1'], [900, 'aaa']]), [legacyKey]);
+    const a2 = portKey(triple, 'eth0', [legacyKey]);
     const b2 = portKey(triple, 'eth1');
     assert(a2.itemid === a.itemid && b2.itemid === b.itemid,
         'adding earlier-sorting port does not replace existing item IDs');
