@@ -8,6 +8,7 @@ on:
       - .github/workflows/isolated-zabbix70-lldp-import.yml
       - tools/ci/nt-lldp-isolated.compose.yml
       - tools/ci/nt-lldp-zabbix70-import.mjs
+      - tools/nt-lldp-raw-identity-check.mjs
       - templates/nt_lldp_snmp_template.yaml
   workflow_dispatch:
 
@@ -24,6 +25,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Validate redacted local LLDP raw-walk comparator
+        run: node tools/nt-lldp-raw-identity-check.mjs --self-test
       - name: Start ephemeral isolated Zabbix 7.0 stack
         run: docker compose -p nt-lldp-ci -f tools/ci/nt-lldp-isolated.compose.yml up -d
       - name: Verify template import, UUIDs and synthetic LLDP LLD item IDs
