@@ -149,6 +149,22 @@ async function sendWhenCached(value) {
     }
     throw new Error('Synthetic sender item never entered server configuration cache: ' + last);
 }
+async function waitForHistoricalSample(itemid, expectedValue) {
+    let samples = [];
+    for (let attempt = 0; attempt < 35; attempt++) {
+        samples = await rpc('history.get', {
+            output: ['itemid', 'value', 'clock'],
+            history: 1, itemids: [itemid], limit: 50
+        });
+        if (samples.some(row => row.value === expectedValue)) {
+            console.log('PASS: prior item history.get samples survive LLD key transition');
+            return;
+        }
+        await delay(2000);
+    }
+    throw new Error('Previous LLD item has no retrievable history sample '
+        + JSON.stringify({itemid, expectedValue, sampleCount: samples.length}));
+}
 async function neighborItems(hostid) {
     const all = await rpc('item.get', {
         output: ['itemid', 'key_', 'lastvalue', 'lastclock', 'status', 'state', 'error'],
@@ -243,6 +259,7 @@ async function main() {
     const b = portKey(multi, 'eth1');
     assert(multi.some(x => x.itemid === legacyId && x.lastvalue === 'eth0'),
         'legacy item retains its historical value during LLD transition');
+    await waitForHistoricalSample(legacyId, 'eth0');
     assert(a.key_ !== b.key_, 'multiport creates distinct stable item keys');
     assert(a.key_ !== legacyKey && b.key_ !== legacyKey,
         'legacy aggregate key is never reattributed to a logical Port-ID');
