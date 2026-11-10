@@ -118,7 +118,7 @@ Source-level replay `tests/LldpMultiportEvidenceReplayTest.php` invokes the **ac
 ## Actual isolated Zabbix 7.0.32 API/LLD integration test — 2026-11-10
 
 **Verified SUCCESS** at PR #23 code commit `2bbd9f3399da1f0b2dc894831a31458a074a588f`, GitHub Actions:
-- `isolated-zabbix70-lldp-import` run #8: **PASS**
+- `isolated-zabbix70-lldp-import` run #8: **PASS** (LLD item IDs/last values); extended run #10: **PASS** (plus `history.get` sample preservation)
 - `gates` run #88: **PASS**
 - `candidate-package-p3-rc1` run #65: **PASS**
 
@@ -136,7 +136,7 @@ The new reproducible harness runs a **disposable** PostgreSQL 16, Zabbix 7.0.32 
 **Scope and limitations:**
 - This is a real Zabbix 7.0.32 API/import/discovery/item-ID lifecycle test, **not** a test of physical SNMP connectivity or the actual configured customer network.
 - The import test uses the exact common YAML. To drive discovery with synthetic payloads the *temporary test instance alone* changes the master transport to `TRAP`; production template source remains `SNMP_AGENT`.
-- The test validates retention of the prior item's ID and **last value** during the observed transition. It does not query `history.get`, audit history retention over the configured LLD expiry period, or guarantee restoration after deletion.
+- The test verifies the prior item's ID and **last value** survive the one-to-many transition, and uses Zabbix API **`history.get`** to confirm a prior `eth0` sample remains retrievable under the old item ID after the new port-specific items are created. This is evidence for short-term preservation in the LLD lost-resource window; the test does **not** wait for the configured expiry period or guarantee restoration after the old item is deleted.
 - A 1→many transition is **intentionally a migration** with new discovered item IDs. Any wide deployment requires a host-by-host diff, backup, LLD lost-resource retention policy review and explicit change approval.
 - The backend/JS evidence tests remain separate. A genuine frontend screenshot/replay against the isolated instance, plus end-to-end validation of multiple Port-ID observation drill-down, has **not** been performed.
 
