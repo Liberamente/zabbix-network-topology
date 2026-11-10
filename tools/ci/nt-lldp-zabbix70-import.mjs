@@ -84,7 +84,7 @@ function trapperVariant(source) {
     // discovery/preprocessing and all six dependent prototypes stay byte-identical.
     const pattern = /(      items:\n        - uuid: [a-f0-9]{32}\n          name: 'LLDP: remote systems table \(SNMP walk\)'\n)          type: SNMP_AGENT\n          snmp_oid: '[^\n]+'\n/;
     assert(pattern.test(source), 'unmodified source has expected master SNMP item');
-    let result = source.replace(pattern, '$1          type: ZABBIX_TRAPPER\n');
+    let result = source.replace(pattern, '$1          type: TRAP\n');
     const delayText = "          key: nt.lldp.walk\n          delay: '{$NT.LLDP.INTERVAL}'\n";
     assert(result.includes(delayText), 'master item delay anchor found');
     result = result.replace(delayText, '          key: nt.lldp.walk\n');
