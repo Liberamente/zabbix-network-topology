@@ -400,6 +400,54 @@ check('CDP item prototype keys remain unchanged',
      "key: 'cdpCacheDevicePort[{#SNMPINDEX}]'"]
         .every(key => lines.some(l => l.trim() === key)), true);
 
+
+// Multi-advertisement walk replay: values from all six OID columns must be
+// bound to the correct *current* RemIndex even if the stable LLD key changes.
+console.log('\n  LLDP six-column same-port evidence replay (synthetic)');
+const rawWalk = [
+    '.1.0.8802.1.1.2.1.4.1.1.5.100.32.7 = Hex-STRING: 02 00 00 00 00 44',
+    '.1.0.8802.1.1.2.1.4.1.1.7.100.32.7 = STRING: "eth0"',
+    '.1.0.8802.1.1.2.1.4.1.1.8.100.32.7 = STRING: "LAN-A"',
+    '.1.0.8802.1.1.2.1.4.1.1.9.100.32.7 = STRING: "peer-a"',
+    '.1.0.8802.1.1.2.1.4.1.1.10.100.32.7 = STRING: "model-a"',
+    '.1.0.8802.1.1.2.1.4.1.1.12.100.32.7 = Hex-STRING: 20 00',
+    '.1.0.8802.1.1.2.1.4.1.1.5.100.32.8 = Hex-STRING: 02 00 00 00 00 44',
+    '.1.0.8802.1.1.2.1.4.1.1.7.100.32.8 = STRING: "eth1"',
+    '.1.0.8802.1.1.2.1.4.1.1.8.100.32.8 = STRING: "LAN-B"',
+    '.1.0.8802.1.1.2.1.4.1.1.9.100.32.8 = STRING: "peer-b"',
+    '.1.0.8802.1.1.2.1.4.1.1.10.100.32.8 = STRING: "model-b"',
+    '.1.0.8802.1.1.2.1.4.1.1.12.100.32.8 = Hex-STRING: 40 00',
+].join('\n');
+const rawRows = [
+    mkRow('100.32.7', '02 00 00 00 00 44', 'eth0', 'peer-a'),
+    mkRow('100.32.8', '02 00 00 00 00 44', 'eth1', 'peer-b')
+];
+const rawDiscovered = discoverRows(rawRows);
+check('same-chassis physical local port retains two evidence observations',
+    rawDiscovered.length, 2);
+check('same-chassis multiport evidence has no shared LLD item identity',
+    new Set(rawDiscovered.map(r => r['{#SNMPINDEX}'])).size, 2);
+const extractedByPort = rawDiscovered.map(r =>
+    ['5', '7', '8', '9', '10', '12'].map(col =>
+        extract(rawWalk, col, r['{#NT_PORT}'], r['{#NT_REMIDX}'])));
+check('six-column values stay assigned to each current RemIndex',
+    extractedByPort, [
+        ['02 00 00 00 00 44', 'eth0', 'LAN-A', 'peer-a', 'model-a', '20 00'],
+        ['02 00 00 00 00 44', 'eth1', 'LAN-B', 'peer-b', 'model-b', '40 00']
+    ]);
+const shiftedRows = [
+    mkRow('120.32.70', '02 00 00 00 00 44', 'eth0', 'peer-a'),
+    mkRow('120.32.80', '02 00 00 00 00 44', 'eth1', 'peer-b')
+];
+const shifted = discoverRows(shiftedRows);
+check('new TimeMark and RemIndex do not alter either Port-ID LLD identity',
+    shifted.map(r => r['{#SNMPINDEX}']),
+    rawDiscovered.map(r => r['{#SNMPINDEX}']));
+check('changed RemIndex is propagated for current-value lookup',
+    shifted.map(r => r['{#NT_REMIDX}']), ['70', '80']);
+check('two logical evidence observations are not physical-link assertions',
+    rawDiscovered.every(r => r['{#NT_PORT}'] === '32'), true);
+
 // Optional LLDP local-port mapping: inspect the actual exported template.
 console.log('\n  LLDP local-port optional template');
 
