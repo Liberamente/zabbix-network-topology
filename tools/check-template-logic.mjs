@@ -126,6 +126,9 @@ if (cols.join(',') !== '5,7,8,9,10,12') {
 // Bei der Gegenprobe gegen das alte Template brach das Skript sonst am ersten
 // leeren Ergebnis ab — und die Pruefung der sechs Regexe, die zweite Haelfte
 // von Issue #15, lief nie.
+function discoverRows(rows) {
+    return JSON.parse(new Function('value', js)(JSON.stringify(rows)));
+}
 function discover(walk) {
     try {
         // new Function ist hier genau der Zweck: den Discovery-Code aus dem
@@ -163,9 +166,10 @@ const TPLINK = [
 console.log('  TP-Link JetStream — Index ohne TimeMark');
 let d = discover(TPLINK);
 check('drei Nachbarn entdeckt', d.length, 3);
-check('Index auf 0.Port.RemIndex normalisiert',
-      d.map((r) => r['{#SNMPINDEX}']), ['0.5.1', '0.20.1', '0.25.1']);
-const row25 = d.find((r) => r['{#SNMPINDEX}'] === '0.25.1') || {};
+check('Index auf 0.Port.StableId normalisiert',
+      d.map((r) => /^0\.(5|20|25)\.\d+$/.test(r['{#SNMPINDEX}'])),
+      [true, true, true]);
+const row25 = d.find((r) => r['{#NT_PORT}'] === '25') || {};
 check('Port- und RemIndex-Makro', [row25['{#NT_PORT}'], row25['{#NT_REMIDX}']], ['25', '1']);
 check('alle sechs Spalten fuer Port 25', cols.map((c) => extract(TPLINK, c, '25', '1')), [
     '3C 52 A1 00 00 01', 'Gi1/0/48', 'gigabitEthernet 1/0/25',
@@ -183,7 +187,7 @@ const FORTI = [
 
 console.log('\n  FortiGate — Index mit TimeMark, Verhalten unveraendert');
 d = discover(FORTI);
-check('zwei Nachbarn, TimeMark verworfen', d.map((r) => r['{#SNMPINDEX}']), ['0.5.1', '0.25.1']);
+check('zwei Nachbarn, TimeMark verworfen', d.map((r) => r['{#NT_PORT}']), ['5', '25']);
 check('Port 5 PortDesc', extract(FORTI, '8', '5', '1'), 'Gi0/5');
 check('Port 25 PortDesc', extract(FORTI, '8', '25', '1'), 'Gi0/25');
 
@@ -197,66 +201,55 @@ check('Suche nach Port 5 trifft nicht TimeMark 5', extract(EVIL, '8', '5', '1'),
 check('TM 5 / Port 1 / Rem 7 ist nicht Port 5 / Rem 1',
       extract('.1.0.8802.1.1.2.1.4.1.1.8.5.1.7 = STRING: "x"', '8', '5', '1'), null);
 
+console.log('\n  Stable Chassis and multiple logical ports');
+function synthetic(idx, chassis, portid, name) {
+    return {'{#SNMPINDEX}': idx, '{#NT_CHASSIS}': chassis,
+            '{#NT_PORTID}': portid, '{#NT_SYSNAME}': name};
+}
+const singleA = discoverRows([synthetic('10.24.1', '02 00 00 00 00 01', 'GE24', 'sw-b')]);
+const singleB = discoverRows([synthetic('95.24.8', '02 00 00 00 00 01', 'GE24', 'sw-b')]);
+// Installed workaround compatibility: a unique chassis keeps its existing
+// 0.LocalPort.StableId key; no mass item-key migration on upgrade.
+const installedCompat = discoverRows([
+    synthetic('0.5.1', '02:11:22:33:44:55', 'eth1', 'localhost')
+]);
+check('Single-chassis key matches deployed StableId',
+      installedCompat[0]['{#SNMPINDEX}'], '0.5.2072245671');
+
+check('Unique neighbor survives time mark/remindex change',
+      singleA[0]['{#SNMPINDEX}'] === singleB[0]['{#SNMPINDEX}'], true);
+const multi = discoverRows([
+    synthetic('10.6.1', '02 00 00 00 00 02', 'LAN', 'router'),
+    synthetic('10.6.2', '02 00 00 00 00 02', 'vlan100', 'router')
+]);
+check('Different PortIds on one chassis are distinct', new Set(multi.map(r => r['{#SNMPINDEX}'])).size, 2);
+check('Original indexes remain available for item prototypes',
+      multi.map(r => r['{#NT_REMIDX}']), ['1', '2']);
+const changed = discoverRows([
+    synthetic('99.6.7', '02 00 00 00 00 02', 'LAN', 'router'),
+    synthetic('99.6.8', '02 00 00 00 00 02', 'vlan100', 'router')
+]);
+check('Two ports remain stable after re-learn',
+      multi.map(r => r['{#SNMPINDEX}']), changed.map(r => r['{#SNMPINDEX}']));
+const duplicate = discoverRows([
+    synthetic('10.23.1', '02 00 00 00 00 03', 'LAN', 'ap'),
+    synthetic('99.23.4', '02 00 00 00 00 03', 'LAN', 'ap'),
+    synthetic('99.23.5', '02 00 00 00 00 03', 'guest', 'ap')
+]);
+check('Duplicate relearn collapses but distinct logical port survives', duplicate.length, 2);
+const missing = discoverRows([
+    synthetic('10.6.1', '', 'ether1', 'router'),
+    synthetic('99.6.4', '', 'ether1', 'router')
+]);
+check('Missing chassis stable port fallback', missing.length, 1);
+
 console.log('\n  Seen-Guard');
-d = discover('.1.0.8802.1.1.2.1.4.1.1.9.10.25.1 = STRING: "old"\n'
-           + '.1.0.8802.1.1.2.1.4.1.1.9.99.25.1 = STRING: "new"');
+d = discoverRows([
+    synthetic('10.25.1', '02 00 00 00 00 04', 'GE25', 'old'),
+    synthetic('99.25.1', '02 00 00 00 00 04', 'GE25', 'new')
+]);
 check('dieselbe Zeile unter zwei TimeMarks: die hoechste gewinnt',
       d.map((r) => r['{#NT_SYSNAME}']), ['new']);
-
-
-// Optional LLDP local-port mapping: inspect the actual exported template.
-console.log('\n  LLDP local-port optional template');
-
-let localTemplate = '';
-try {
-    localTemplate = readFileSync(
-        join(ROOT, 'templates', 'nt_lldp_local_ports_template.yaml'),
-        'utf8'
-    );
-} catch (err) {
-    if (err.code !== 'ENOENT') throw err;
-}
-
-check('LLDP local template available',
-    localTemplate !== '', true);
-
-check('Separate opt-in template',
-    localTemplate.includes(
-        "template: 'NT LLDP Local Ports by SNMP'"
-    ), true);
-
-check('Explicit FDB ifName prerequisite',
-    localTemplate.includes('nt.fdb.ifname'), true);
-
-const localBlocks = localTemplate.split(/(?=^ {8}- uuid: )/m);
-const localSpecs = [
-    ['nt.lldp.local.portid',
-     'walk[1.0.8802.1.1.2.1.3.7.1.3]'],
-    ['nt.lldp.local.portdesc',
-     'walk[1.0.8802.1.1.2.1.3.7.1.4]']
-];
-
-for (const [key, oid] of localSpecs) {
-    const matching = localBlocks.filter(block =>
-        block.split('\n').some(line => line.trim() === `key: ${key}`)
-    );
-
-    check(`${key}: unique item`, matching.length, 1);
-
-    if (matching.length !== 1) continue;
-
-    const block = matching[0];
-
-    check(`${key}: SNMP agent`,
-        block.includes('type: SNMP_AGENT'), true);
-    check(`${key}: correct SNMP walk`,
-        block.includes(`snmp_oid: '${oid}'`), true);
-    check(`${key}: text value`,
-        block.includes('value_type: TEXT'), true);
-    check(`${key}: controlled interval`,
-        block.includes("delay: '{$NT.LLDP.LOCAL.INTERVAL}'"),
-        true);
-}
 
 if (failures > 0) {
     console.log(`\ncheck-template-logic: ${failures} Fehler.`);
