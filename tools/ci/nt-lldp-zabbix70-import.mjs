@@ -137,6 +137,18 @@ async function sendWalk(value) {
         });
     });
 }
+async function sendWhenCached(value) {
+    let last = '';
+    for (let attempt = 0; attempt < 45; attempt++) {
+        try {
+            return await sendWalk(value);
+        } catch (error) {
+            last = error.message;
+            await delay(3000);
+        }
+    }
+    throw new Error('Synthetic sender item never entered server configuration cache: ' + last);
+}
 async function neighborItems(hostid) {
     const all = await rpc('item.get', {
         output: ['itemid', 'key_', 'lastvalue', 'lastclock', 'status', 'state'],
@@ -205,8 +217,14 @@ async function main() {
     assert(rulesOnHost.some(r => r.key_ === 'nt.cdp.cache.discovery'),
         'Cisco CDP discovery remains inherited');
 
-    await delay(3000);
-    await sendWalk(walk([[7, 'eth0']]));
+    const masterItems = await rpc('item.get', {
+        output: ['itemid', 'type', 'key_', 'status'], hostids: [hostid],
+        filter: {key_: ['nt.lldp.walk']}
+    });
+    assert(masterItems.length === 1 && masterItems[0].type === '2',
+        'synthetic host inherited Zabbix TRAP master item',
+        JSON.stringify(masterItems.map(x => ({type: x.type, key_: x.key_}))));
+    await sendWhenCached(walk([[7, 'eth0']]));
     const single = await waitForStage(hostid, ['eth0']);
     const original = portKey(single, 'eth0');
     const legacyKey = original.key_;
