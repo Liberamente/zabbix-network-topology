@@ -68,6 +68,23 @@ All 16 mismatching items had populated Chassis-ID, Port-ID and SysName values. T
 
 **Critical data limitation:** `nt.lldp.walk` exists on 245 hosts but `item.get` reported no nonempty `lastvalue` (and no nonzero `lastclock`) for these master items; the template sets master walk `history: '0'`. Therefore a direct current-walk replay of all 245 hosts cannot be honestly claimed from this read-only API snapshot. The 16-item discrepancy must be resolved or explicitly accepted through an approved, host-scoped migration plan. Do not silently normalize or rewrite existing keys.
 
+## LLD resource-state reconciliation and installed preprocessing — 2026-11-10
+
+The 16 key differences above were examined with an additional **read-only** `item.get` including `selectItemDiscovery: "extend"` for only the discrepant item IDs:
+
+| Status of the 16 discrepant item records | Count |
+| --- | ---: |
+| `itemDiscovery.status = 1`: no longer discovered, retained by LLD | **14** |
+| `itemDiscovery.status = 0`: currently discovered | **2** |
+
+All sixteen still had an LLD prototype parent; the two current items were observed on two distinct local ports of **one** host. The 14 lost resources should **not** be deleted or treated as current cable evidence merely to make a migration diff look clean. This materially reduces the currently visible mismatch scope from 16 records to **two active LLD resources**, but is not proof of safe global rollout.
+
+The effective `nt.lldp.rem.discovery` preprocessing on the affected host was then inspected via `discoveryrule.get` with `selectPreprocessing: "extend"` (no write). It contains the installed trim/lowercase/whitespace normalization, chassis-first `0.LocalPort.FNV-1a-32(LocalPort|identity)` structure, raw RemIndex selector, and `{#NT_PORTID}` discovery macro. The PR #23 candidate uses the same installed single-neighbor identity family and obtains remote Port-ID from the same OID via its `{#NT_REMPORT}` macro, while adding explicit multiport disambiguation. The installed script **does not** contain the PR's multiport `|port=` branch, as expected for a not-yet-imported candidate.
+
+**Open targeted question:** why the two currently discovered item keys cannot be regenerated from the corresponding **stored** Chassis-ID values using the visible installed identity recipe. Their item last values are not necessarily the original SNMP_WALK_TO_JSON macro values at the moment the LLD identity was generated. An original, authorized read-only raw LLDP walk plus the corresponding discovery macros/timestamps, collected privately, is required to resolve this without risking history. No speculative key rewrite, item cleanup, or template import has been performed.
+
+**Release gate:** two currently discovered key mismatches remain **unresolved** pending scoped raw-walk correlation; do not declare zero-churn or release-ready. Full production template ownership and visual staging QA are separately pending.
+
 ## Mandatory staging scope
 
 1. Choose an **isolated Zabbix 7.0 instance** or staging frontend that is demonstrably not connected to the live Zabbix DB, production API, production server, or production discovery timers. Record its version, URL (privately), exact module SHA, and template-export checksum in an internal checkpoint.
