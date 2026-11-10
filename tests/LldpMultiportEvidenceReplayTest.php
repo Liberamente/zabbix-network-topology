@@ -57,7 +57,7 @@ $edge = $result['edges'][0] ?? [];
 evidenceCheck('same-port duplicate is not reciprocally confirmed',
     ($edge['confirmed'] ?? null) === false);
 evidenceCheck('only the actual reporter is recorded',
-    ($edge['reporters'] ?? null) === ['101']);
+    array_map('strval', $edge['reporters'] ?? []) === ['101']);
 evidenceCheck('one reported local physical port retained',
     (string) ($edge['ports']['101'] ?? '') === '12');
 
