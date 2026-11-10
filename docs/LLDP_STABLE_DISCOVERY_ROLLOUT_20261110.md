@@ -25,6 +25,19 @@ The standalone `NT - LLDP Local Ports by SNMP` and `NT - LLDP Remote Evidence by
 4. Verify existing LLDP and CDP observations and one-to-many Port-ID cases using sanitized offline snapshots. Include reassociation after RemIndex/TimeMark changes and a no-identity fallback.
 5. Record host-by-host expected item losses/recreations; determine whether history retention and key migration are acceptable.
 
+## Read-only Zabbix 7.0.32 evidence — 2026-11-10
+
+Read-only queries against the connected Zabbix API returned:
+- 245 inherited `nt.lldp.rem.discovery` rules, distributed across 245 unique hosts.
+- 245 inherited `nt.cdp.cache.discovery` rules, across 245 unique hosts.
+- 245 inherited `lldpRemSysName[{#SNMPINDEX}]` item prototypes, across 245 unique hosts.
+- 266 existing `lldpRemSysName[...]` discovered items, distributed across 22 hosts: 220 enabled, 46 disabled.
+- `template.get` returned an empty list with the current API access; therefore the installed template identity, exact template link relationships and full template export have NOT been independently verified.
+- The earlier planning figure of 244 linked hosts is superseded by the observed 245 inherited LLDP rules; this is not necessarily a complete template-link inventory.
+- These figures are a point-in-time aggregate, not proof that importing the template will modify exactly 266 item IDs. Relearning, disabled/discovered state, inheritance and LLD lifetime may change outcomes.
+
+**Release blocker for live template import:** inventory host linkage via an account authorized for `template.get`, collect a backup export and plan key migration. The CI result only validates repository code, not live Zabbix item/history continuity.
+
 ## Controlled pilot and rollback (not executed)
 
 - Import a separately named pilot only into a test host, never onto the globally linked template; capture template/item count diffs and LLD results, then restore the isolated test host.
