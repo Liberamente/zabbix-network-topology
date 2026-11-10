@@ -122,6 +122,30 @@ A further **read-only Zabbix API** check compared the existing `0.LocalPort.Stab
 
 **Next bounded action:** on the affected device only, capture the six LLDP-MIB remote-table columns from an authorized read-only SNMP walk **privately** and compare their TimeMark.LocalPort.RemIndex, Chassis-ID and remote Port-ID with the installed discovery output and the two current item keys. Use the existing authorized SNMP configuration, without echoing secrets, network addresses, MACs, or customer names in logs, tickets or the public repository. Store only aggregate pass/fail counts in the public checkpoint. This collection has **not** been executed in this session.
 
+## Private same-epoch LLDP raw-walk identity check (tool ready; capture not executed)
+
+The branch now contains `tools/nt-lldp-raw-identity-check.mjs` (synthetic self-test runs as a gate in `.github/workflows/isolated-zabbix70-lldp-import.yml`). It **does not connect to the network or Zabbix API**, and only reads a user-supplied, locally stored SNMP numeric-OID walk; its stdout contains aggregate counts, match booleans, and statuses, **never** chassis, MAC, device name, IP, or raw walk text.
+
+The workflow for the **one affected authorized host and two local ports**, to run from a secured administration system with existing authorized SNMP access, is:
+
+1. Confirm the actual endpoint and interface from the private Zabbix inventory, and record the presently discovered `lldpRemPortId[0.LOCAL.STABLE_ID]` numeric keys **privately** for both affected ports; do not paste production identifiers or SNMP secrets into public PRs.
+2. Acquire an **authorized, read-only** LLDP remote-table walk for OIDs `1.0.8802.1.1.2.1.4.1.1.5` (Chassis-ID), `...7` (Port-ID), and `...9` (SysName) on that specific host, using the existing supported SNMP credentials and numeric OID output (`-On`). Capture to a locally permission-restricted file. Do **not** log SNMP credentials or upload the raw file to GitHub; no production item or discovery configuration changes are necessary. Verify that the collection's TimeMark.LocalPort.RemIndex rows cover both ports and that the three columns represent the same collection epoch.
+3. On the secured machine, use a temporary private file with restrictive permissions, e.g. `umask 077`, then run the checker for **each** affected local port:
+
+```sh
+node tools/nt-lldp-raw-identity-check.mjs \
+  --walk /path/to/private/lldp-remote-walk.txt \
+  --local-port LOCAL_PORT_NUM \
+  --stored-index 0.LOCAL_PORT_NUM.STABLE_ID
+```
+
+4. Interpret only `LLDP_RAW_IDENTITY_LOCAL_SUMMARY`: `installedKeyMatches` identifies whether the current numeric walk can recreate the stored installed key; `candidateKeyMatches` tests the PR's multi-Port-ID identity rule for the same parsed rows. `relevantRows`, `distinctInstalledKeys`, `distinctCandidateKeys`, and `unsupportedOrAmbiguousOidLines` are aggregate quality checks. **INCONCLUSIVE** (exit 3) means the raw walk is incomplete, ambiguous, or uses an SNMP representation (such as nontextual hex) not safely reproduced by this parser. A mismatch in a complete capture is evidence to investigate; do not automatically delete or rename any LLD item.
+5. Record the two resulting **redacted summaries**, capture time, tool commit and any inconclusive reason in the **private checkpoint**. Keep the original raw file private and delete it according to the environment's retention/security policy. Reconcile any discrepancy with the actual installed `SNMP_WALK_TO_JSON` preprocessing and LLD status before approving an import.
+
+The local checker supports textual numeric-OID `STRING` lines only; it intentionally does not invent a normalization for SNMP `Hex-STRING` or arbitrary escaped bytes. Its self-test covers a synthetic chassis advertising two distinct remote Port-IDs on one local port and verifies that the installed chassis-only and proposed port-specific keys differ appropriately. The self-test is **not a device capture**.
+
+**Release gate remains open** until a real, privately verified same-epoch walk resolves the two current mismatches and visual staging testing is completed. No production SNMP poll was executed from this conversation.
+
 ## Mandatory staging scope
 
 1. Choose an **isolated Zabbix 7.0 instance** or staging frontend that is demonstrably not connected to the live Zabbix DB, production API, production server, or production discovery timers. Record its version, URL (privately), exact module SHA, and template-export checksum in an internal checkpoint.
