@@ -108,14 +108,22 @@ $aggregate->setAccessible(true);
 foreach ([
     'Bridge-Aggregation1',
     'Bridge-Aggregation 12',
-    'Bridge Aggregation2'
+    'Bridge Aggregation2',
+    // SOA field evidence: MikroTik IF-MIB ifType 161 (ieee8023adLag).
+    // The model must not confuse those named logical LAG interfaces with
+    // physical Ethernet access ports when producing inferred FDB links.
+    'client-bond3',
+    'client-bond4',
+    'client-bond5'
 ] as $port) {
     verify("FDB aggregazione $port",
         $aggregate->invoke(null, $port) === true);
 }
 
-verify('FDB porta accesso GE19 non aggregata',
-    $aggregate->invoke(null, 'GE19') === false);
+foreach (['GE19', 'swp00', 'ether1', 'client-bondX'] as $port) {
+    verify("FDB non aggregata per solo nome $port",
+        $aggregate->invoke(null, $port) === false);
+}
 
 echo $failed === 0
     ? "SOA_CORRECTIONS_TEST=PASS\n"
