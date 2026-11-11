@@ -303,7 +303,7 @@ final class AutoFdbEdges {
     private static function isAggregatePort(string $port): bool {
         return preg_match('/^(?:Trk\d+|LAG\d+|Po\d+|Port[- ]?channel\d+|'
             . 'Bond\d+|ae\d+|Eth[- ]?Trunk\d+|Bridge\d+|'
-            . 'Bridge[- ]?Aggregation[ -]?\d+)$/i',
+            . 'Bridge[- ]?Aggregation[ -]?\d+|client-bond\d+)$/i',
             trim($port)) === 1;
     }
 
