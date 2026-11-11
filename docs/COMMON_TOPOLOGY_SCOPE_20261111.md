@@ -402,6 +402,32 @@ or merge to the production branch. Rollback would restore the previous
 later tested candidate is deployed. Do not present a source-only UI
 change as live functionality.
 
+## Shared-port Technical UI bundle synchronization checkpoint
+
+The front-end source implementation on PR #23 maps
+`shared_reporter_port`/`shared_reporter_neighbor_count` into the
+Cytoscape model and conditionally shows an explanatory message in
+the Technical edge details, translated in the existing English/German
+language dictionaries. A synthetic UI regression checks two LLDP
+neighbors sharing a reporter port, the unmodified count/source/confidence/
+confirmed fields, and the absence of warnings for a normal single port.
+
+The initially failing bundle-drift and package CI jobs were due to
+`assets/js/dist/nt-bundle.js` being out of sync with JS sources.
+The bundle was subsequently generated in an isolated temporary
+GitHub Actions job, committed on the feature branch, and inspected to
+contain the new translated warning and mapped fields. The temporary
+compiler workflow was then removed from the branch. A new complete
+CI gate is required on the final commit before any candidate freeze
+or deployment. This work is **not** present in installed SOA RC3,
+which remains frozen at the earlier two-file PHP IF-MIB patch.
+
+No private network evidence is included in the public regression test.
+The UI warning does not assert a direct cable, modify relationships,
+or create an intermediate device. Backend and UI must be deployed
+together in a later RC with explicit backup/rollback and visual gates
+on SOA, Techsigno and Cardinale.
+
 ## Group-specific exceptional behavior
 
 After a common release is tested in all three lab groups, exceptional customer
