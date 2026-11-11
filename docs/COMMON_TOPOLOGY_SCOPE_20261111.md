@@ -224,6 +224,44 @@ change or Zabbix mutation follows from this diagnostic alone.
 Private customer labels, host identifiers, MACs, IPs and the uploaded
 GraphML MUST NOT be committed to this public repository.
 
+## Historic LLDP/CDP item timestamp: synthetic characterization (2026-11-11)
+
+The common `MetricExtractor::extract()` currently forwards LLDP/CDP
+neighbor identity rows to `LldpEdgeBuilder::build()` with
+`hostid`, `key_`, `lastvalue` and `src` only, **not** the
+`lastclock`. In the main controller, clocks fetched from Zabbix history
+are currently used for general per-host freshness but not as an
+evidence-level maximum age on neighbor rows. Therefore a valid-looking,
+non-empty, historic CDP neighbor identity can still be considered by
+the builder if it survives the source-item query.
+
+A new synthetic characterization test
+`tests/LldpStaleNeighborCharacterizationTest.php` records both outcomes:
+three **distinct** identities on one port, one of them 22+ hours old,
+can generate three one-sided graph edges when all reach the builder;
+two current identities plus an old **duplicate identity** still make
+only two unique host-pair edges. A hypothetical upstream six-hour
+prefilter illustrates how to retain both current identities, but is
+not deployed and is **not yet an approved universal TTL**. It must be
+evaluated against actual LLDP/CDP polling intervals, proxy delays,
+discovery loss, existing monitored devices and stale historical
+lastvalues before any production change.
+
+A private SOA discrepancy is still open: a core port displayed three
+graph destinations but had only two last-hour LLDP Port-ID and CDP
+identity rows, with an additional historic duplicate CDP identity.
+That observation **does not establish** the older item as the cause of
+the third edge. A missing SysName, a different source, reconciliation,
+duplicate keys or the current graph snapshot must be ruled out first.
+
+Acceptance requirements before fixing: a replay with aligned
+same-epoch `lastclock` for each identity and metadata row, a clear
+missing-clock policy for older versions, separate TTL per protocol if
+required, false-positive/false-negative counts from SOA plus Techsigno
+and Cardinale, no lost verified trunk/parallel edges, stable group/proxy
+scope, and an explicit rollback. The synthetic test uses no real
+customer identifiers or network data.
+
 ## Group-specific exceptional behavior
 
 After a common release is tested in all three lab groups, exceptional customer
