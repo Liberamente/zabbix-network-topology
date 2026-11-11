@@ -915,6 +915,53 @@ final class LldpEdgeBuilder {
         }
         unset($_e);
 
+        // Diagnostic only: multiple distinct neighbor hosts advertised by the
+        // same reporter on the same local port may imply a shared segment,
+        // transparent intermediary or pass-through. No extra edges, inferred
+        // devices or changes to physical confirmation/confidence are made.
+        // Group by *reported local ifIndex*, not a guessed remote label.
+        // Two separate physical member ports to the SAME neighbor are valid
+        // parallel links and must not trigger this finding.
+        $neighborsByReporterPort = [];
+        foreach ($edges as $edge) {
+            $srcHost = (string) ($edge['from'] ?? '');
+            $dstHost = (string) ($edge['to'] ?? '');
+            foreach (($edge['reporters'] ?? []) as $reporter) {
+                $reporter = (string) $reporter;
+                if ($reporter !== $srcHost && $reporter !== $dstHost) {
+                    continue;
+                }
+                $idx = (string) ($edge['port_idx'][$reporter] ?? '');
+                if ($idx === '') {
+                    continue;
+                }
+                $neighbor = $reporter === $srcHost ? $dstHost : $srcHost;
+                if ($neighbor === '' || $neighbor === $reporter) {
+                    continue;
+                }
+                $neighborsByReporterPort[$reporter][$idx][$neighbor] = true;
+            }
+        }
+        foreach ($edges as &$edge) {
+            $edge['shared_reporter_port'] = false;
+            foreach (($edge['reporters'] ?? []) as $reporter) {
+                $reporter = (string) $reporter;
+                $idx = (string) ($edge['port_idx'][$reporter] ?? '');
+                if ($idx === '') {
+                    continue;
+                }
+                $count = count($neighborsByReporterPort[$reporter][$idx] ?? []);
+                if ($count > 1) {
+                    $edge['shared_reporter_port'] = true;
+                    $edge['shared_reporter_neighbor_count'] = max(
+                        (int) ($edge['shared_reporter_neighbor_count'] ?? 0),
+                        $count
+                    );
+                }
+            }
+        }
+        unset($edge);
+
 
         return [
             'edges'     => $edges,
