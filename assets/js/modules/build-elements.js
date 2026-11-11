@@ -668,6 +668,13 @@ export function buildEdgeElements(edges, nodes) {
                     _isFreshEdge: e.fresh === true,
                     confirmed: e.confirmed === true,
                     reporters: e.reporters || [],
+                    // Diagnostic only: multiple distinct neighbors observed
+                    // on one reporting local ifIndex. Not extra cables.
+                    sharedReporterPort: e.shared_reporter_port === true,
+                    sharedReporterNeighborCount: e.shared_reporter_port === true
+                        && Number.isInteger(e.shared_reporter_neighbor_count)
+                        && e.shared_reporter_neighbor_count > 1
+                        ? e.shared_reporter_neighbor_count : null,
                     // Wie sicher diese Kante ist (0-100) und WORAUF sie beruht.
                     // Bis 5.3 sah auf der Karte jede Verbindung gleich sicher
                     // aus, obwohl die eine von zwei Geraeten unabhaengig

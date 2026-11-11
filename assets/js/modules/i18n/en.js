@@ -538,6 +538,7 @@ export default {
     'devreport.nodata': 'No topology data loaded, so there is nothing to report yet.',
     'edge.confirmed': 'confirmed',
     'edge.confirmed.tip': 'Both ends report each other, so the link is confirmed from both sides.',
+    'edge.shared_reporter': 'Shared reporting port: {n} observed neighbors. A direct cable to each is not established.',
     'edge.onesided': 'one-sided',
     'edge.onesided.tip': 'Only one end reports this neighbour. Usually LLDP is off on the other side; less often the match is wrong.',
     'edge.onesided.tip_named': 'Only {host} reports this neighbour \u2014 the other end does not. Usually LLDP is off there; less often the match is wrong.',
