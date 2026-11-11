@@ -77,6 +77,35 @@ ports, ghosts, stale observations and excluded addresses. Never mark all
 disconnected hosts as failed, and never require 100% connectedness as a
 release gate.
 
+## SOA FDB interface-type verification (2026-11-11)
+
+Read-only Zabbix IF-MIB observations from the two SOA MikroTik reporters
+confirmed that `client-bond3`, `client-bond4`, `client-bond5` and
+`peer` currently expose `ifType=161` (IEEE 802.3ad LAG). On those devices
+`ether1` exposes `ifType=6` (Ethernet) and the default bridge is
+`ifType=209` (transparent bridge). The GS1920 interface `swp00` exposes
+`ifType=6`. The source FDB walk has multiple learned MAC identities on
+some of these ports, which does **not** prove an unmanaged switch or cable.
+
+The common FDB parser now explicitly recognizes the observed
+`client-bondN` naming pattern as a logical aggregate in its existing
+conservative name-based exclusion, with synthetic regression coverage.
+This is a narrowly scoped compatibility improvement, **not** a complete
+`ifType`-aware interface classifier. Generic names such as `peer` cannot
+safely be excluded by name alone across all vendors: `peer` on SOA is known
+as an aggregation from the SNMP type, but that is not universal. A generic
+`ifType=161` and `ifType=209` classification pipeline must be assessed
+separately with permission/group/proxy scoping and explicit precedence over
+name-only fallbacks. Until then, do not promote an FDB observation on such
+ports into a verified physical cable or invent a missing intermediate device.
+
+SOA FDB read-only snapshot: six managed switches, 24 fresh FDB walk items;
+HPE logical `Bridge-Aggregation1` had 68 distinct learned unicast MACs,
+HP `Trk1/Trk2` 17/47 and GS1900 `LAG5/LAG6` 35/26. The non-aggregate
+labels `swp00` (GS1920) and `ether1` (MikroTik) held respectively
+54 and 18–19 learned unicast MACs. Those counts express forwarding-table
+learning, not physical topology or endpoint inventory.
+
 ## Group-specific exceptional behavior
 
 After a common release is tested in all three lab groups, exceptional customer
