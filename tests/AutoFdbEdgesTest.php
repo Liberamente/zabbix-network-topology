@@ -63,9 +63,11 @@ $caps=[
     row('11','lldpRemSysCapEnabled[0.24.10]','20 00'),
     row('12','lldpRemSysCapEnabled[0.24.20]','20 00'),
 ];
-function runCase($hosts,$rows,$caps,$edges=[],$manual=[],$metrics=[]): array {
+function runCase($hosts,$rows,$caps,$edges=[],$manual=[],$metrics=[],$ifTypes=[]): array {
     global $now;
-    return AutoFdbEdges::append($hosts,$rows,$caps,$edges,$manual,$metrics,$now);
+    $diagnostics = null;
+    return AutoFdbEdges::append($hosts,$rows,$caps,$edges,$manual,$metrics,
+        $now,$diagnostics,$ifTypes);
 }
 
 $got = runCase($hosts, sourceRows(), $caps);
@@ -209,6 +211,46 @@ $lagResult = runCase($lagHosts,$lagRows,$caps);
 t('Logical HPE Trk1 FDB is NOT an access link',count($lagResult),1);
 t('Only physical access port survives aggregate filtering',
     $lagResult[0]['ports']['12'] ?? null, 'GigabitEthernet3');
+
+// IF-MIB classification must suppress logical interfaces without relying
+// on vendor-specific names such as "peer". The same unchanged FDB data
+// remains usable when the interface is genuinely Ethernet (ifType 6).
+$typeRows = $lagRows;
+foreach ($typeRows as &$typeRow) {
+    if ($typeRow['hostid'] === '12' && $typeRow['key_'] === 'nt.fdb.ifname'
+            && strpos($typeRow['lastvalue'], '"Trk1"') !== false) {
+        $typeRow['lastvalue'] = str_replace('"Trk1"', '"peer"', $typeRow['lastvalue']);
+    }
+}
+unset($typeRow);
+t('Unknown peer name without type retains baseline inference',
+    count(runCase($lagHosts,$typeRows,$caps)),2);
+$lagTypes = [row('12','net.if.type[ifType.532]','161')];
+t('IF-MIB type 161 LAG suppresses false FDB peer access edge',
+    count(runCase($lagHosts,$typeRows,$caps,[],[],[],$lagTypes)),1);
+t('IF-MIB type 209 bridge suppresses false FDB peer access edge',
+    count(runCase($lagHosts,$typeRows,$caps,[],[],[],
+        [row('12','net.if.type[ifType.532]','209')])),1);
+t('IF-MIB type 6 physical Ethernet retains FDB inference',
+    count(runCase($lagHosts,$typeRows,$caps,[],[],[],
+        [row('12','net.if.type[ifType.532]','6')])),2);
+t('IF-MIB on different host never suppresses visible switch port',
+    count(runCase($lagHosts,$typeRows,$caps,[],[],[],
+        [row('11','net.if.type[ifType.532]','161')])),2);
+t('Stale IF-MIB type never changes baseline FDB inference',
+    count(runCase($lagHosts,$typeRows,$caps,[],[],[],
+        [row('12','net.if.type[ifType.532]','161',$now-200000)])),2);
+t('Disabled IF-MIB item never changes baseline inference',
+    count(runCase($lagHosts,$typeRows,$caps,[],[],[],
+        [array_replace(row('12','net.if.type[ifType.532]','161'),
+            ['status'=>'1'])])),2);
+t('Unrelated item key cannot classify IF-MIB',
+    count(runCase($lagHosts,$typeRows,$caps,[],[],[],
+        [row('12','other.if.type[ifType.532]','161')])),2);
+t('IF-MIB filtering keeps FDB edges strictly inferred',
+    array_map(static fn($e) => [$e['confirmed'], $e['src']],
+        runCase($lagHosts,$typeRows,$caps,[],[],[],$lagTypes)),
+    [[false,['fdb']]]);
 
 // If two distinct monitored MACs share one switch access port, show two
 // INFERRED associations with an explicit shared-port warning. Do not guess
