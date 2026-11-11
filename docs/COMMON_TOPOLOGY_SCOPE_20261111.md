@@ -341,6 +341,41 @@ No code modifications, Zabbix API writes or new module deployment
 were performed by this checkpoint. Private hostnames, addresses,
 MACs and raw inventory are deliberately omitted.
 
+## Shared reporter-port evidence metadata — development-only (2026-11-11)
+
+The common LLDP/CDP builder now computes an **informational**
+`shared_reporter_port` boolean and
+`shared_reporter_neighbor_count` for any edge whose reporting device
+has observed **more than one distinct destination host** on its same
+local ifIndex. Grouping uses the actual reporter host, its recorded
+local `port_idx` and distinct neighbor identity; it never counts
+different protocols or duplicate identities as additional cables.
+Parallel member links on different local ports to the same neighbor
+remain valid and are not flagged as shared-port findings.
+
+This change deliberately **does not** add/delete/reconnect edges,
+change `confirmed`/`confidence`, synthesize hidden switches or
+relabel a protocol observation as a verified physical link. The flag
+is a caution about incomplete direct-cable proof, not evidence of a
+specific unmanaged device. A synthetic replay in
+`tests/LldpMultiportEvidenceReplayTest.php` now exercises
+shared-reporter detection, duplicates and parallel members.
+
+The backend metadata is **on PR #23 only** and has not been deployed.
+The RC3 production frontend and the frozen RC3 source commit remain
+unchanged. No frontend tooltip or GraphML representation of these
+fields is yet implemented or verified; that is a separate acceptance
+gate requiring synthetic UI tests and SOA/Techsigno/Cardinale regression
+validation. Unknown local ifIndex means no positive shared-port
+finding rather than a guessed one. Only in-scope visible hosts from
+the current topology builder participate.
+
+Release rollback: because the change is additive backend metadata,
+revert the one builder commit or restore the previous
+`topology/LldpEdgeBuilder.php` after a validated candidate deployment.
+Do not promote the PR to production while backend and UI tests or
+group/proxy isolation checks are incomplete.
+
 ## Group-specific exceptional behavior
 
 After a common release is tested in all three lab groups, exceptional customer
