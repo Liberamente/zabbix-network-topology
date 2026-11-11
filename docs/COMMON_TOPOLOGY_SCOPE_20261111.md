@@ -428,6 +428,50 @@ or create an intermediate device. Backend and UI must be deployed
 together in a later RC with explicit backup/rollback and visual gates
 on SOA, Techsigno and Cardinale.
 
+## SOA RC4 deployed — 2026-11-11 at 16:31 Europe/Rome
+
+Operator-confirmed deployment on the **shared** `zabbix-server02`
+Zabbix frontend of the six-file candidate frozen at
+`cb8cc2770076068f0122807bbf56dfb32dde4e74`
+(branch `release/topology-soa-shared-port-rc4-20261111`).
+
+Exactly these six files were replaced:
+- `topology/LldpEdgeBuilder.php`
+- `assets/js/modules/build-elements.js`
+- `assets/js/modules/edge-detail.js`
+- `assets/js/modules/i18n/en.js`
+- `assets/js/modules/i18n/de.js`
+- `assets/js/dist/nt-bundle.js`
+
+Operator output: `SOURCE_PREFLIGHT=PASS`, backup SHA256 for
+all six files verified, `POST_DEPLOYMENT=PASS`,
+`DEPLOYMENT_RC4=PASS`, PHP lints PASS both on host and
+inside `zabbix-web`; bundled JavaScript verified accessible
+with the shared-port field. Rollback snapshot:
+`/opt/liberamente/topology-deploy-backups/soa-shared-port-rc4-20261111-163142`.
+No database mutations or template imports. This is a selective
+frontend deployment, **not** a whole-repository production release
+or merge; the installed module manifest remains 5.5.27.
+
+Open runtime acceptance: check scoped SOA Technical view in a fully
+refreshed browser, verify that the shared-port warning appears
+on expected multiple-neighbor LLDP/CDP edges, does **not** appear
+on ordinary single-neighbor edges or wrongly mark LAG parallel members,
+and that graph node/edge/ghost counts, reporters, confirmed status,
+LLDP/CDP, FDB, Wi-Fi and manual links remain consistent with
+current evidence. Historical visual baseline was 93 monitored nodes,
+37 UI edges and three ghost nodes, with the caveat that discovery
+and graph filters may change counts over time. Inspect
+`zabbix-web` PHP logs as a separate gate. No runtime graphical
+acceptance is yet proven.
+
+If regression occurs, verify backup hashes, restore all six saved
+files together, lint PHP inside the container, force-refresh client
+assets and recheck SOA. Retain separate backups from the earlier RC3
+deployment. Keep private network identifiers and GraphML out of
+the public repository. Private canonical state, decision, release
+and backlog files still require separate synchronization.
+
 ## Group-specific exceptional behavior
 
 After a common release is tested in all three lab groups, exceptional customer
