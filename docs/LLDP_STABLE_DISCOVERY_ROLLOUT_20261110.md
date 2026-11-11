@@ -142,6 +142,53 @@ The new reproducible harness runs a **disposable** PostgreSQL 16, Zabbix 7.0.32 
 
 **Updated release gate:** isolated Zabbix import and the synthetic LLD key-to-port association checks are now PASS. Do not equate these results with production deployment authorization. Leave PR #23 draft until an authorized staging frontend/visual inspection and migration impact review are complete.
 
+## Production-instance laboratory authorization and shared-core policy (2026-11-11)
+
+The project operator has explicitly authorized testing the common module
+against the existing production Zabbix instance and database because there
+is no separate staging database. SOA, Techsigno, and Cardinale are validation
+laboratories, and no customer currently has access to the custom Topology
+module. Verify visibility again before deploying.
+
+Test **SOA first**, then the unchanged common candidate in Techsigno and
+Cardinale. Keep one portable common implementation and release. Later
+site/group-specific behaviors may be optional, tightly scoped policies or
+extensions rather than divergent forks. The common model must support, at
+minimum: nominated central FDB/uplink switches; excluded duplicate local IPs
+or secondary/tertiary interfaces; unmanaged fan-out desktop switches with
+unknown internal ports; bridging or pass-through endpoints such as VoIP
+phones with PCs; multi-switch cascades; Wi-Fi and multiport LAG/trunks.
+These are baseline topology requirements, **not** a claim that all are
+implemented or proven in the present LLDP RC1. Exclusion rules must not
+erase valid evidence; unmanaged equipment must not cause fabricated direct
+cables; shared MAC learning is never sufficient for a verified physical
+link. Maintain source/confidence and group/proxy visibility on every edge.
+
+**Critical impact:** `templates/nt_lldp_snmp_template.yaml` is a Zabbix
+template with inherited discovery. Editing/importing the shared template may
+touch approximately 245 LLDP-linked hosts across multiple groups. The
+operator's production-instance test approval does not imply immediate global
+import of that shared template. The RC1 diff principally concerns the LLDP
+template and validation tools, not a frontend module PHP/JS upgrade.
+
+Preflight before any live pilot: identify repo/ref/SHA, exact frontend module
+mount and installed SHA, live template ID, prototype UUIDs, host/relationship
+linkage, current item IDs, source/target host, proxy, group visibility,
+production DB backup/checkpoint and restore procedure. For isolated
+same-database tests, use a distinct pilot template UUID/name and dedicated
+SOA-only test host without conflicting inherited keys; compare before/after
+with read-only API. Do not publish private host details, IP addresses,
+community strings, actual device identities, raw walks or backups to GitHub.
+
+Stopping criteria: unexplained LLD item churn, collisions with inherited
+keys, loss of existing history, false physical confirmation from FDB/ARP,
+lost Wi-Fi/VoIP/trunk provenance, or cross-group/proxy information leakage.
+Rollback of a template YAML alone does not restore removed item history;
+reverting module files alone does not undo a database import.
+
+The original isolated-DB wording below is retained as optional CI guidance,
+not a block on production-instance laboratory work.
+
 ## Controlled pilot and rollback (not executed)
 
 - Import a separately named pilot only into a test host, never onto the globally linked template; capture template/item count diffs and LLD results, then restore the isolated test host.
