@@ -294,6 +294,53 @@ are on feature PR #23. Production SOA RC3 remains on the frozen
 there is no new LLDP patch or deployment in this checkpoint. Do not
 commit the private GraphML, customer names, MACs or IP addresses.
 
+## SOA other shared ports — same-epoch read-only gate (2026-11-11)
+
+Following the resolved LLDP-only third adjacency on the previously
+investigated core port, the remaining shared-port reporters were
+reviewed through live group-scoped Zabbix item reads (source items
+only, no mutation). An anonymized snapshot found:
+- Four core reporter ports with 2/2, 2/2, 2/2 and 4/4 recent
+  LLDP-Port-ID/CDP-Device-ID row counts, respectively.
+- One access-switch port with three recent LLDP-Port-ID rows
+  and no CDP rows.
+- Two router reporter ports with two current LLDP Chassis-ID/
+  SysName entries each, but only one current Port-ID entry
+  per port and no CDP.
+
+All seven reviewed reporting interfaces expose IF-MIB `ifType=6`
+(Ethernet). Thus the `ifType=161/209` FDB exclusion in deployed RC3
+does not describe these shared-port cases. In particular, each of
+the two router Ethernet ports observes both the access switch and
+the other router on the same local interface. One identity on each
+router does not supply a current remote Port-ID, which must remain
+"unknown" rather than invented. The core ports carry overlapping
+LLDP and CDP views; counts from both protocols must never simply
+be added as distinct physical neighbors.
+
+`LldpEdgeBuilder` retains a `reporters` set and derives
+`confirmed` from **distinct reporting hosts**; LLDP and CDP
+reported by the same single device do not count as reciprocal
+confirmation. Existing synthetic multiport tests also check
+distinct neighbors on one reported port and parallel link members.
+The exported GraphML lacks full `reporters`, `confirmed` and
+temporal evidence fields, so a current snapshot alone cannot
+certify physical cabling or establish a missing intermediary.
+
+Decision: do **not** suppress shared-port observations globally,
+create hypothetical intermediate nodes, label each edge as a
+definite direct cable or infer Ethernet vs bridge from number of
+learned MACs. Preserve per-source evidence and present multi-neighbor
+reporting ports as potentially shared, pending a reciprocal
+same-epoch port/member test. In a later opt-in UI improvement, expose
+the already-known evidence uncertainty with provenance and
+non-direct-cable wording, without changing underlying topology
+deduplication. Evaluate role/group/proxy isolation before rollout.
+
+No code modifications, Zabbix API writes or new module deployment
+were performed by this checkpoint. Private hostnames, addresses,
+MACs and raw inventory are deliberately omitted.
+
 ## Group-specific exceptional behavior
 
 After a common release is tested in all three lab groups, exceptional customer
