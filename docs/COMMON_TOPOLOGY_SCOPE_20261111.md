@@ -106,6 +106,44 @@ labels `swp00` (GS1920) and `ether1` (MikroTik) held respectively
 54 and 18–19 learned unicast MACs. Those counts express forwarding-table
 learning, not physical topology or endpoint inventory.
 
+## IF-MIB type-aware inferred-FDB filter (candidate; not yet deployed)
+
+The common backend now queries `net.if.type[ifType.N]` **only** for the
+already-in-scope FDB-source hosts of the selected group. The lookup adds an
+optional, read-only input to `AutoFdbEdges::append()`. Existing call sites
+and snapshots without interface-type items continue to use the earlier
+conservative name-based aggregate filter. No Zabbix item or template is
+created and no additional unrestricted host queries are permitted.
+
+The filter maps an exact `ifType.N` item to the same host's FDB
+`ifName[N]` and suppresses FDB-derived access edges for:
+
+- `161` — IEEE 802.3ad LAG / logical aggregate;
+- `209` — transparent bridge / logical bridging interface.
+
+Type `6` (Ethernet) is **not** excluded simply for learning multiple MACs:
+it may be a valid access, uplink or connection to an unmonitored fan-out
+device. The existing LLDP/CDP evidence, port-membership and automatic
+FDB safeguards remain separate. Missing, invalid, foreign-host, disabled
+or older-than-48-hour type items do not override the previous behavior.
+Unknown interface names are never automatically asserted to be physical
+cables.
+
+A test fixture validates `peer` as LAG via its SNMP ifType rather than its
+generic interface name, ensures Ethernet type 6 is not filtered and preserves
+the FDB edge's inferred `confirmed=false` and `src=['fdb']` metadata.
+Automated CI and live visualization are independent gates; **no module
+deployment or template import is implied by this source change**.
+
+Before deployment on the production Zabbix instance, retain the frontend
+backup, verify SHA of the exact candidate source, compare its rendered module
+files with those installed, verify role visibility and the single SOA group
+scope, and record counts of existing/inferred edges. A regression requires
+restoring the prior frontend file(s); do not modify global template items as
+part of this FDB classifier rollout. Perform a visual regression on SOA,
+then Techsigno and Cardinale using the same common candidate. Canonical
+private state/release/backlog files remain separately pending.
+
 ## Group-specific exceptional behavior
 
 After a common release is tested in all three lab groups, exceptional customer
