@@ -370,4 +370,61 @@ assert.equal(
     'Existing physical x2 trunk must remain unchanged'
 );
 
+// LLDP multi-neighbor reporter evidence is informational and must not
+// alter graph edges, reciprocal confirmation, confidence or FDB semantics.
+const sharedLldpApi = [{
+    id: 'lldp-shared-one', from: '31', to: '32',
+    src: ['lldp'], reporters: ['31'], confirmed: false, confidence: 70,
+    ports: { '31': 'Ethernet12', '32': 'eth0' },
+    port_idx: { '31': '12' },
+    shared_reporter_port: true, shared_reporter_neighbor_count: 2
+}, {
+    id: 'lldp-shared-two', from: '31', to: '33',
+    src: ['lldp'], reporters: ['31'], confirmed: false, confidence: 70,
+    ports: { '31': 'Ethernet12', '33': 'eth1' },
+    port_idx: { '31': '12' },
+    shared_reporter_port: true, shared_reporter_neighbor_count: 2
+}];
+const sharedLldpNodes = nodes.concat({
+    id: '33', traffic: { in: 0, out: 0 }, severity: 0
+});
+const sharedLldpBuilt = buildEdgeElements(sharedLldpApi, sharedLldpNodes);
+assert.equal(sharedLldpBuilt.length, 2,
+    'Shared reporter port must not add or remove graph edges');
+for (const element of sharedLldpBuilt) {
+    assert.equal(element.data.sharedReporterPort, true);
+    assert.equal(element.data.sharedReporterNeighborCount, 2);
+    assert.equal(element.data.confirmed, false);
+    assert.equal(element.data.confidence, 70);
+    assert.deepEqual(element.data.src, ['lldp']);
+    assert.notEqual(element.data.kind, 'fdb');
+}
+const sharedPanel = new MockElement('panel');
+const firstShared = sharedLldpBuilt[0].data;
+showEdgeDetail(sharedPanel, {
+    data: key => key === undefined ? firstShared : firstShared[key],
+    hasClass: () => false,
+    source: () => fakeNode('31', 'Synthetic Switch'),
+    target: () => fakeNode('32', 'Synthetic Endpoint')
+});
+assert.match(text(sharedPanel), /2 observed neighbors/i);
+assert.match(text(sharedPanel), /direct cable.*not established/i);
+const normalLldp = buildEdgeElements([{
+    ...sharedLldpApi[0], shared_reporter_port: false,
+    shared_reporter_neighbor_count: undefined
+}], sharedLldpNodes)[0].data;
+assert.equal(normalLldp.sharedReporterPort, false);
+assert.equal(normalLldp.sharedReporterNeighborCount, null);
+const normalPanel = new MockElement('panel');
+showEdgeDetail(normalPanel, {
+    data: key => key === undefined ? normalLldp : normalLldp[key],
+    hasClass: () => false,
+    source: () => fakeNode('31', 'Synthetic Switch'),
+    target: () => fakeNode('32', 'Synthetic Endpoint')
+});
+assert.doesNotMatch(text(normalPanel), /2 observed neighbors/i);
+assert.equal(fetchCount, 0,
+    'Shared-port evidence details must not trigger history calls');
+console.log('PASS: shared LLDP reporter-port warning without extra cables');
+
 console.log('PASS: native FDB inferred edge UI + shared-port warning + no false traffic');
