@@ -543,6 +543,7 @@ export default {
     'devreport.nodata': 'Es sind keine Topologiedaten geladen, es gibt also noch nichts zu berichten.',
     'edge.confirmed': 'best\u00e4tigt',
     'edge.confirmed.tip': 'Beide Enden melden einander \u2014 die Verbindung ist beidseitig best\u00e4tigt.',
+    'edge.shared_reporter': 'Gemeinsamer Meldeport: {n} beobachtete Nachbarn. Direkte Kabel zu allen sind nicht nachgewiesen.',
     'edge.onesided': 'einseitig',
     'edge.onesided.tip': 'Nur ein Ende meldet diesen Nachbarn. Meist ist LLDP auf der Gegenseite aus; seltener stimmt die Zuordnung nicht.',
     'edge.onesided.tip_named': 'Nur {host} meldet diesen Nachbarn, die Gegenseite nicht. Meist ist dort LLDP aus; seltener stimmt die Zuordnung nicht.',
