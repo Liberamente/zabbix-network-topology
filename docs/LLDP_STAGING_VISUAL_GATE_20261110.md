@@ -146,6 +146,54 @@ The local checker supports textual numeric-OID `STRING` lines only; it intention
 
 **Release gate remains open** until a real, privately verified same-epoch walk resolves the two current mismatches and visual staging testing is completed. No production SNMP poll was executed from this conversation.
 
+## Authorized production-instance laboratory scope (decision 2026-11-11)
+
+**Supersedes the earlier requirement for a separate Zabbix database.** No
+separate staging database exists. The production Zabbix server and database
+are the authorized test environment, limited to the dedicated laboratory
+groups **SOA, Techsigno, and Cardinale**. As reported by the operator on
+2026-11-11, no customer/user group presently has access to the custom
+Topology module; this claim must be checked again before each rollout,
+including frontend module permissions.
+
+Laboratory authorization does **not** mean that a shared inherited template
+can be globally modified. Start from SOA as the primary validation group, then
+repeat the same common candidate in Techsigno and Cardinale. Verify all
+three under their normal proxy/group filters. Preserve the distinction between
+LLDP/CDP verified evidence, FDB/ARP inferred evidence, Wi-Fi membership,
+cascaded bridges, and physical LAG/trunk members; neither a missing evidence
+row nor a shared MAC proves a physical cable.
+
+A production-DB pilot is allowed **only** after recording the current
+module SHA, installed template export/UUIDs and item-ID baseline, production
+database backup and tested rollback, active module visibility and target
+host/proxy/group scope. Use a separately named pilot template and a
+dedicated SOA test host with no conflicting keys; never link the pilot
+beside an inherited template that publishes identical item keys. A pilot
+test must not modify global template definitions, automatic discovery rules,
+other groups, or the existing module mount until the user explicitly
+approves that **specific** change after preflight. Document each step's
+pre/post check and stop conditions.
+
+Pilot acceptance on the real production DB replaces the earlier
+*separate-database* prerequisite but **does not waive** the per-host LLD
+migration, observed UI matrix, history continuity, group isolation, or
+rollback requirements. The existing disposable CI import remains a useful
+independent regression test, not a mandatory user-operated staging instance.
+
+The eventual common release is the **same core** across all groups.
+Group-specific exceptional cases use explicit scoped configuration, policies
+or optional extensions with recorded provenance, tests and compatibility;
+do not create divergent core forks or silently alter the global LLDP truth
+model.
+
+## Previously proposed isolated-staging procedure (superseded for the live pilot)
+
+The numbered procedure below describes an optional isolated environment and
+is retained for reference. It is **not** a precondition for the authorized
+production-instance SOA pilot. Do not follow step 1 as a blocker in the
+absence of a separate database.
+
 ## Mandatory staging scope
 
 1. Choose an **isolated Zabbix 7.0 instance** or staging frontend that is demonstrably not connected to the live Zabbix DB, production API, production server, or production discovery timers. Record its version, URL (privately), exact module SHA, and template-export checksum in an internal checkpoint.
