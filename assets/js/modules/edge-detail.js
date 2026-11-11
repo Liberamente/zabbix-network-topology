@@ -394,6 +394,16 @@ export function showEdgeDetail(panel, ed, asMember) {
     }
     panel.appendChild(srcRow);
 
+    // A shared reporting port denotes protocol evidence, not several
+    // separately verified direct cables. Keep this distinct from an FDB
+    // shared-MAC flag and from the reciprocal reporter confirmation.
+    if (!istManuell && !istGhost && !istStale && !istTrunk
+            && d.sharedReporterPort === true
+            && Number.isInteger(d.sharedReporterNeighborCount)
+            && d.sharedReporterNeighborCount > 1) {
+        hint(panel, t('edge.shared_reporter', { n: d.sharedReporterNeighborCount }));
+    }
+
     // ── Ports ───────────────────────────────────────────────────────────────
     // A trunk has no port of its own — its members are listed below.
     const pS = d.portSrc || '', pT = d.portTgt || '';

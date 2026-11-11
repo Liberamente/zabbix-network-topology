@@ -562,6 +562,7 @@ final class LldpEdgeBuilder {
         }
 
         self::resolveByChassis($rows, $lldp_meta);
+        self::resolveByDeclaredChassisAlias($rows, $lldp_meta, $hosts);
         self::resolveByPort($rows, $port_names);
 
         // ── Durchgang 2: Kanten, Qualitaet, Geister ───────────────────────────
@@ -914,6 +915,53 @@ final class LldpEdgeBuilder {
         }
         unset($_e);
 
+        // Diagnostic only: multiple distinct neighbor hosts advertised by the
+        // same reporter on the same local port may imply a shared segment,
+        // transparent intermediary or pass-through. No extra edges, inferred
+        // devices or changes to physical confirmation/confidence are made.
+        // Group by *reported local ifIndex*, not a guessed remote label.
+        // Two separate physical member ports to the SAME neighbor are valid
+        // parallel links and must not trigger this finding.
+        $neighborsByReporterPort = [];
+        foreach ($edges as $edge) {
+            $srcHost = (string) ($edge['from'] ?? '');
+            $dstHost = (string) ($edge['to'] ?? '');
+            foreach (($edge['reporters'] ?? []) as $reporter) {
+                $reporter = (string) $reporter;
+                if ($reporter !== $srcHost && $reporter !== $dstHost) {
+                    continue;
+                }
+                $idx = (string) ($edge['port_idx'][$reporter] ?? '');
+                if ($idx === '') {
+                    continue;
+                }
+                $neighbor = $reporter === $srcHost ? $dstHost : $srcHost;
+                if ($neighbor === '' || $neighbor === $reporter) {
+                    continue;
+                }
+                $neighborsByReporterPort[$reporter][$idx][$neighbor] = true;
+            }
+        }
+        foreach ($edges as &$edge) {
+            $edge['shared_reporter_port'] = false;
+            foreach (($edge['reporters'] ?? []) as $reporter) {
+                $reporter = (string) $reporter;
+                $idx = (string) ($edge['port_idx'][$reporter] ?? '');
+                if ($idx === '') {
+                    continue;
+                }
+                $count = count($neighborsByReporterPort[$reporter][$idx] ?? []);
+                if ($count > 1) {
+                    $edge['shared_reporter_port'] = true;
+                    $edge['shared_reporter_neighbor_count'] = max(
+                        (int) ($edge['shared_reporter_neighbor_count'] ?? 0),
+                        $count
+                    );
+                }
+            }
+        }
+        unset($edge);
+
 
         return [
             'edges'     => $edges,
@@ -1026,6 +1074,56 @@ final class LldpEdgeBuilder {
             }
         }
         unset($r);
+    }
+
+    /**
+     * Resolve an unmatched LLDP neighbor by its chassis MAC only when
+     * exactly one in-scope host explicitly declares that address as an
+     * nt:lldp alias. Generic SysNames such as "localhost" are not identities.
+     * Do not infer a cable from a MAC learned by FDB or ARP.
+     */
+    private static function resolveByDeclaredChassisAlias(
+            array &$rows, array $lldp_meta, array $hosts): void {
+        $owners = [];
+        foreach ($hosts as $hid => $host) {
+            foreach ($host['nt_aliases'] ?? [] as $alias) {
+                $mac = self::macForm((string) $alias);
+                if (!self::macUsable($mac)) {
+                    continue;
+                }
+                $owners[$mac][(string) $hid] = true;
+            }
+        }
+        if (!$owners) {
+            return;
+        }
+
+        foreach ($rows as &$row) {
+            if ($row['rhid'] || $row['ambiguous'] !== null
+                    || ($row['item']['src'] ?? '') !== 'lldp') {
+                continue;
+            }
+            $mac = self::rowChassis($row, $lldp_meta);
+            if ($mac === null || count($owners[$mac] ?? []) !== 1) {
+                continue;
+            }
+
+            $target = (string) array_key_first($owners[$mac]);
+            $reporter = (string) $row['rid'];
+            if ($target === $reporter) {
+                continue;
+            }
+            $srcProxy = (string) ($hosts[$reporter]['proxyid'] ?? '');
+            $dstProxy = (string) ($hosts[$target]['proxyid'] ?? '');
+            if ($srcProxy === '' || $srcProxy === '0'
+                    || $srcProxy !== $dstProxy) {
+                continue;
+            }
+
+            $row['rhid'] = $target;
+            $row['match'] = 'alias';
+        }
+        unset($row);
     }
 
     /**

@@ -163,9 +163,9 @@ const TPLINK = [
 console.log('  TP-Link JetStream — Index ohne TimeMark');
 let d = discover(TPLINK);
 check('drei Nachbarn entdeckt', d.length, 3);
-check('Index auf 0.Port.RemIndex normalisiert',
-      d.map((r) => r['{#SNMPINDEX}']), ['0.5.1', '0.20.1', '0.25.1']);
-const row25 = d.find((r) => r['{#SNMPINDEX}'] === '0.25.1') || {};
+check('Index auf 0.Port.StableId normalisiert',
+      d.map((r) => /^0\.(5|20|25)\.\d+$/.test(r['{#SNMPINDEX}'])), [true, true, true]);
+const row25 = d.find((r) => r['{#NT_PORT}'] === '25') || {};
 check('Port- und RemIndex-Makro', [row25['{#NT_PORT}'], row25['{#NT_REMIDX}']], ['25', '1']);
 check('alle sechs Spalten fuer Port 25', cols.map((c) => extract(TPLINK, c, '25', '1')), [
     '3C 52 A1 00 00 01', 'Gi1/0/48', 'gigabitEthernet 1/0/25',
@@ -183,7 +183,7 @@ const FORTI = [
 
 console.log('\n  FortiGate — Index mit TimeMark, Verhalten unveraendert');
 d = discover(FORTI);
-check('zwei Nachbarn, TimeMark verworfen', d.map((r) => r['{#SNMPINDEX}']), ['0.5.1', '0.25.1']);
+check('zwei Nachbarn, TimeMark verworfen', d.map((r) => r['{#NT_PORT}']), ['5', '25']);
 check('Port 5 PortDesc', extract(FORTI, '8', '5', '1'), 'Gi0/5');
 check('Port 25 PortDesc', extract(FORTI, '8', '25', '1'), 'Gi0/25');
 
@@ -200,9 +200,296 @@ check('TM 5 / Port 1 / Rem 7 ist nicht Port 5 / Rem 1',
 console.log('\n  Seen-Guard');
 d = discover('.1.0.8802.1.1.2.1.4.1.1.9.10.25.1 = STRING: "old"\n'
            + '.1.0.8802.1.1.2.1.4.1.1.9.99.25.1 = STRING: "new"');
-check('dieselbe Zeile unter zwei TimeMarks: die hoechste gewinnt',
-      d.map((r) => r['{#NT_SYSNAME}']), ['new']);
+check('different names without chassis remain separate under installed fallback',
+      d.map((r) => r['{#NT_SYSNAME}']), ['old', 'new']);
 
+
+// LLDP #25: immutable neighbor identity across TimeMark/RemIndex relearn;
+// separate neighbors with the same SysName or on the same port.
+console.log('\n  LLDP stable neighbor identities (synthetic)');
+function discoverRows(rows) {
+    try {
+        return JSON.parse(new Function('value', js)(JSON.stringify(rows)));
+    } catch (e) {
+        check('LLDP stable identity JS executes: ' + e.message, false, true);
+        return [];
+    }
+}
+const mkRow = (index, chassis, remport, sysname='localhost') => ({
+    '{#SNMPINDEX}': index,
+    '{#NT_SYSNAME}': sysname,
+    '{#NT_CHASSIS}': chassis,
+    '{#NT_REMPORT}': remport,
+});
+const before = discoverRows([mkRow(
+    '0.67.12967', '02:11:22:33:44:55', '02:11:22:33:44:56'
+)]);
+const after = discoverRows([mkRow(
+    '12999.67.12982', '02:11:22:33:44:55', '02:11:22:33:44:56'
+)]);
+check('stable neighbor before and after relearn', before.length, 1);
+check('stable ID present', typeof before[0]?.['{#NT_NBR}'], 'string');
+check('same chassis/remote port -> same stable ID across RemIndex',
+    before[0]?.['{#NT_NBR}'], after[0]?.['{#NT_NBR}']);
+// The installed normalization intentionally preserves MAC separators.
+// A changed representation of a chassis ID is therefore not key-compatible
+// without an explicit vendor-format migration; this is not a regression.
+const reprChanged = discoverRows([mkRow(
+    '12999.67.12982', '02-11-22-33-44-55', '02 11 22 33 44 56'
+)]);
+check('legacy chassis-format change remains a documented key migration',
+    reprChanged[0]?.['{#SNMPINDEX}'] !== before[0]?.['{#SNMPINDEX}'], true);
+
+check('RemIndex lookup remains current',
+    [before[0]?.['{#NT_REMIDX}'], after[0]?.['{#NT_REMIDX}']],
+    ['12967', '12982']);
+check('SNMPINDEX now retains stable installed identity',
+    after[0]?.['{#SNMPINDEX}'], before[0]?.['{#SNMPINDEX}']);
+
+const peers = discoverRows([
+    mkRow('0.67.7', '02:11:22:33:44:55', '02:11:22:33:44:56'),
+    mkRow('0.67.8', '02:11:22:33:44:66', '02:11:22:33:44:56')
+]);
+check('distinct chassis with same generic name stay separate',
+    new Set(peers.map(x => x['{#NT_NBR}'])).size, 2);
+
+const cascaded = discoverRows([
+    mkRow('0.67.7', '02:11:22:33:44:55', 'eth0'),
+    mkRow('0.67.8', '02:11:22:33:44:55', 'eth1')
+]);
+check('same chassis, distinct remote ports stay separate',
+    new Set(cascaded.map(x => x['{#NT_NBR}'])).size, 2);
+
+const otherLocal = discoverRows([
+    mkRow('0.7.1', '02:11:22:33:44:55', 'eth0'),
+    mkRow('0.8.1', '02:11:22:33:44:55', 'eth0')
+]);
+check('same peer on different local ports stays separate',
+    new Set(otherLocal.map(x => x['{#NT_NBR}'])).size, 2);
+
+const noIdentity = discoverRows([
+    mkRow('0.7.1', '', '', ''),
+    mkRow('0.7.2', '', '', '')
+]);
+check('without chassis or port, conservative RemIndex fallback',
+    new Set(noIdentity.map(x => x['{#SNMPINDEX}'])).size, 2);
+
+
+const sameEpoch = discoverRows([
+    mkRow('0.12.1', '02:00:00:00:00:01', 'ge12', 'peer-old'),
+    mkRow('0.12.8', '02:00:00:00:00:01', 'ge12', 'peer-new')
+]);
+check('relearn with equal TimeMark selects highest RemIndex',
+    sameEpoch.map(x => x['{#NT_REMIDX}']), ['8']);
+check('relearn with equal TimeMark selects most recent SysName',
+    sameEpoch.map(x => x['{#NT_SYSNAME}']), ['peer-new']);
+
+const sharedPort = discoverRows([
+    mkRow('0.14.1', '02:00:00:00:00:02', 'LAN', 'router'),
+    mkRow('0.14.2', '02:00:00:00:00:02', 'vlan100', 'router'),
+    mkRow('0.14.3', '02:00:00:00:00:02', 'LAN', 'router')
+]);
+check('shared local port retains two distinct logical Port-ID advertisements',
+    sharedPort.length, 2);
+check('shared local port logical ports have unique stable identities',
+    new Set(sharedPort.map(x => x['{#NT_NBR}'])).size, 2);
+check('duplicate logical Port-ID prefers newest RemIndex',
+    sharedPort.find(x => x['{#NT_REMPORT}'] === 'LAN')?.['{#NT_REMIDX}'], '3');
+
+const nameChanged = discoverRows([
+    mkRow('0.14.99', '02:00:00:00:00:02', 'LAN', 'renamed')
+]);
+check('single-neighbor SysName change preserves its installed chassis key',
+    nameChanged[0]?.['{#SNMPINDEX}'],
+    discoverRows([mkRow('0.14.1', '02:00:00:00:00:02', 'LAN', 'router')])[0]['{#SNMPINDEX}']);
+
+
+// Known installed export algorithm for a single chassis (independent
+// reference vector; do not derive it from the candidate discovery).
+function installedHash(s) {
+    var h = 2166136261;
+    for (var i = 0; i < s.length; i++) {
+        h ^= s.charCodeAt(i);
+        h = (h + (h << 1) + (h << 4) + (h << 7) +
+            (h << 8) + (h << 24)) >>> 0;
+    }
+    return h >>> 0;
+}
+const installedOne = '0.14.' +
+    installedHash('14|chassis=02:00:00:00:00:02');
+check('single chassis keeps the exported installed key',
+    nameChanged[0]?.['{#SNMPINDEX}'], installedOne);
+check('multiport never reassigns the historical chassis-only key',
+    sharedPort.some(x => x['{#SNMPINDEX}'] === installedOne), false);
+check('all other multiport keys are distinct',
+    new Set(sharedPort.map(x => x['{#SNMPINDEX}'])).size, sharedPort.length);
+check('all six existing item prototype keys are unchanged',
+    lines.filter(x => /^\s*key: 'lldpRem(?:SysName|PortId|PortDesc|SysDesc|SysCapEnabled|ChassisId)\[\{#NT_NBR\}\]'$/.test(x)).length, 0);
+
+const llKeys = lines.filter(x =>
+    /^\s*key: 'lldpRem(?:SysName|PortId|PortDesc|SysDesc|SysCapEnabled|ChassisId)\[\{#SNMPINDEX\}\]'$/.test(x)
+);
+check('all six LLDP prototypes preserve installed SNMPINDEX key', llKeys.length, 6);
+
+
+console.log('\n  Installed key migration replay (synthetic, read-only)');
+const migrateOne = discoverRows([
+    mkRow('10.24.1', '02:00:00:00:00:44', 'lan', 'peer')
+]);
+const migrateTwo = discoverRows([
+    mkRow('11.24.9', '02:00:00:00:00:44', 'lan', 'peer'),
+    mkRow('11.24.10', '02:00:00:00:00:44', 'vlan100', 'peer')
+]);
+const migrateAddedEarlier = discoverRows([
+    mkRow('12.24.19', '02:00:00:00:00:44', 'aaa', 'peer'),
+    mkRow('12.24.20', '02:00:00:00:00:44', 'lan', 'peer'),
+    mkRow('12.24.21', '02:00:00:00:00:44', 'vlan100', 'peer')
+]);
+const migrateReordered = discoverRows([
+    mkRow('11.24.10', '02:00:00:00:00:44', 'vlan100', 'peer'),
+    mkRow('11.24.9', '02:00:00:00:00:44', 'lan', 'peer')
+]);
+function logicalPortKey(rows, port) {
+    const rec = rows.find(r => r['{#NT_REMPORT}'] === port);
+    return rec && rec['{#SNMPINDEX}'];
+}
+function allKeys(rows) {
+    return new Set(rows.map(r => r['{#SNMPINDEX}']));
+}
+const originalKey = logicalPortKey(migrateOne, 'lan');
+check('1 to 2 Port-IDs retires the aggregate identity instead of reassigning it',
+    allKeys(migrateTwo).has(originalKey), false);
+check('1 to 2 Port-IDs creates two explicit logical identities',
+    [...allKeys(migrateTwo)].filter(k => !allKeys(migrateOne).has(k)).length, 2);
+check('order of walk rows does not affect logical-port identity',
+    ['lan', 'vlan100'].map(p => logicalPortKey(migrateTwo, p)),
+    ['lan', 'vlan100'].map(p => logicalPortKey(migrateReordered, p)));
+check('new earlier-sorting Port-ID cannot take over old aggregate key',
+    allKeys(migrateAddedEarlier).has(originalKey), false);
+check('multiport identity is stable on the original port after a third appears',
+    logicalPortKey(migrateAddedEarlier, 'lan'), logicalPortKey(migrateTwo, 'lan'));
+check('new third-port set retains three distinct observations',
+    allKeys(migrateAddedEarlier).size, 3);
+const llPrefixes = ['lldpRemSysName', 'lldpRemPortId', 'lldpRemPortDesc',
+    'lldpRemSysDesc', 'lldpRemSysCapEnabled', 'lldpRemChassisId'];
+function keysForRows(rows) {
+    return new Set(rows.flatMap(r =>
+        llPrefixes.map(p => p + '[' + r['{#SNMPINDEX}'] + ']')));
+}
+check('one logical neighbor produces six distinct item keys',
+    keysForRows(migrateOne).size, 6);
+check('two logical neighbor observations produce twelve distinct item keys',
+    keysForRows(migrateTwo).size, 12);
+check('2 to 3 Port-IDs preserves all existing logical item keys',
+    [...keysForRows(migrateTwo)].filter(k =>
+        !keysForRows(migrateAddedEarlier).has(k)).length, 0);
+check('old chassis-only key cannot be attributed to a new Port-ID',
+    migrateAddedEarlier.some(r => r['{#SNMPINDEX}'] === originalKey), false);
+const migrateBackToOne = discoverRows([
+    mkRow('18.24.200', '02:00:00:00:00:44', 'lan', 'peer')
+]);
+check('2 to 1 Port-ID restores the original chassis aggregate key',
+    logicalPortKey(migrateBackToOne, 'lan'), originalKey);
+check('2 to 1 Port-ID does not preserve per-port keys accidentally',
+    [...allKeys(migrateBackToOne)].filter(k => allKeys(migrateTwo).has(k)).length, 0);
+check('2 to 3 Port-IDs keeps the same item-to-port association for every old port',
+    ['lan', 'vlan100'].map(p => logicalPortKey(migrateAddedEarlier, p)),
+    ['lan', 'vlan100'].map(p => logicalPortKey(migrateTwo, p)));
+check('CDP item prototype keys remain unchanged',
+    ["key: 'cdpCacheDeviceId[{#SNMPINDEX}]'",
+     "key: 'cdpCacheDevicePort[{#SNMPINDEX}]'"]
+        .every(key => lines.some(l => l.trim() === key)), true);
+
+
+// Multi-advertisement walk replay: values from all six OID columns must be
+// bound to the correct *current* RemIndex even if the stable LLD key changes.
+console.log('\n  LLDP six-column same-port evidence replay (synthetic)');
+const rawWalk = [
+    '.1.0.8802.1.1.2.1.4.1.1.5.100.32.7 = Hex-STRING: 02 00 00 00 00 44',
+    '.1.0.8802.1.1.2.1.4.1.1.7.100.32.7 = STRING: "eth0"',
+    '.1.0.8802.1.1.2.1.4.1.1.8.100.32.7 = STRING: "LAN-A"',
+    '.1.0.8802.1.1.2.1.4.1.1.9.100.32.7 = STRING: "peer-a"',
+    '.1.0.8802.1.1.2.1.4.1.1.10.100.32.7 = STRING: "model-a"',
+    '.1.0.8802.1.1.2.1.4.1.1.12.100.32.7 = Hex-STRING: 20 00',
+    '.1.0.8802.1.1.2.1.4.1.1.5.100.32.8 = Hex-STRING: 02 00 00 00 00 44',
+    '.1.0.8802.1.1.2.1.4.1.1.7.100.32.8 = STRING: "eth1"',
+    '.1.0.8802.1.1.2.1.4.1.1.8.100.32.8 = STRING: "LAN-B"',
+    '.1.0.8802.1.1.2.1.4.1.1.9.100.32.8 = STRING: "peer-b"',
+    '.1.0.8802.1.1.2.1.4.1.1.10.100.32.8 = STRING: "model-b"',
+    '.1.0.8802.1.1.2.1.4.1.1.12.100.32.8 = Hex-STRING: 40 00',
+].join('\n');
+const rawRows = [
+    mkRow('100.32.7', '02 00 00 00 00 44', 'eth0', 'peer-a'),
+    mkRow('100.32.8', '02 00 00 00 00 44', 'eth1', 'peer-b')
+];
+const rawDiscovered = discoverRows(rawRows);
+check('same-chassis physical local port retains two evidence observations',
+    rawDiscovered.length, 2);
+check('same-chassis multiport evidence has no shared LLD item identity',
+    new Set(rawDiscovered.map(r => r['{#SNMPINDEX}'])).size, 2);
+const extractedByPort = rawDiscovered.map(r =>
+    ['5', '7', '8', '9', '10', '12'].map(col =>
+        extract(rawWalk, col, r['{#NT_PORT}'], r['{#NT_REMIDX}'])));
+check('six-column values stay assigned to each current RemIndex',
+    extractedByPort, [
+        ['02 00 00 00 00 44', 'eth0', 'LAN-A', 'peer-a', 'model-a', '20 00'],
+        ['02 00 00 00 00 44', 'eth1', 'LAN-B', 'peer-b', 'model-b', '40 00']
+    ]);
+const shiftedRows = [
+    mkRow('120.32.70', '02 00 00 00 00 44', 'eth0', 'peer-a'),
+    mkRow('120.32.80', '02 00 00 00 00 44', 'eth1', 'peer-b')
+];
+const shifted = discoverRows(shiftedRows);
+check('new TimeMark and RemIndex do not alter either Port-ID LLD identity',
+    shifted.map(r => r['{#SNMPINDEX}']),
+    rawDiscovered.map(r => r['{#SNMPINDEX}']));
+check('changed RemIndex is propagated for current-value lookup',
+    shifted.map(r => r['{#NT_REMIDX}']), ['70', '80']);
+check('two logical evidence observations are not physical-link assertions',
+    rawDiscovered.every(r => r['{#NT_PORT}'] === '32'), true);
+
+// Locally assigned chassis rotation (synthetic subtype 7).
+// Two local ports advertise constant Port-ID and SysName while one byte
+// in each distinct six-byte Chassis-ID changes in synchrony. No MAC
+// interpretation or physical-link assertion follows from subtype 7.
+console.log('\n  Locally assigned chassis rotation replay (synthetic)');
+function localAssignedRow(port, remIndex, sharedByte) {
+    const hex = sharedByte.toString(16).padStart(2, '0');
+    const chassis = port === '1'
+        ? '02 11 ' + hex + ' 33 44 55'
+        : '06 77 88 99 ' + hex + ' AA';
+    return mkRow('0.' + port + '.' + remIndex, chassis,
+        port === '1' ? 'port-a' : 'port-b', 'same-advertised-name');
+}
+const soaFirst = discoverRows([
+    localAssignedRow('1', '1', 17),
+    localAssignedRow('2', '1', 17)
+]);
+const soaRelearn = discoverRows([
+    localAssignedRow('1', '99', 17),
+    localAssignedRow('2', '200', 17)
+]);
+const soaRotated = discoverRows([
+    localAssignedRow('1', '1', 18),
+    localAssignedRow('2', '1', 18)
+]);
+check('locally assigned chassis: unchanged identity survives RemIndex change',
+    soaRelearn.map(r => r['{#SNMPINDEX}']),
+    soaFirst.map(r => r['{#SNMPINDEX}']));
+check('locally assigned chassis: real chassis change rotates both LLD keys',
+    soaRotated.every((r, i) =>
+        r['{#SNMPINDEX}'] !== soaFirst[i]['{#SNMPINDEX}']), true);
+check('locally assigned chassis: stable Port-ID and SysName do not override chassis',
+    soaRotated.map(r => [r['{#NT_REMPORT}'], r['{#NT_SYSNAME}']]),
+    soaFirst.map(r => [r['{#NT_REMPORT}'], r['{#NT_SYSNAME}']]));
+check('locally assigned chassis: separate local ports remain separate',
+    new Set(soaRotated.map(r => r['{#SNMPINDEX}'])).size, 2);
+check('locally assigned chassis: old keys not silently reassigned to new evidence',
+    soaRotated.some(r => allKeys(soaFirst).has(r['{#SNMPINDEX}'])), false);
+check('locally assigned chassis: six prototype keys change together per port',
+    [...keysForRows(soaFirst)].filter(k => keysForRows(soaRotated).has(k)).length, 0);
+// Explicitly record that subtype 7 is not a MAC nor proof that an apparently
+// similar observation refers to the same physical neighbor.
 
 // Optional LLDP local-port mapping: inspect the actual exported template.
 console.log('\n  LLDP local-port optional template');

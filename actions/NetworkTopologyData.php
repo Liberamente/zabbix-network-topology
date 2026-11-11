@@ -934,8 +934,20 @@ class NetworkTopologyData extends NetworkTopologyController {
                         $caps = $caps_result;
                     }
                 }
+                // IF-MIB logical interface classification is read-only and
+                // restricted to the FDB switches already visible in this group.
+                // The resolver ignores stale, unsupported or unscoped items.
+                $ifTypeItems = API::Item()->get([
+                    'output' => ['hostid', 'key_', 'lastclock', 'lastvalue',
+                                 'status', 'state'],
+                    'hostids' => array_keys($fdb_switches),
+                    'search' => ['key_' => 'net.if.type[ifType.'],
+                    'monitored' => true,
+                ]);
+                $fdbDiagnostics = null;
                 $edges = AutoFdbEdges::append($hosts, $fdb_items, $caps, $edges,
-                    $host_uplink, $metrics, time());
+                    $host_uplink, $metrics, time(), $fdbDiagnostics,
+                    is_array($ifTypeItems) ? $ifTypeItems : []);
 
                 // Opt-in once per group/proxy, not once per phone or endpoint.
                 // We already have group-scoped host tags and FDB switch IDs:

@@ -124,6 +124,59 @@ assert.notEqual(
     'Inferred edge must not look like a confirmed cable'
 );
 
+
+// Multiple LLDP Port-ID observations on a shared physical local port:
+// these are evidence associations, not verified parallel cables or a trunk.
+const multiEvidence = [
+    {
+        id: 'logical-port-eth0',
+        from: 'demo-switch',
+        to: 'demo-host',
+        src: ['lldp'],
+        reporters: ['demo-switch'],
+        match: 'lldp_portid',
+        confidence: 70,
+        confirmed: false,
+        ports: { 'demo-switch': 'Ethernet30' },
+        evidence: ['lldp_portid'],
+        port_metrics: {}
+    },
+    {
+        id: 'logical-port-eth1',
+        from: 'demo-switch',
+        to: 'demo-host-2',
+        src: ['lldp'],
+        reporters: ['demo-switch'],
+        match: 'lldp_portid',
+        confidence: 70,
+        confirmed: false,
+        ports: { 'demo-switch': 'Ethernet30' },
+        evidence: ['lldp_portid'],
+        port_metrics: {}
+    }
+];
+const multiNodes = nodes.concat({
+    id: 'demo-host-2',
+    traffic: { in: 0, out: 0 },
+    severity: 0
+});
+const multiElements = buildEdgeElements(multiEvidence, multiNodes);
+assert.equal(multiElements.length, 2,
+    'Two Port-ID observations must remain two distinct evidence associations');
+for (const elem of multiElements) {
+    assert.equal(elem.data.kind, 'lldp_portid');
+    assert.equal(elem.data.confirmed, false,
+        'Port-ID advertisement must never become a verified cable');
+    assert.equal(elem.data.bundleSize, undefined,
+        'Parallel logical observations must not become a physical trunk');
+    assert.equal(elem.data.portSrc, 'Ethernet30');
+    assert.equal(elem.data.perLink, false);
+    assert.equal(elem.data.capBps, 0);
+}
+assert.equal(new Set(multiElements.map(e => e.data.target)).size, 2,
+    'Distinct target evidence must not be collapsed into one destination');
+console.log('PASS: shared local port with multiple LLDP Port-IDs stays inferred');
+
 console.log('PASS: LLDP Port-ID UI invariants');
 console.log('PASS: physical trunk x2 preserved');
 console.log('PASS: inferred association never counted as cable');
