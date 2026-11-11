@@ -15,6 +15,7 @@ namespace Modules\NetworkTopology\Topology;
 final class AutoFdbEdges {
     private const MAX_AGE = 900;            // 5-minute FDB poll, allow 15 minutes
     private const MAX_LLDP_AGE = 14400;     // LLDP discovery can run every 3 hours
+    private const MAX_IFTYPE_AGE = 172800;  // Stable IF-MIB type, tolerate daily polling
     private const MAX_NEW_EDGES = 500;      // bound payload and PHP memory
     private const KEYS = [
         'nt.fdb.dot1d' => 'dot1d',
@@ -32,10 +33,11 @@ final class AutoFdbEdges {
      * @param array $metrics        MetricExtractor output
      * @param array|null $diagnostics Optional aggregate decision counters;
      *        counts are observations/decisions, not unique rejected hosts.
+     * @param array $ifTypeItems Scoped net.if.type[ifType.N] items from FDB-source hosts
      */
     public static function append(array $hosts, array $walkItems, array $capItems,
             array $edges, array $manualUplinks, array $metrics, int $now,
-            ?array &$diagnostics = null): array {
+            ?array &$diagnostics = null, array $ifTypeItems = []): array {
         $diagnostics = ['added' => 0, 'transit_copies_ignored' => 0, 'rejected' => []];
         $walks = [];
         $arpRows = [];
@@ -141,6 +143,13 @@ final class AutoFdbEdges {
             }
         }
 
+        // IF-MIB types are independent of vendor-specific port naming.
+        // Build only from fresh, visible FDB switch rows and a matching
+        // ifIndex -> ifName map. Unknown or stale types retain the existing
+        // conservative name-based fallback.
+        $logicalPorts = self::logicalPortsByIfType(
+            $ifTypeItems, $ifNames, $byHost, $now
+        );
         $byMac = [];
         $learnedOnPort = [];
         foreach ($hits as $hit) {
@@ -148,7 +157,10 @@ final class AutoFdbEdges {
             // logical interface (e.g. HPE Trk1). LLDP knows its PHYSICAL
             // member ports, while the FDB records the logical Trk1. Never
             // mistake the unpaired aggregate label for an access port.
-            if (self::isAggregatePort((string) ($hit['port'] ?? ''))) {
+            $source = (string) ($hit['hostid'] ?? '');
+            $port = (string) ($hit['port'] ?? '');
+            if (self::isAggregatePort($port)
+                    || isset($logicalPorts[$source][$port])) {
                 self::reject($diagnostics, 'aggregate_port');
                 continue;
             }
@@ -295,6 +307,43 @@ final class AutoFdbEdges {
         return $edges;
     }
 
+    /**
+     * Identify logical ports by IF-MIB type, without trusting arbitrary names.
+     * IEEE 802.3ad LAG (161) and transparent bridge (209) cannot be inferred
+     * to be a single physical switch access port from an FDB hit alone.
+     * Type 6 is Ethernet and must not be suppressed merely for fan-out MACs.
+     *
+     * Only scoped FDB-source hosts, fresh supported item keys and a matching
+     * ifIndex-to-ifName observation can contribute to this filter.
+     */
+    private static function logicalPortsByIfType(
+            array $typeItems, array $ifNames, array $byHost, int $now): array {
+        $excluded = [];
+        foreach ($typeItems as $item) {
+            $hid = (string) ($item['hostid'] ?? '');
+            if (!isset($byHost[$hid], $ifNames[$hid])
+                    || (string) ($item['status'] ?? '0') !== '0'
+                    || (string) ($item['state'] ?? '0') !== '0'
+                    || !self::fresh((int) ($item['lastclock'] ?? 0),
+                        $now, self::MAX_IFTYPE_AGE)) {
+                continue;
+            }
+            $key = (string) ($item['key_'] ?? '');
+            if (preg_match('/^net\.if\.type\[ifType\.([0-9]+)\]$/D', $key, $m) !== 1) {
+                continue;
+            }
+            $type = trim((string) ($item['lastvalue'] ?? ''));
+            if ($type !== '161' && $type !== '209') {
+                continue;
+            }
+            $port = (string) ($ifNames[$hid][$m[1]] ?? '');
+            if ($port !== '') {
+                $excluded[$hid][$port] = true;
+            }
+        }
+        return $excluded;
+    }
+
     /** Aggregate reason counters only: no host identities or raw observations. */
     private static function reject(array &$diagnostics, string $reason): void {
         $diagnostics['rejected'][$reason] = ($diagnostics['rejected'][$reason] ?? 0) + 1;
@@ -302,7 +351,8 @@ final class AutoFdbEdges {
 
     private static function isAggregatePort(string $port): bool {
         return preg_match('/^(?:Trk\d+|LAG\d+|Po\d+|Port[- ]?channel\d+|'
-            . 'Bond\d+|ae\d+|Eth[- ]?Trunk\d+|Bridge\d+)$/i',
+            . 'Bond\d+|ae\d+|Eth[- ]?Trunk\d+|Bridge\d+|'
+            . 'Bridge[- ]?Aggregation[ -]?\d+|client-bond\d+)$/i',
             trim($port)) === 1;
     }
 
