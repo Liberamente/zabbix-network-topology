@@ -506,6 +506,38 @@ No fresh deployment, database mutation, template import or
 production-branch merge was performed by this checkpoint.
 Screenshots and private host labels were not committed.
 
+## SOA RC4 full-map visual baseline comparison (2026-11-11 16:47 Europe/Rome)
+
+After RC4's visual edge-detail acceptance, the operator supplied a full
+SOA Technical view screenshot with 91 hosts, 34 UI-counted edges and
+three ghost nodes. State distribution: 51 OK, 37 Warning, three
+Critical. The recent-ICMP-only filter is unchecked, inferred FDB port
+labels enabled and ghost nodes shown. The older screenshot baseline
+was 93 hosts, 37 UI edges and three ghosts, hence differences are
+-2 hosts / -3 UI edges / unchanged ghosts. These values **must not**
+be equated with a release regression without an identical-epoch
+comparison because inventory and neighbor data change independently
+of the frontend code.
+
+A subsequent read-only live Zabbix `host.get` for SOA group id 205
+returned **94 group members: 91 enabled and three disabled**,
+consistent with the 91 displayed hosts. The earlier group inventory
+had reportedly been 96 total / 93 enabled, so the host-count
+difference is consistent with inventory changes. The exact two
+departed host identities are **not verified** and must not be
+guessed. Loss of three edges is still **unexplained**; it may be
+neighbor- or inventory-driven and warrants scoped replay / same-epoch
+comparison before declaring complete graph stability.
+
+The new shared-port warning, parallel link members and a normal
+single-neighbor LLDP edge passed the targeted visual gate separately.
+No production change was performed during this read-only map review.
+The compiled six-file RC4 from
+`cb8cc2770076068f0122807bbf56dfb32dde4e74`
+remains installed, with rollback backup
+`/opt/liberamente/topology-deploy-backups/soa-shared-port-rc4-20261111-163142`.
+Do not publish customer host/IP/MAC evidence or user screenshots.
+
 ## Group-specific exceptional behavior
 
 After a common release is tested in all three lab groups, exceptional customer
