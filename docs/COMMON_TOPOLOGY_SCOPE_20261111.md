@@ -35,6 +35,48 @@ fully implemented in the published RC1. Group-specific deployment settings
 may exclude or label observations but must preserve raw provenance and
 original discovery evidence for troubleshooting.
 
+## Incomplete inventory and intermittent reachability (SOA lab finding, 2026-11-11)
+
+The inventory is **not exhaustive**. There may be unmanaged or unmonitored
+switches, intermediate transparent equipment and powered-off endpoints. A
+discovered endpoint with no edge is not automatically a topology defect; an
+unmatched LLDP neighbor can correspond to a real, not-yet-inventoried device.
+Do not invent a host, an unseen switch, a port, or a verified physical cable
+merely to make the map appear connected.
+
+State distinctions to preserve in all future group deployments:
+- **Observed verified**: trustworthy LLDP/CDP with appropriate independently
+  scoped identity/port evidence, with any reciprocal confirmation explicitly
+  distinguished from a one-sided report.
+- **Observed inferred**: FDB/ARP/shared-port, DHCP, Wi-Fi or pass-through
+  association with clear provenance, age and confidence, never silently promoted
+  to physical.
+- **Unknown physical intermediate**: multiple MACs on a managed access port may
+  indicate a transparent fan-out switch, bridge or virtualization, not prove
+  any one device type or direct cable.
+- **Not observed/offline**: hosts not responding to recent ICMP or not reporting
+  LLDP/FDB can remain unconnected, be filtered by an explicitly selected UI
+  view, or receive a diagnostic reason; do not delete them just for presentation.
+- **Ambiguous identity**: generic LLDP identifiers such as `localhost`, rotating
+  locally assigned Chassis-IDs and conflicting aliases remain unmatched until
+  independently attributable; show quality evidence instead of guessing.
+
+Read-only SOA baseline on 2026-11-11: 94 group hosts, of which 91 enabled.
+One most-recent ICMP item per host identified 87 hosts with a reading within
+10 minutes (71 success, 16 failure), three stale readings and four hosts
+without a matching ICMP item. The graph at the same checkpoint displayed
+91 hosts, 36 edges and three ghost nodes. LLDP-Q displayed 62 matched and
+six unmatched observations (91% match), including generic `localhost`.
+Six switches had 24 recent FDB items, 23 with nonempty raw content. These
+numbers are **not** proof of physical topology completeness or valid MAC rows.
+
+For acceptance, report coverage and uncertainty separately from algorithmic
+correctness: number of inventoried hosts, reachable/unreachable/unmeasured,
+sources reporting LLDP/FDB, verified and inferred edges, unresolved shared
+ports, ghosts, stale observations and excluded addresses. Never mark all
+disconnected hosts as failed, and never require 100% connectedness as a
+release gate.
+
 ## Group-specific exceptional behavior
 
 After a common release is tested in all three lab groups, exceptional customer
