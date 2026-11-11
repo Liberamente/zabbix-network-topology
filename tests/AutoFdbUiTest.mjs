@@ -13,6 +13,7 @@ class MockElement {
         this.offsetWidth = 180;
         this.offsetHeight = 120;
     }
+    get childNodes() { return this.children; }
     appendChild(child) { this.children.push(child); return child; }
     replaceChildren(...children) { this.children = children; this.innerHTML = ''; }
     addEventListener() {}
@@ -405,7 +406,8 @@ showEdgeDetail(sharedPanel, {
     data: key => key === undefined ? firstShared : firstShared[key],
     hasClass: () => false,
     source: () => fakeNode('31', 'Synthetic Switch'),
-    target: () => fakeNode('32', 'Synthetic Endpoint')
+    target: () => fakeNode('32', 'Synthetic Endpoint'),
+    cy: () => ({ getElementById: () => ({ length: 0 }) })
 });
 assert.match(text(sharedPanel), /2 observed neighbors/i);
 assert.match(text(sharedPanel), /direct cable.*not established/i);
@@ -420,7 +422,8 @@ showEdgeDetail(normalPanel, {
     data: key => key === undefined ? normalLldp : normalLldp[key],
     hasClass: () => false,
     source: () => fakeNode('31', 'Synthetic Switch'),
-    target: () => fakeNode('32', 'Synthetic Endpoint')
+    target: () => fakeNode('32', 'Synthetic Endpoint'),
+    cy: () => ({ getElementById: () => ({ length: 0 }) })
 });
 assert.doesNotMatch(text(normalPanel), /2 observed neighbors/i);
 assert.equal(fetchCount, 0,
