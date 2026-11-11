@@ -197,7 +197,7 @@ with four LLDP and four CDP. Their last item updates were about 55 minutes
 disprove the blanket explanation that every graph adjacency is merely
 from an obsolete historical item, but **do not prove independent reciprocal
 cable confirmation**, because both protocols may be observed by the
-same reporting device. The separate access-switch shared port had three
+same reporting device. On the core reporter's shared port with **three graph destinations**, only two CDP rows were fresh at the checkpoint; a third CDP item had last been updated about 22 hours previously and repeated the identity of another CDP row. Likewise, only two LLDP Port-ID items were updated within the hour on that port. This is a specific **freshness/reconciliation discrepancy to test**, not sufficient evidence to identify which graphical edge is wrong. The separate access-switch shared port had three
 recent LLDP Port-ID rows, without matching CDP observations. Two related
 router reporter ports each had one recent LLDP Port-ID value while the
 graph rendered two adjacencies; the missing second Port-ID must be
