@@ -81,6 +81,23 @@ evidenceCheck('shared local port is not fabricated into two distinct port IDs',
         $differentNeighbor['edges']
     ))) === 1);
 
+// Distinct visible neighbors on a single *reported local* port are a
+// diagnostic, not proof of multiple direct physical cables. Preserve both
+// separate observations and do not increase confidence.
+evidenceCheck('multi-neighbor same reporter port carries shared-port evidence',
+    count(array_filter($differentNeighbor['edges'],
+        static fn(array $e): bool => ($e['shared_reporter_port'] ?? false) === true)) === 2);
+evidenceCheck('shared reporter-port count reflects distinct neighbors',
+    array_unique(array_map(
+        static fn(array $e): int => (int) ($e['shared_reporter_neighbor_count'] ?? 0),
+        $differentNeighbor['edges']
+    )) === [2]);
+evidenceCheck('same-host duplicate on one local port is not a shared-port alarm',
+    ($result['edges'][0]['shared_reporter_port'] ?? false) === false);
+evidenceCheck('shared-port diagnostic does not alter unconfirmed state',
+    count(array_filter($differentNeighbor['edges'],
+        static fn(array $e): bool => ($e['confirmed'] ?? false) === true)) === 0);
+
 $twoPorts = replay([
     observation('0.12.1111111', 'synthetic-switch-b'),
     observation('0.13.3333333', 'synthetic-switch-b'),
@@ -90,6 +107,9 @@ $twoPorts = replay([
 ]);
 evidenceCheck('distinct local ports preserve parallel physical evidence',
     count($twoPorts['edges']) === 2);
+evidenceCheck('parallel distinct ports are not shared reporter ports',
+    count(array_filter($twoPorts['edges'],
+        static fn(array $e): bool => ($e['shared_reporter_port'] ?? false) === true)) === 0);
 evidenceCheck('no reciprocal reporter -> no falsely verified trunk members',
     count(array_filter($twoPorts['edges'],
         static fn(array $e): bool => ($e['confirmed'] ?? false) === true)) === 0);
