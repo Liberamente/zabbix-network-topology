@@ -144,6 +144,41 @@ part of this FDB classifier rollout. Perform a visual regression on SOA,
 then Techsigno and Cardinale using the same common candidate. Canonical
 private state/release/backlog files remain separately pending.
 
+## SOA RC3 deployment checkpoint (2026-11-11, 15:03 Europe/Rome)
+
+**Deployment completed on the shared Zabbix frontend**, by the operator
+on `zabbix-server02`, for exactly two PHP paths:
+`actions/NetworkTopologyData.php` and `topology/AutoFdbEdges.php`.
+Source commit `e40fdad685a8bfc828b13d820afb79cded9d105a` from the
+frozen `release/topology-soa-iftype-rc3-20261111` branch. Operator output:
+`SOURCE_PREFLIGHT=PASS`, `BACKUP=PASS`,
+`DEPLOYMENT_RC3=PASS`, both PHP lints PASS on the host and in the
+`zabbix-web` container. Rollback snapshot:
+`/opt/liberamente/topology-deploy-backups/soa-iftype-rc3-20261111-150320`.
+No DB mutation or template import. Deployment is **not** a merge to
+`production/v5.5.27` nor a new full-package release; the manifest version
+has not been changed.
+
+Read-only Zabbix post-install check: SOA group 205 has 94 hosts, 91
+enabled. Six scoped FDB switches have 200 `net.if.type[ifType.N]` items,
+all updated within 48h. Observed value breakdown: 18 LAG (161),
+four transparent bridge (209), 170 Ethernet (6) and eight other types.
+The new classifier has eligible telemetry. The effect on the rendered
+topology **has not yet been validated**. Baseline visual screenshot from
+before deployment: 91 displayed hosts, 36 edges and three ghost nodes.
+To close acceptance, compare current group-scoped SOA visualization and
+LLDP-Q/FDB edge categories, inspect PHP/container logs, verify no false
+FDB access edges on LAG/bridge ports, and ensure LLDP/CDP/manual/Wi-Fi
+and role/group isolation are preserved. No permission to claim those
+visual and runtime checks PASS until independently observed.
+
+To roll back, stop further edits, verify saved backup checksums, restore
+the two original PHP files from the snapshot, lint them on the host and
+in `zabbix-web`, then repeat the scoped topology inspection. The
+release/RC2 branches remain frozen; feature PR #23 is still Draft.
+Canonical private project state/release/backlog/checkpoint documents
+require a separate update when accessible.
+
 ## Group-specific exceptional behavior
 
 After a common release is tested in all three lab groups, exceptional customer
