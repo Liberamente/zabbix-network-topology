@@ -179,6 +179,51 @@ release/RC2 branches remain frozen; feature PR #23 is still Draft.
 Canonical private project state/release/backlog/checkpoint documents
 require a separate update when accessible.
 
+## SOA shared-port LLDP/CDP diagnostic (2026-11-11; read only)
+
+A private post-RC3 GraphML export showed eight **reporter-port groups**
+with multiple graph neighbors, including one previously omitted when
+counting the seven original groups. Counts on the eight groups were
+4, 3, 3, 2, 2, 2, 2 and 2 graph destinations. The GraphML export
+contains source/target port labels and protocol annotations, but not
+the full underlying LLDP/CDP observation timestamps, identity subtype,
+provenance chain, confidence or proof of a direct physical cable.
+
+A fresh, group-scoped and read-only API check found simultaneous recent
+LLDP and CDP rows on all five shared ports of the core reporter:
+two LLDP and two CDP observations on each of four ports except one port
+with four LLDP and four CDP. Their last item updates were about 55 minutes
+(LLDP) and 23 minutes (CDP) before the check, respectively. These values
+disprove the blanket explanation that every graph adjacency is merely
+from an obsolete historical item, but **do not prove independent reciprocal
+cable confirmation**, because both protocols may be observed by the
+same reporting device. The separate access-switch shared port had three
+recent LLDP Port-ID rows, without matching CDP observations. Two related
+router reporter ports each had one recent LLDP Port-ID value while the
+graph rendered two adjacencies; the missing second Port-ID must be
+investigated at the full row identity/quality layer.
+
+Candidate explanations to test without presumption: unmonitored fan-out
+switch or transparent bridge, LLDP/CDP pass-through, multiple devices
+on a shared broadcast segment, LAG members and port-index/name mapping,
+or incomplete/stale rows. Never synthesize an intermediate node, claim
+one cable per learned neighbor, or promote an inferred FDB edge into
+physical confirmation. Do not globally discard repeated LLDP/CDP rows:
+they may encode real and useful multiple neighbors.
+
+NEXT TEST GATE: obtain same-epoch complete LLDP rows (local port, neighbor
+Chassis-ID with subtype, neighbor Port-ID with subtype, identity and
+lastclock) plus CDP rows (reporter ifIndex, device identity, port and
+lastclock), compare reciprocal observations when reporters are managed,
+and group by reporting physical interface and observed neighbor identity.
+A group with multiple destinations is a **shared-port evidence finding**
+until stronger topology proof is available. Preserve per-edge provenance
+and multiple parallel links, and keep group/proxy isolation. No code
+change or Zabbix mutation follows from this diagnostic alone.
+
+Private customer labels, host identifiers, MACs, IPs and the uploaded
+GraphML MUST NOT be committed to this public repository.
+
 ## Group-specific exceptional behavior
 
 After a common release is tested in all three lab groups, exceptional customer
