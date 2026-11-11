@@ -262,6 +262,38 @@ and Cardinale, no lost verified trunk/parallel edges, stable group/proxy
 scope, and an explicit rollback. The synthetic test uses no real
 customer identifiers or network data.
 
+## SOA shared core port: third LLDP-only edge verified (2026-11-11)
+
+Read-only reconciliation of the privately supplied post-RC3 GraphML with
+Zabbix item.get identified the three exported neighbor-pair edges for one
+core switch local port. Two graph edges carry both LLDP and CDP source
+labels; the third carries **LLDP only**. At the follow-up API sampling,
+three distinct indexed `lldpRemPortId` observations were active and
+about seven minutes old; the two active `cdpCacheDeviceId` records
+were about 35 minutes old. An additional duplicate CDP identity was
+disabled/unsupported and roughly 22 hours old. The LLDP-only third
+adjacency is therefore **not explained by the historic CDP duplicate**.
+
+This supersedes the earlier provisional suspicion that the three-edge
+graph might be caused by an obsolete CDP row. The previous "two recent
+LLDP" count was captured during a different time window; observations
+and LLD membership evolve. Do not conclude that the third graph edge
+is false or remove it using an arbitrarily short TTL.
+
+The remaining open issue is **physical meaning**: multiple fresh
+neighbors advertised on one reporting interface establish recorded
+protocol adjacency, but do not prove three separate direct cables.
+Possible transparent intermediates or pass-through arrangements require
+independent evidence. Keep distinct host identities, original ports,
+protocol source and confidence; never invent an unmanaged switch or
+promote a shared-port observation to reciprocal physical confirmation.
+
+Source-only synthetic characterization test and documentation changes
+are on feature PR #23. Production SOA RC3 remains on the frozen
+`e40fdad685a8bfc828b13d820afb79cded9d105a` two-file deployment;
+there is no new LLDP patch or deployment in this checkpoint. Do not
+commit the private GraphML, customer names, MACs or IP addresses.
+
 ## Group-specific exceptional behavior
 
 After a common release is tested in all three lab groups, exceptional customer
