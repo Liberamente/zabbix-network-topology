@@ -376,6 +376,32 @@ revert the one builder commit or restore the previous
 Do not promote the PR to production while backend and UI tests or
 group/proxy isolation checks are incomplete.
 
+## Shared-port warning in Technical edge details — source ready, bundle gate open
+
+Source updates on feature PR #23 after the deployed RC3 add a read-only
+Technical edge-detail warning when an LLDP/CDP edge contains
+`shared_reporter_port=true` and a neighbor count above one. The
+graph-model adapter passes `sharedReporterPort` and
+`sharedReporterNeighborCount` unchanged and synthetic UI checks
+verify that edge count, `confirmed`, `confidence` and protocol
+classification remain unchanged. Translation keys are present in
+English and German.
+
+**NOT DEPLOYED.** CI indicates the committed
+`assets/js/dist/nt-bundle.js` is not synchronized with the new JS
+sources. The `gates` bundle-drift job and isolated package-build gate
+fail for that reason, while the PHP test job passes. The source branch
+must be rebuilt with the repository-pinned npm toolchain and the exact
+generated bundle committed before any new release candidate, visual
+SOA rollout or subsequent Techsigno/Cardinale validation.
+
+The production RC3 remains the earlier two-file IF-MIB/FDB patch;
+there is no new frontend copy, template import, Zabbix API mutation
+or merge to the production branch. Rollback would restore the previous
+`nt-bundle.js` together with the previous PHP builder version if a
+later tested candidate is deployed. Do not present a source-only UI
+change as live functionality.
+
 ## Group-specific exceptional behavior
 
 After a common release is tested in all three lab groups, exceptional customer
