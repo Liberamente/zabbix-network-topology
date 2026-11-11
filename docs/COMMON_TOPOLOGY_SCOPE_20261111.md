@@ -472,6 +472,40 @@ deployment. Keep private network identifiers and GraphML out of
 the public repository. Private canonical state, decision, release
 and backlog files still require separate synchronization.
 
+## SOA RC4 shared-port Technical UI visual acceptance (2026-11-11)
+
+Operator supplied three live screenshots from SOA Technical view
+after the successful six-file RC4 deployment, plus a filtered
+`zabbix-web` log check with no matching fatal/parser errors.
+
+- **Shared core port:** LLDP+CDP edge, one-sided, 80% confidence,
+  warning visibly says two observed neighbors and does not claim
+  a separate direct cable to each: **PASS**.
+- **Parallel-link summary:** two member links on distinct local
+  ports, LLDP+CDP, reciprocal confirmed, 100% confidence; no
+  inappropriate shared-port warning on that summary: **PASS**.
+- **Ordinary edge:** LLDP+CDP, one-sided, 75% confidence, no
+  shared-reporter warning: **PASS**.
+
+These observations validate **the targeted RC4 UI behavior**,
+but are not proof of the physical cabling or of full
+multi-environment regression. The historical 93-monitored-node /
+37-UI-edge / 3-ghost SOA baseline has not yet been compared with
+an equivalent post-deployment live count; discovery changes
+must be distinguished from code regressions. Techsigno and
+Cardinale need separate scoped visual acceptance of LLDP/CDP,
+FDB, Wi-Fi, parallel links, inferred/ghost links and role/group/
+proxy visibility. The filtered log output being empty only
+rules out the searched error strings in its time window.
+
+The frozen deployed RC4 commit remains
+`cb8cc2770076068f0122807bbf56dfb32dde4e74`.
+Rollback backup remains
+`/opt/liberamente/topology-deploy-backups/soa-shared-port-rc4-20261111-163142`.
+No fresh deployment, database mutation, template import or
+production-branch merge was performed by this checkpoint.
+Screenshots and private host labels were not committed.
+
 ## Group-specific exceptional behavior
 
 After a common release is tested in all three lab groups, exceptional customer
