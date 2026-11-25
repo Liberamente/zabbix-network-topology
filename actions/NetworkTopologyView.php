@@ -166,6 +166,10 @@ class NetworkTopologyView extends CController {
             'user'              => [
                 'type'           => $this->getUserType(),
                 'can_edit'       => $this->getUserType() >= USER_TYPE_ZABBIX_ADMIN,
+                // Only users allowed to configure hosts may create a ghost as
+                // a monitored Zabbix host. Match the action's server-side gate.
+                'can_create_host' => $this->getUserType() >= USER_TYPE_ZABBIX_ADMIN
+                    && $this->checkAccess(\CRoleHelper::UI_CONFIGURATION_HOSTS),
                 // Welche Form das Host-Formular hat. Siehe hostEditUrl() in
                 // utils.js: auf 7.0 ist action=host.edit eine Seite und der
                 // Popup-Weg ein Fatal, ab 7.2 ist es umgekehrt. Die Version
