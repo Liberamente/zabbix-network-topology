@@ -17,7 +17,7 @@ namespace Modules\NetworkTopology\Actions;
  * Der Key enthaelt jetzt immer:
  *   - SCHEMA        → ein Bump invalidiert schlagartig ALLE Eintraege
  *   - Namespace     → die Action
- *   - User-ID       → Permissions sind userabhaengig; NIE user-uebergreifend
+ *   - User-ID/Rolle/Typ → Permissions sind userabhaengig; NIE user-uebergreifend
  *                     cachen, sonst leakt ein Ergebnis ueber Rechtegrenzen
  *   - normalisierte Bestandteile (sortierte IDs, Zeitraum, …) — die Reihenfolge
  *     der IDs darf den Key nicht veraendern, sonst cacht man dieselbe Anfrage
@@ -46,7 +46,7 @@ final class NtCache {
      * Payloads aendert — sonst bedient ein frisch deploytes Modul noch alte
      * Eintraege aus dem laufenden APCu.
      */
-    private const SCHEMA = 'v1';
+    private const SCHEMA = 'v2';
 
     /** Laenge, ab der die Key-Bestandteile gehasht werden (APCu-Keys kurz halten). */
     private const MAX_TAIL = 120;
@@ -70,7 +70,19 @@ final class NtCache {
             $tail = 'h' . md5($tail);   // z.B. 500 itemids
         }
 
-        return 'nt:' . self::SCHEMA . ':' . $namespace . ':' . $userid . ':' . $tail;
+        return 'nt:' . self::SCHEMA . ':' . self::permSig() . ':'
+             . $namespace . ':' . $userid . ':' . $tail;
+    }
+
+    /**
+     * Role + user-type signature; changing either invalidates this user's
+     * cache. A host-group rights change within the same role still requires
+     * a fresh visibility check for any longer-lived snapshots. The current
+     * data payload TTL remains 60 seconds.
+     */
+    private static function permSig(): string {
+        return 'r' . (int) (\CWebUser::$data['roleid'] ?? 0)
+             . 't' . (int) (\CWebUser::$data['type'] ?? 0);
     }
 
     /** Aktuelle User-ID; 0 = kein eingeloggter User → nicht cachen. */
