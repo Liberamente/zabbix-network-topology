@@ -217,7 +217,7 @@ export function showCtx(cx, cy2, d) {
 
         _ctx.appendChild(gh);
 
-        if (window.NT_CONFIG && window.NT_CONFIG.can_edit) {
+        if (window.NT_CONFIG && window.NT_CONFIG.can_create_host === true) {
             _ctx.appendChild(_ctxRow(t('ghost.create.menu'), '#0275b8', function() {
                 // HIER STAND ZABBIX' HOST-FORMULAR, geoeffnet mit
                 // ?host=…&description=…&groupids[]=…. Auf 7.0.31 nachgemessen:
