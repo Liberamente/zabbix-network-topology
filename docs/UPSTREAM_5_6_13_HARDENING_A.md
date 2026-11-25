@@ -40,3 +40,12 @@ Required before merge/deploy: npm ci, ci:lint-php, ci:test, ci:frontend, ci:esli
 The branch is NOT deployed. Before any GO: inspect real Docker mount and active source checksums, PHP/APCu setup, sender cron usage and certificate chain; build and verify a release artifact, back up full active package and sender, test restore outside production, authorize deployment. If deployed later, restore exact pre-change runtime tree and sender, invalidate opcache/APCu as appropriate and re-run group/proxy and permission checks. Git revert alone cannot restore a manually deployed overlay.
 
 **NO-GO for production.** Independent review, CI gates, UI capability/bundle alignment, staging acceptance and explicit operator authorization are required.
+
+## Verified CI at PR #25 — 2026-11-25
+
+At source commit 58e2dec694e0b779d14521fee260b2e320b90e1e:
+- GitHub Actions gates run 45653339225: PHP lint/unit tests PASS; XSS tripwire + ShellCheck PASS; frontend/ESLint/parity/templates/package/layers/i18n/ghost/pipeline/bundle-drift PASS.
+- Verified exact test lines in job logs: CreateHost role-permission regressions PASS, NtCache role/group isolation regressions PASS, TopoChangeSender synthetic integration tests PASS.
+- Candidate package workflow run 45653339260: isolated build PASS. This is **not** a production deployment or release tag.
+- PR #25 remains DRAFT. Runtime/staging acceptance and UI capability/bundle follow-up are not yet complete.
+- This documentation update is a new commit; CI must be re-evaluated for its own HEAD rather than assumed.
