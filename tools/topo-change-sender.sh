@@ -57,18 +57,20 @@ elif [[ "$ZBX_INSECURE" == "1" ]]; then
     echo "WARN: ZBX_INSECURE=1 — TLS-Zertifikat wird NICHT geprueft (nur fuers Labor)." >&2
 fi
 
-JAR=$(mktemp /tmp/nt_topo_jar.XXXXXX)
+WORKDIR=$(mktemp -d /tmp/nt_topo.XXXXXX)
+trap 'rm -rf -- "$WORKDIR"' EXIT
+JAR="$WORKDIR/cookie"
+: > "$JAR"
 # Passwort NICHT als Prozessargument (es stuende in der curl-Argumentliste und
 # damit in /proc fuer andere lokale Prozesse, Security-Review F03). Stattdessen
 # in eine 0600-Datei, die curl per "@" liest. Die Antwort landet ebenfalls in
 # einer Datei (nicht in einer Shell-Variable, die als Python-Argument ginge und
 # bei grossem Graphen ein "Argument list too long" ausloeste, F07). Alles beim
 # Exit weg.
-PWFILE=$(mktemp /tmp/nt_topo_pw.XXXXXX)
-RESPFILE=$(mktemp /tmp/nt_topo_resp.XXXXXX)
-chmod 600 "$PWFILE" "$RESPFILE"
+PWFILE="$WORKDIR/password"
+RESPFILE="$WORKDIR/response"
+: > "$RESPFILE"
 printf '%s' "$ZBX_PASS" > "$PWFILE"
-trap 'rm -f "$JAR" "$PWFILE" "$RESPFILE"' EXIT
 
 # 1. Frontend-Login (Session-Cookie in die Jar)
 curl -sf "${CURL_TLS[@]}" -c "$JAR" -o /dev/null \
@@ -87,10 +89,10 @@ curl -sf "${CURL_TLS[@]}" -b "$JAR" -H "X-Requested-With: XMLHttpRequest" \
     -o "$RESPFILE" "$ZBX_URL/zabbix.php?$QS"
 
 # 3. topo_changes + health extrahieren (python3 statt jq — praktisch immer
-#    da). Ausgabe zeilenweise: count / text / health_avg / health_min —
-#    text enthaelt Leerzeichen, deshalb kein wortbasiertes read. Die Antwort
+#    da). Ausgabe zeilenweise: count / health_avg / health_min.
+#    Text wird in eine private Sender-Eingabedatei geschrieben. Die Antwort
 #    kommt aus der Datei (argv traegt nur den kurzen Dateinamen, F07).
-OUT="$(python3 - "$RESPFILE" <<'PYEOF'
+OUT="$(python3 - "$RESPFILE" "$WORKDIR/sender-input" "$SENDER_HOST" <<'PYEOF'
 import json, sys
 try:
     with open(sys.argv[1], encoding='utf-8') as _f:
@@ -106,23 +108,30 @@ if not all(isinstance(v, list) and all(isinstance(x, dict) for x in v) for v in 
     sys.exit('ERROR: invalid topology changes lists')
 parts  = ['+ %s <-> %s' % (x.get('a','?'), x.get('b','?')) for x in added]
 parts += ['- %s <-> %s' % (x.get('a','?'), x.get('b','?')) for x in removed]
-text = '; '.join(parts).replace('\n', ' ') or '-'
+text = '; '.join(parts).replace('\n', ' ').replace('\r', ' ').replace('\x00', ' ') or '-'
+# Zabbix text storage has a finite size. Preserve the count, explicitly
+# mark a shortened description, and never split a UTF-8 character.
+raw = text.encode('utf-8')
+if len(raw) > 60000:
+    text = raw[:59980].decode('utf-8', errors='ignore') + ' [truncated]'
+def quote(value):
+    return '"' + value.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '') + '"'
+with open(sys.argv[2], 'w', encoding='utf-8') as stream:
+    stream.write(quote(sys.argv[3]) + ' nt.topo.changes.text ' + quote(text) + '\n')
 h = d.get('health') or {}
 avg = h.get('avg'); mn = h.get('min')
 print(len(added) + len(removed))
-print(text)
 print('' if avg is None else avg)
 print('' if mn is None else mn)
 PYEOF
 )"
 COUNT=$(sed -n 1p <<< "$OUT")
-TEXT=$( sed -n 2p <<< "$OUT")
-AVG=$(  sed -n 3p <<< "$OUT")
-MIN=$(  sed -n 4p <<< "$OUT")
+AVG=$(  sed -n 2p <<< "$OUT")
+MIN=$(  sed -n 3p <<< "$OUT")
 
 # 4. per zabbix_sender an die Trapper-Items
 zabbix_sender -c "$SENDER_CONF" -s "$SENDER_HOST" -k nt.topo.changes      -o "$COUNT" >/dev/null
-zabbix_sender -c "$SENDER_CONF" -s "$SENDER_HOST" -k nt.topo.changes.text -o "$TEXT"  >/dev/null
+zabbix_sender -c "$SENDER_CONF" -i "$WORKDIR/sender-input" >/dev/null
 # Health-Score nur wenn das Backend ihn liefert (Modul >= 4.27) UND die
 # Items existieren — zabbix_sender-Fehler (Template nicht importiert)
 # sollen den Topo-Teil nicht mit runterreissen.
@@ -133,4 +142,4 @@ if [[ -n "$MIN" ]]; then
     zabbix_sender -c "$SENDER_CONF" -s "$SENDER_HOST" -k nt.health.score.min -o "$MIN" >/dev/null || true
 fi
 
-echo "topo-changes: $COUNT ($TEXT) · health: ${AVG:--}/${MIN:--}"
+echo "topo-changes: $COUNT · health: ${AVG:--}/${MIN:--}"

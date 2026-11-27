@@ -36,7 +36,14 @@ const fakeCurl = [
 const fakeSender = [
     '#!/usr/bin/env node',
     "const fs = require('fs');",
-    "fs.appendFileSync(process.env.TEST_SENDER_LOG, JSON.stringify(process.argv.slice(2)) + '\\n');"
+    "const args = process.argv.slice(2);",
+    "const i = args.indexOf('-i');",
+    "if (i >= 0) {",
+    "  const file = args[i+1];",
+    "  if ((fs.statSync(file).mode & 0o777) !== 0o600) process.exit(10);",
+    "  fs.appendFileSync(process.env.TEST_SENDER_INPUT, fs.readFileSync(file));",
+    "}",
+    "fs.appendFileSync(process.env.TEST_SENDER_LOG, JSON.stringify(args) + '\\n');"
 ].join('\n') + '\n';
 executable('curl', fakeCurl);
 executable('zabbix_sender', fakeSender);
@@ -44,6 +51,7 @@ executable('zabbix_sender', fakeSender);
 const fixture = path.join(dir, 'large.json');
 const curlLog = path.join(dir, 'curl.log');
 const senderLog = path.join(dir, 'sender.log');
+const senderInput = path.join(dir, 'sender-input.log');
 fs.writeFileSync(fixture, JSON.stringify({
     topo_changes: { added: [{ a: 'lab-switch', b: 'lab-host' }], removed: [] },
     health: { avg: 91, min: 78 },
@@ -61,6 +69,7 @@ const baseEnv = {
     SENDER_CONF: '/dev/null',
     TEST_CURL_LOG: curlLog,
     TEST_SENDER_LOG: senderLog,
+    TEST_SENDER_INPUT: senderInput,
     TEST_FIXTURE: fixture,
     TEST_PASSWORD: password
 };
@@ -68,6 +77,7 @@ const baseEnv = {
 function run(overrides = {}) {
     fs.writeFileSync(curlLog, '');
     fs.writeFileSync(senderLog, '');
+    fs.writeFileSync(senderInput, '');
     return spawnSync('bash', [script], {
         env: { ...baseEnv, ZBX_INSECURE: '0', ZBX_CACERT: '', ...overrides },
         encoding: 'utf8',
@@ -98,7 +108,11 @@ try {
     assert.ok(responseFile && !fs.existsSync(responseFile), 'response file not cleaned up');
     const sent = records(senderLog);
     assert.equal(sent.length, 4, 'expected topology count/text and health avg/min');
-    const keys = sent.map(a => a[a.indexOf('-k') + 1]).sort();
+    const keys = sent.map(a => a.includes('-i') ? 'nt.topo.changes.text' : a[a.indexOf('-k') + 1]).sort();
+    assert.match(fs.readFileSync(senderInput, 'utf8'), /nt\.topo\.changes\.text/);
+    assert.ok(!sent.flat().join(' ').includes('lab-switch'));
+    const inputPath = sent.find(a => a.includes('-i'));
+    assert.ok(!fs.existsSync(inputPath[inputPath.indexOf('-i') + 1]));
     assert.deepEqual(keys, [
         'nt.health.score', 'nt.health.score.min',
         'nt.topo.changes', 'nt.topo.changes.text'
@@ -132,6 +146,15 @@ try {
     assert.equal(empty.status, 0, empty.stderr);
     assert.match(empty.stdout, /topo-changes: 0/);
     assert.equal(records(senderLog).length, 2);
+
+    fs.writeFileSync(fixture, JSON.stringify({ topo_changes: { added: [{ a: 'x'.repeat(300000), b: 'lab' }], removed: [] } }));
+    const long = run();
+    assert.equal(long.status, 0, long.stderr);
+    assert.match(long.stdout, /topo-changes: 1/);
+    const input = fs.readFileSync(senderInput, 'utf8');
+    assert.match(input, /\[truncated\]/);
+    assert.ok(Buffer.byteLength(input) < 61000);
+    assert.ok(records(senderLog).flat().every(a => a.length < 1000));
 
     console.log('TopoChangeSender synthetic integration tests PASS');
 } finally {
