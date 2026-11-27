@@ -85,6 +85,18 @@ final class NtCache {
              . 't' . (int) (\CWebUser::$data['type'] ?? 0);
     }
 
+    /** Exact host-scope comparison; missing metadata or API failure is a miss. */
+    public static function sameHostScope($cachedIds, $visibleHosts): bool {
+        if (!is_array($cachedIds) || !is_array($visibleHosts)) {
+            return false;
+        }
+        $cached = array_map('strval', $cachedIds);
+        $visible = array_map('strval', array_keys($visibleHosts));
+        sort($cached, SORT_STRING);
+        sort($visible, SORT_STRING);
+        return $cached === $visible;
+    }
+
     /** Aktuelle User-ID; 0 = kein eingeloggter User → nicht cachen. */
     private static function uid(): int {
         return (int) (\CWebUser::$data['userid'] ?? 0);

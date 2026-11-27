@@ -39,4 +39,10 @@ checkKey('schema bumped to v2', strncmp($a, 'nt:v2:', 6) === 0);
 CWebUser::$data = [];
 checkKey('anonymous cache read denied', NtCache::get('data_payload', [[7, 12]]) === null);
 
+checkKey('current host scope unchanged', NtCache::sameHostScope([12, 7], [7 => [], 12 => []]));
+checkKey('revoked host rejects cache', !NtCache::sameHostScope([7, 12], [7 => []]));
+checkKey('new host rejects cache', !NtCache::sameHostScope([7], [7 => [], 12 => []]));
+checkKey('all rights revoked rejects cache', !NtCache::sameHostScope([7], []));
+checkKey('API error rejects cache', !NtCache::sameHostScope([7], false));
+checkKey('legacy cache missing scope rejects cache', !NtCache::sameHostScope(null, [7 => []]));
 echo "NtCache role/group isolation regressions PASS\n";

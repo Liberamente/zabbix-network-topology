@@ -419,6 +419,15 @@ class NetworkTopologyData extends NetworkTopologyController {
         //                   Eintrag, muessen aber verschieden warnen.
         $cached = NtCache::get('data_payload', $cache_parts);
         if (is_array($cached)) {
+            // Revalidate the exact monitored-host scope before serving cached
+            // names, metrics, links or baseline changes. API failure is a miss.
+            $query = ['output' => ['hostid'], 'monitored_hosts' => true, 'preservekeys' => true];
+            $query[$host_mode ? 'hostids' : 'groupids'] = $host_mode ? $scope_hostids : $groupids;
+            if (!$this->cacheScopeMatches($cached['scope_hostids'] ?? null, $query)) {
+                $cached = null;
+            }
+        }
+        if (is_array($cached)) {
             $this->respondData($cached, $cache_parts, $requested_groups, count($groupids), $_t0, true, $scope_info);
             return;
         }
@@ -1171,6 +1180,7 @@ class NetworkTopologyData extends NetworkTopologyController {
             // beim ersten Cache-Treffer, waehrend die gekappte Karte bleibt.
             'edges_truncated' => LldpEdgeBuilder::lastTruncated(),
         ];
+        $core['scope_hostids'] = array_keys($hosts);
         NtCache::set('data_payload', $cache_parts, $core, self::CACHE_TTL);
 
         $this->respondData($core, $cache_parts, $requested_groups, count($groupids), $_t0, false, $scope_info);
@@ -1556,8 +1566,22 @@ class NetworkTopologyData extends NetworkTopologyController {
      *               to this user and cut to MAX_HOP_HOSTS; hostids is empty
      *               if the focus host itself is not visible/monitored.
      */
+    private function cacheScopeMatches($cachedIds, array $query): bool {
+        try {
+            return NtCache::sameHostScope($cachedIds, API::Host()->get($query));
+        }
+        catch (\Throwable $e) {
+            return false;
+        }
+    }
+
     private function hopScope(string $hostid, int $hops): array {
         $graph = NtCache::get('edge_graph', []);
+        if (is_array($graph) && !$this->cacheScopeMatches(
+                isset($graph['visible']) && is_array($graph['visible']) ? array_keys($graph['visible']) : null,
+                ['output' => ['hostid'], 'monitored_hosts' => true, 'preservekeys' => true])) {
+            $graph = null;
+        }
         if (!is_array($graph) || !isset($graph['edges'], $graph['visible'])) {
             $hosts = API::Host()->get([
                 'output'           => ['hostid', 'host', 'name'],
