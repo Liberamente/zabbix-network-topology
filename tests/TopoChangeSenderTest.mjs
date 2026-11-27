@@ -120,6 +120,19 @@ try {
     assert.equal(records(curlLog).length, 0, 'failed scope must not call curl');
     assert.equal(records(senderLog).length, 0, 'failed scope must not send data');
 
+    for (const invalid of ['<html>login</html>', '{', '{}', '{"error":"denied"}', '{"topo_changes":{"added":null,"removed":[]}}']) {
+        fs.writeFileSync(fixture, invalid);
+        const failed = run();
+        assert.notEqual(failed.status, 0, 'invalid response must fail');
+        assert.equal(records(senderLog).length, 0, 'invalid response must not send metrics');
+    }
+
+    fs.writeFileSync(fixture, JSON.stringify({ topo_changes: { added: [], removed: [] } }));
+    const empty = run();
+    assert.equal(empty.status, 0, empty.stderr);
+    assert.match(empty.stdout, /topo-changes: 0/);
+    assert.equal(records(senderLog).length, 2);
+
     console.log('TopoChangeSender synthetic integration tests PASS');
 } finally {
     fs.rmSync(dir, { recursive: true, force: true });

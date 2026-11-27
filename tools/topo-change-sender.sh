@@ -95,12 +95,15 @@ import json, sys
 try:
     with open(sys.argv[1], encoding='utf-8') as _f:
         d = json.loads(_f.read())
-except Exception:
-    print(0); print('parse-error'); print(''); print('')
-    raise SystemExit
-tc = d.get('topo_changes') or {}
-added   = tc.get('added')   or []
-removed = tc.get('removed') or []
+except (OSError, ValueError):
+    sys.exit('ERROR: invalid topology response')
+if not isinstance(d, dict) or d.get('error') or not isinstance(d.get('topo_changes'), dict):
+    sys.exit('ERROR: missing topology changes payload')
+tc = d['topo_changes']
+added = tc.get('added')
+removed = tc.get('removed')
+if not all(isinstance(v, list) and all(isinstance(x, dict) for x in v) for v in (added, removed)):
+    sys.exit('ERROR: invalid topology changes lists')
 parts  = ['+ %s <-> %s' % (x.get('a','?'), x.get('b','?')) for x in added]
 parts += ['- %s <-> %s' % (x.get('a','?'), x.get('b','?')) for x in removed]
 text = '; '.join(parts).replace('\n', ' ') or '-'
