@@ -27,7 +27,7 @@ use API;
  * WRITE-Action. Schutz, in derselben Tiefe wie NetworkTopologyMaintenance:
  *   - Echter CSRF-Token (action- + session-gebunden, Feld nt_csrf).
  *   - POST, requireAjax(), same-origin-Session.
- *   - checkPermissions() >= USER_TYPE_ZABBIX_ADMIN.
+ *   - checkPermissions(): Admin + UI_CONFIGURATION_HOSTS role right.
  *   - Drosselung: diese Action ERZEUGT Objekte, ein Runaway-Skript soll
  *     keine tausend Hosts anlegen koennen.
  *   - API::Host.create ehrt die Rechte: anlegen geht nur in Gruppen mit
@@ -81,9 +81,10 @@ class NetworkTopologyCreateHost extends NetworkTopologyController {
     }
 
     protected function checkPermissions(): bool {
-        // Hosts anlegen ist Admin-Sache — deckt sich mit can_edit im
-        // Frontend, das den Eintrag nur Admins zeigt.
-        return $this->getUserType() >= USER_TYPE_ZABBIX_ADMIN;
+        // Match Zabbix' own host controller: Admin type alone does not grant
+        // the role right to configure hosts. Keep the group-write API check.
+        return $this->getUserType() >= USER_TYPE_ZABBIX_ADMIN
+            && $this->checkAccess(\CRoleHelper::UI_CONFIGURATION_HOSTS);
     }
 
     protected function doAction(): void {

@@ -307,6 +307,7 @@ window.NT_CONFIG = <?= json_encode([
         && empty($data['selected_hostid']),
     'data_url'   => $data_url,
     'can_edit'       => (bool) $data['user']['can_edit'],
+    'can_create_host' => (bool) ($data['user']['can_create_host'] ?? false),
     'host_edit_popup' => (bool) ($data['user']['host_edit_popup'] ?? true),
     'is_super_admin' => (bool) ($data['user']['is_super_admin'] ?? false),
     // CSRF-Token fuer die schreibende Maintenance-Action (action- + session-
@@ -391,6 +392,7 @@ if (!window.NT_CONFIG || ((!window.NT_CONFIG.selected_groupids || !window.NT_CON
         window.NT_CONFIG.data_url = window.NT_CONFIG.data_url || 'zabbix.php?action=network.topology.data';
         // Fail closed, same reasoning as the group fallback below.
         if (window.NT_CONFIG.can_edit === undefined) window.NT_CONFIG.can_edit = false;
+        if (window.NT_CONFIG.can_create_host === undefined) window.NT_CONFIG.can_create_host = false;
     }
     var _g = _p.getAll('groupids[]');
     if (!_g.length) _g = _p.getAll('groupids%5B%5D');
@@ -406,6 +408,7 @@ if (!window.NT_CONFIG || ((!window.NT_CONFIG.selected_groupids || !window.NT_CON
         // (das Backend blockt zwar, aber die UI soll gar nicht "fail open"
         // sein). Ohne verlaessliche Rolle → keine Edit-UI.
         window.NT_CONFIG.can_edit = false;
+        window.NT_CONFIG.can_create_host = false;
     }
 }
 
