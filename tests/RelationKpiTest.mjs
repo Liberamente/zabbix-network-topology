@@ -13,4 +13,5 @@ const edges = [link, {...link, id:'parallel'}, {...link,src:['cdp']},
 assert.deepEqual(countRelations(nodes,edges), {total:12,verified:4,unconfirmed:6,manual:1,stale:1});
 assert.deepEqual(countRelations(nodes.slice(0,2),edges), {total:11,verified:3,unconfirmed:6,manual:1,stale:1});
 assert.deepEqual(countRelations([],edges), {total:0,verified:0,unconfirmed:0,manual:0,stale:0});
+assert.deepEqual(countRelations(nodes,[{...link,id:'ml_1_2'}, {...link,id:'ml_2_1',from:'2',to:'1'}]), {total:1,verified:0,unconfirmed:0,manual:1,stale:0});
 console.log('Relation KPI scope and provenance tests PASS');

@@ -200,7 +200,7 @@ function tile(value, label, colour, sub) {
  * injiziert build-elements.js erst im Client. Deshalb kommen sie wie die
  * Kanten aus der Cytoscape-Instanz.
  */
-export function collect(nodes, cy) {
+export function collect(nodes) {
     // Was kein ueberwachter Host ist, wird auch nicht als einer gezaehlt: ein
     // Ghost ist ein Geraet, ueber das wir nichts wissen, die Internet-Wolke im
     // Hierarchie-Layout ist gar kein Geraet. Beide tragen severity 0 und liefen
@@ -296,7 +296,7 @@ export function updateKpi(nodes, cy) {
     const row = ensureKpiRow();
     if (!row) return;
 
-    const g = collect(nodes || [], cy || window._ntCy || null);
+    const g = collect(nodes || []);
 
     row.textContent = '';
     row.classList.toggle('nt-kpi--tiles', isWallboard());
