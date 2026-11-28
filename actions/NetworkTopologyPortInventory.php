@@ -60,7 +60,7 @@ class NetworkTopologyPortInventory extends NetworkTopologyController {
             'selectPreprocessing'=>['type','params'],
             'hostids'=>[$hostid], 'monitored'=>true,
             'filter'=>['type'=>[20,18]],
-            'search'=>['key_'=>['net.if.','ifName','ifDescr','ifAlias']],
+            'search'=>['key_'=>['net.if.','ifName','ifDescr','ifAlias','nt.fdb.ifname']],
             'searchByAny'=>true, 'startSearch'=>true,
             'limit'=>self::MAX_ITEMS + 1
         ]);

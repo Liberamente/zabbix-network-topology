@@ -12,6 +12,7 @@ namespace Modules\NetworkTopology\Topology;
 final class PortInventory {
     public static function build(array $items, string $hostid, int $now, int $maxAge = 900): array {
         $ports = [];
+        $walkNames = [];
         foreach ($items as $item) {
             if ((string) ($item['hostid'] ?? '') !== $hostid
                     || (string) ($item['status'] ?? '') !== '0'
@@ -24,6 +25,15 @@ final class PortInventory {
             $key = (string) ($item['key_'] ?? '');
             $value = $item['lastvalue'] ?? null;
             if ($value === null || $value === '') continue;
+            if ($key === 'nt.fdb.ifname' && (string) $item['type'] === '20') {
+                foreach (FdbParser::lines((string) $value) as [$oid,$label]) {
+                    if (!preg_match('/^\.?1\.3\.6\.1\.2\.1\.31\.1\.1\.1\.1\.([1-9][0-9]*)$/D', $oid, $m)) continue;
+                    $label = trim($label);
+                    if ($label === '') continue;
+                    $walkNames[$m[1]][] = ['value'=>$label,'clock'=>$clock,'key'=>$key];
+                }
+                continue;
+            }
             $field = null;
             $idx = '';
             if (preg_match('/^net\.if\.(in|out|speed|status|type|adminstatus)(?:\.(errors|discards))?\[(?:(if[A-Za-z]+)\.)?([1-9]\d*)\]$/D', $key, $m)) {
@@ -79,6 +89,14 @@ final class PortInventory {
             }
             $ports[$idx][$field][] = ['value'=>$value,'clock'=>$clock,'key'=>$key];
         }
+        // Enrich only interfaces already identified by indexed items.
+        // Conflicting direct and walk labels fail closed, not arbitrary fallback.
+        foreach ($ports as $idx => &$fields) {
+            if (isset($walkNames[$idx])) {
+                $fields['if_name'] = array_merge($fields['if_name'] ?? [], $walkNames[$idx]);
+            }
+        }
+        unset($fields);
         $out = [];
         foreach ($ports as $idx => $fields) {
             $row = ['ifindex'=>(string) $idx,'connector_confirmed'=>false,'position'=>null,'fields'=>[]];

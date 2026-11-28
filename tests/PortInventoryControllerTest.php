@@ -37,6 +37,7 @@ namespace {
             return API::$rows[$this->kind === 'item' && isset($args['itemids']) ? 'master' : $this->kind] ?? [];
         }
     }
+    require __DIR__ . '/../topology/FdbParser.php';
     require __DIR__ . '/../topology/PortInventory.php';
     require __DIR__ . '/../actions/NetworkTopologyPortInventory.php';
 

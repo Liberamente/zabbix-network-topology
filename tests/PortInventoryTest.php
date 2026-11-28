@@ -1,6 +1,7 @@
 <?php
 // SPDX-License-Identifier: AGPL-3.0-or-later
 declare(strict_types=1);
+require_once __DIR__ . '/../topology/FdbParser.php';
 require_once __DIR__ . '/../topology/PortInventory.php';
 use Modules\NetworkTopology\Topology\PortInventory;
 $now = 2000000000;
@@ -50,4 +51,14 @@ check(array_column($extra,'ifindex'),['1']);
 check(isset($extra[0]['fields']['in_bps']),false);
 check($extra[0]['fields']['in_errors_ps']['value'],4.0);
 check(isset($extra[0]['fields']['out_errors_ps']),false);
+$walk = sample('nt.fdb.ifname', '.1.3.6.1.2.1.31.1.1.1.1.17 = STRING: "Gi1/0/5"' . "\n" .
+    '.1.3.6.1.2.1.31.1.1.1.1.99 = STRING: "Other"');
+$named = PortInventory::build([sample('net.if.type[17]',6),$walk],'1',$now);
+check(array_column($named,'ifindex'),['17']);
+check($named[0]['fields']['if_name']['value'],'Gi1/0/5');
+check($named[0]['fields']['if_name']['key'],'nt.fdb.ifname');
+$conflict = PortInventory::build([sample('net.if.type[17]',6),sample('ifName[17]','wrong'),$walk],'1',$now);
+check(isset($conflict[0]['fields']['if_name']),false);
+$stale = PortInventory::build([sample('net.if.type[17]',6),array_replace($walk,['lastclock'=>$now-901])],'1',$now);
+check(isset($stale[0]['fields']['if_name']),false);
 echo "Port inventory scope, evidence and unknown-value tests PASS\n";
