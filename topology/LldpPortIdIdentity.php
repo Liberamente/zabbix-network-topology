@@ -267,6 +267,7 @@ final class LldpPortIdIdentity {
         $keys = [
             'nt.lldp.local.portid',
             'nt.lldp.local.portdesc',
+            'nt.lldp.local.portidsubtype',
             'nt.fdb.ifname',
         ];
 
@@ -318,6 +319,11 @@ final class LldpPortIdIdentity {
                 '1.0.8802.1.1.2.1.3.7.1.4.'
             );
 
+            $subtypes = self::portWalkValues(
+                $data['nt.lldp.local.portidsubtype'] ?? '',
+                '1.0.8802.1.1.2.1.3.7.1.2.'
+            );
+
             $interfaces = self::portWalkValues(
                 $data['nt.fdb.ifname'],
                 '1.3.6.1.2.1.31.1.1.1.1.'
@@ -345,9 +351,24 @@ final class LldpPortIdIdentity {
                     continue;
                 }
 
-                $fromId = self::uniqueInterfaceName(
-                    $idValues, $byName
-                );
+                // A missing subtype preserves the legacy exact-label path.
+                // With explicit evidence, only interfaceName (5) or
+                // locallyAssigned (7) can match ifName directly. Other
+                // recognized types may use an independent description.
+                $subtype = null;
+                if (isset($subtypes[$lldpPort])) {
+                    $values = $subtypes[$lldpPort];
+                    if (count($values) !== 1) continue;
+                    $raw = (string) array_key_first($values);
+                    if (preg_match('/^(?:[a-zA-Z]+\()?([1-7])\)?$/D', $raw, $m)) {
+                        $subtype = (int) $m[1];
+                    } else {
+                        continue;
+                    }
+                }
+                $fromId = ($subtype === null || in_array($subtype, [5, 7], true))
+                    ? self::uniqueInterfaceName($idValues, $byName)
+                    : null;
 
                 $fromDesc = isset($descs[$lldpPort])
                     ? self::uniqueInterfaceName(

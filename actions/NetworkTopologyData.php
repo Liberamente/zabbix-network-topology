@@ -889,6 +889,7 @@ class NetworkTopologyData extends NetworkTopologyController {
                             'filter' => ['key_' => [
                                 'nt.lldp.local.portid',
                                 'nt.lldp.local.portdesc',
+                                'nt.lldp.local.portidsubtype',
                             ]],
                             'monitored' => true,
                         ]);
