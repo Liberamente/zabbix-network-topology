@@ -39,6 +39,7 @@ namespace {
     }
     require __DIR__ . '/../topology/FdbParser.php';
     require __DIR__ . '/../topology/PortInventory.php';
+    require __DIR__ . '/../topology/LldpPortIdIdentity.php';
     require __DIR__ . '/../actions/NetworkTopologyPortInventory.php';
 
     class Probe extends \Modules\NetworkTopology\Actions\NetworkTopologyPortInventory {
@@ -90,6 +91,17 @@ namespace {
     API::$rows['item'] = [$sample, array_replace($sample,['hostid'=>'999','key_'=>'net.if.type[18]'])];
     $probe->run();
     check(array_column($probe->response['ports'],'ifindex'),['17'],'unexpected item excluded');
+
+    $walk = array_replace($sample,['key_'=>'nt.fdb.ifname',
+        'lastvalue'=>'.1.3.6.1.2.1.31.1.1.1.1.17 = STRING: "Gi1/0/5"']);
+    $local = array_replace($sample,['key_'=>'nt.lldp.local.portid',
+        'lastvalue'=>'.1.0.8802.1.1.2.1.3.7.1.3.501 = STRING: "Gi1/0/5"']);
+    API::$rows['item'] = [$sample,$walk,$local];
+    $probe->run();
+    check((array) $probe->response['lldp_local_port_map'],[501=>'Gi1/0/5'],'explicit local mapping');
+    API::$rows['item'] = [$sample,$walk,array_replace($local,['hostid'=>'999'])];
+    $probe->run();
+    check((array) $probe->response['lldp_local_port_map'],[],'foreign local mapping excluded');
 
     $dependent = array_replace($sample,['type'=>'18','master_itemid'=>'200','key_'=>'net.if.type[19]']);
     $master = ['itemid'=>'200','hostid'=>'100','type'=>'20','status'=>'0','state'=>'0'];
