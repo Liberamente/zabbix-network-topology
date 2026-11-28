@@ -372,6 +372,27 @@ ntCheck('PortDesc fallback -> ifName index 19',
 ntCheck('Unmatched port: no numerical guess',
         isset($localMap['101']['502']), false);
 
+// Optional subtype evidence must not turn a MAC or numeric identity
+// into an interface-name match; a separate exact description is allowed.
+$typed = $localItems;
+$typed[] = ntItem('101', 'nt.lldp.local.portidsubtype',
+    '.1.0.8802.1.1.2.1.3.7.1.2.501 = INTEGER: interfaceName(5)' . "\n"
+    . '.1.0.8802.1.1.2.1.3.7.1.2.503 = INTEGER: 3' . "\n", $now - 120);
+$map = LldpPortIdIdentity::localPortMap($hosts, $typed, $now);
+ntCheck('Typed name mapping', $map['101']['501'] ?? null, 'Gi1/0/5');
+ntCheck('MAC subtype permits independent description',
+    $map['101']['503'] ?? null, 'Gi1/0/7');
+$macTyped = $typed;
+$macTyped[3]['lastvalue'] = str_replace('interfaceName(5)', '3', $macTyped[3]['lastvalue']);
+$macTyped[1]['lastvalue'] = str_replace('Gi1/0/5', 'not-an-interface', $macTyped[1]['lastvalue']);
+$map = LldpPortIdIdentity::localPortMap($hosts, $macTyped, $now);
+ntCheck('MAC subtype is not an interface name', isset($map['101']['501']), false);
+$conflictingSubtype = $typed;
+$conflictingSubtype[3]['lastvalue'] .=
+    '.1.0.8802.1.1.2.1.3.7.1.2.501 = INTEGER: 3' . "\n";
+$map = LldpPortIdIdentity::localPortMap($hosts, $conflictingSubtype, $now);
+ntCheck('Conflicting subtype rejects mapping', isset($map['101']['501']), false);
+
 // Two IF-MIB interfaces claiming the same label.
 $duplicateIfName = $localItems;
 $duplicateIfName[2]['lastvalue'] .=
