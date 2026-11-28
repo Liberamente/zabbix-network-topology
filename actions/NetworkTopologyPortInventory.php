@@ -6,6 +6,7 @@ namespace Modules\NetworkTopology\Actions;
 
 use API;
 use Modules\NetworkTopology\Topology\PortInventory;
+use Modules\NetworkTopology\Topology\LldpPortIdIdentity;
 
 /** On-demand, read-only interface inventory for one visible monitored host. */
 class NetworkTopologyPortInventory extends NetworkTopologyController {
@@ -60,7 +61,7 @@ class NetworkTopologyPortInventory extends NetworkTopologyController {
             'selectPreprocessing'=>['type','params'],
             'hostids'=>[$hostid], 'monitored'=>true,
             'filter'=>['type'=>[20,18]],
-            'search'=>['key_'=>['net.if.','ifName','ifDescr','ifAlias']],
+            'search'=>['key_'=>['net.if.','ifName','ifDescr','ifAlias','nt.fdb.ifname','nt.lldp.local.portid','nt.lldp.local.portdesc','nt.lldp.local.portidsubtype']],
             'searchByAny'=>true, 'startSearch'=>true,
             'limit'=>self::MAX_ITEMS + 1
         ]);
@@ -107,10 +108,18 @@ class NetworkTopologyPortInventory extends NetworkTopologyController {
         }
         unset($item);
         $now = time();
+        $localItems = array_filter($items, static fn($item) =>
+            (string) ($item['type'] ?? '') === '20'
+            && in_array($item['key_'] ?? '', [
+                'nt.fdb.ifname','nt.lldp.local.portid',
+                'nt.lldp.local.portdesc','nt.lldp.local.portidsubtype'
+            ], true));
+        $localMap = LldpPortIdIdentity::localPortMap([$hostid=>[]], $localItems, $now);
         $this->jsonResponse([
             'api_version'=>self::API_VERSION,'hostid'=>$hostid,
             'generated_at'=>$now,'max_age_seconds'=>900,
-            'truncated'=>false,'ports'=>PortInventory::build($items,$hostid,$now)
+            'truncated'=>false,'ports'=>PortInventory::build($items,$hostid,$now),
+            'lldp_local_port_map'=>(object) ($localMap[$hostid] ?? [])
         ]);
     }
 }
