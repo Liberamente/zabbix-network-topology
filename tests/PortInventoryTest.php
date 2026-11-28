@@ -5,7 +5,7 @@ require_once __DIR__ . '/../topology/PortInventory.php';
 use Modules\NetworkTopology\Topology\PortInventory;
 $now = 2000000000;
 function sample(string $key, $value, array $extra = []): array {
-    return $extra + ['hostid'=>'1','status'=>'0','state'=>'0','type'=>'20','lastclock'=>2000000000,'key_'=>$key,'lastvalue'=>$value];
+    return $extra + ['hostid'=>'1','status'=>'0','state'=>'0','type'=>'20','lastclock'=>2000000000,'key_'=>$key,'lastvalue'=>$value,'units'=>preg_match('/^net\.if\.(in|out|speed)\[/', $key) ? 'bps' : ''];
 }
 function check($actual, $expected): void {
     if ($actual !== $expected) {
@@ -39,4 +39,15 @@ check($rows[0]['fields']['admin_status']['value'],2);
 check($rows[0]['fields']['if_name']['value'],'Gi1/0/5');
 check($rows[0]['fields']['speed_bps']['value'],1000000000.0);
 check(PortInventory::build([], '1', $now),[]);
+$extra = PortInventory::build([
+    sample('net.if.type[1]',6,['type'=>'18','snmp_master_verified'=>true]),
+    sample('net.if.type[2]',6,['type'=>'18']),
+    sample('net.if.in[1]',5,['units'=>'Bps']),
+    sample('net.if.in.errors[ifInErrors.1]',4,['preprocessing'=>[['type'=>'10']]]),
+    sample('net.if.out.errors[ifOutErrors.1]',100)
+], '1', $now);
+check(array_column($extra,'ifindex'),['1']);
+check(isset($extra[0]['fields']['in_bps']),false);
+check($extra[0]['fields']['in_errors_ps']['value'],4.0);
+check(isset($extra[0]['fields']['out_errors_ps']),false);
 echo "Port inventory scope, evidence and unknown-value tests PASS\n";
