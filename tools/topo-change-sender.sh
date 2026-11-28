@@ -49,7 +49,8 @@ fi
 # Passwort und das Session-Cookie — das fruehere stille "-k" (Zertifikat egal)
 # war ein MITM-Risiko (Security-Review). Interne CA per ZBX_CACERT einbinden;
 # ZBX_INSECURE=1 schaltet die Pruefung nur fuers Testlabor ab, und laut, nie still.
-CURL_TLS=()
+# Bash 3.2 (macOS): an empty array under nounset is not portable.
+CURL_TLS=(-sf)
 if [[ -n "$ZBX_CACERT" ]]; then
     CURL_TLS+=(--cacert "$ZBX_CACERT")
 elif [[ "$ZBX_INSECURE" == "1" ]]; then
@@ -73,7 +74,7 @@ RESPFILE="$WORKDIR/response"
 printf '%s' "$ZBX_PASS" > "$PWFILE"
 
 # 1. Frontend-Login (Session-Cookie in die Jar)
-curl -sf "${CURL_TLS[@]}" -c "$JAR" -o /dev/null \
+curl "${CURL_TLS[@]}" -c "$JAR" -o /dev/null \
     --data-urlencode "name=$ZBX_USER" \
     --data-urlencode "password@$PWFILE" \
     --data-urlencode "enter=Sign in" \
@@ -85,7 +86,7 @@ IFS=',' read -ra GIDS <<< "$GROUPIDS"
 for g in "${GIDS[@]}"; do
     QS="$QS&groupids%5B%5D=$g"
 done
-curl -sf "${CURL_TLS[@]}" -b "$JAR" -H "X-Requested-With: XMLHttpRequest" \
+curl "${CURL_TLS[@]}" -b "$JAR" -H "X-Requested-With: XMLHttpRequest" \
     -o "$RESPFILE" "$ZBX_URL/zabbix.php?$QS"
 
 # 3. topo_changes + health extrahieren (python3 statt jq — praktisch immer

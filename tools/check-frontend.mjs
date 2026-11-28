@@ -1794,39 +1794,35 @@ if (netbox) {
         netbox.quoting.indexOf('"sw,01",dcim.interface,a,"sw""02"') === 0, true);
 }
 
-// ── KPI: synthetische Kanten zaehlen nicht als gemessene Links ────────────
-//
-// Der Ghost-Edge war immer ausgeschlossen, die Internet-Wolke und die
-// Buendel-Kante nicht — beide sind ebenso synthetisch (kein gemessener Link,
-// kein Host am anderen Ende). Sie blaehten "Edges" und "LLDP links" auf. Der
-// Review-Fix haengte isLLDP:false an die Buendel-Kante, aber der KPI leitet
-// lldp aus (edges - manual) ab und liest isLLDP nie — der Fix griff hier nicht.
-console.log('\n  KPI: synthetische Kanten zaehlen nicht\n');
+// KPI: raw scoped relations retain parallel members and exclude synthetic edges.
+console.log('\n  KPI: scoped relations\n');
 const kpiZ = szenario('kpi-count', { lang: 'en_US' }, `
     const { collect } = await import(${JSON.stringify(MODULE('kpi.js'))});
-    globalThis.window._ntLastData = {};   // keine lldp_quality -> 0 Ghosts
-    const mkEdge = (id, flags) => ({ id: () => id, data: (k) => (flags || {})[k] });
-    const cy = { edges: () => [
-        mkEdge('e0', {}),                          // echter Link
-        mkEdge('e1', {}),                          // echter Link
-        mkEdge('ml_1', {}),                        // manueller Link
-        mkEdge('eg', { _isGhostEdge: true }),      // Ghost
-        mkEdge('ei', { _isInternetEdge: true }),   // Internet-Wolke
-        mkEdge('eb', { _isBundleEdge: true }),     // Endgeraete-Buendel
-        // Evidence associations, not verified physical links.
-        mkEdge('lp', { kind: 'lldp_portid', isLLDP: true, confirmed: false }),
-        mkEdge('fd', { kind: 'fdb', isLLDP: false }),
-        mkEdge('wf', { kind: 'wifi', isLLDP: false }),
+    const nodes = [{id:'1'}, {id:'2'}];
+    const e = {from:'1',to:'2'};
+    globalThis.window._ntLastData = { edges: [
+        {...e,src:['lldp'],confirmed:true},
+        {...e,src:['cdp'],confirmed:true},
+        {...e,id:'ml_1_2'},
+        {...e,_isGhostEdge:true},
+        {...e,_isInternetEdge:true},
+        {...e,_isBundleEdge:true},
+        {...e,match:'lldp_portid',src:['lldp'],confirmed:false},
+        {...e,src:['fdb']},
+        {...e,src:['wifi']},
+        {...e,stale:true},
+        {...e,to:'3',src:['lldp'],confirmed:true}
     ] };
-    const g = collect([], cy);
-    console.log(JSON.stringify({ edges: g.edges, manual: g.manual, lldp: g.lldp }));
+    const g = collect(nodes);
+    console.log(JSON.stringify({ edges:g.edges, manual:g.manual,
+        verified:g.verified, unconfirmed:g.unconfirmed, stale:g.stale }));
 `);
 if (kpiZ) {
-    // 2 echte + 1 manuelle = 3 gezaehlte Kanten; die drei synthetischen nicht.
-    pruefe('KPI: nur echte + manuelle Kanten',   kpiZ.edges,  3);
-    pruefe('KPI: manuelle Kante erkannt',        kpiZ.manual, 1);
-    // lldp = edges - manual = 2. Zaehlten Internet/Buendel mit, stuende hier 4.
-    pruefe('KPI: LLDP-Links ohne synthetische',  kpiZ.lldp,   2);
+    pruefe('KPI: scoped relations', kpiZ.edges, 7);
+    pruefe('KPI: manual relation', kpiZ.manual, 1);
+    pruefe('KPI: verified LLDP/CDP members', kpiZ.verified, 2);
+    pruefe('KPI: non-physical associations', kpiZ.unconfirmed, 3);
+    pruefe('KPI: stale relation', kpiZ.stale, 1);
 }
 
 // ── LLDP-Quality: fremde Nachbarnamen sind das Untrusteste ────────────────

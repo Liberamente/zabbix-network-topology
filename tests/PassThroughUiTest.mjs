@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Synthetic pass-through UI regression: no real hosts, IPs or MACs.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { countRelations } from '../assets/js/modules/relation-kpi.js';
 
 class MockElement {
     constructor(tag = 'div') {
@@ -146,10 +146,9 @@ assert.match(allText(panel), /not a confirmed physical cable/i);
 assert.doesNotMatch(allText(panel), /Utilization|Gb\/s|Errors\/s|link utilization/i);
 assert.equal(fetches, 0, 'no individual traffic history requested');
 
-const kpi = readFileSync(
-    new URL('../assets/js/modules/kpi.js', import.meta.url), 'utf8'
-);
-assert.match(kpi, /kind === 'pass_through'/,
-    'KPI must exclude this inferred association from verified links');
+assert.deepEqual(countRelations(nodes, [
+    physical('cable-1', 'Gi1'), physical('cable-2', 'Gi2'), association
+]), {total:3, verified:2, unconfirmed:1, manual:0, stale:0},
+    'KPI must count pass-through without promoting it to a verified link');
 
 console.log('PassThroughUiTest: PASS (synthetic, no fabricated cable/traffic)');

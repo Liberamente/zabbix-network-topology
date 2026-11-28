@@ -32,7 +32,9 @@
 
 import { t } from './i18n.js';
 import { injectGhostNodes } from './build-elements.js';
-import { loadGhostMode } from './storage.js';
+import { loadGhostMode, loadLinks } from './storage.js';
+import { countRelations } from './relation-kpi.js';
+import { isFocusActive, filterToFocus } from './focus-mode.js';
 import { setSevLevels, activeSevLevels } from './sev-filter.js';
 
 // Welche Severity-Stufen hinter einer klickbaren Kachel stehen — dieselben
@@ -198,7 +200,7 @@ function tile(value, label, colour, sub) {
  * injiziert build-elements.js erst im Client. Deshalb kommen sie wie die
  * Kanten aus der Cytoscape-Instanz.
  */
-export function collect(nodes, cy) {
+export function collect(nodes) {
     // Was kein ueberwachter Host ist, wird auch nicht als einer gezaehlt: ein
     // Ghost ist ein Geraet, ueber das wir nichts wissen, die Internet-Wolke im
     // Hierarchie-Layout ist gar kein Geraet. Beide tragen severity 0 und liefen
@@ -229,31 +231,11 @@ export function collect(nodes, cy) {
         else             warn++;
     });
 
-    let edges = 0, manual = 0;
-
-    if (cy) {
-        cy.edges().forEach(function(e) {
-            // Synthetische Kanten zaehlen nicht als gemessene Links: der Ghost
-            // war nie gezaehlt, und ebensowenig gehoeren die Internet-Wolke
-            // (_isInternetEdge) und die Buendel-Kante (_isBundleEdge) in die
-            // Zahl "Edges"/"LLDP links". Sie tragen isLLDP:false, aber der KPI
-            // leitet lldp aus (edges - manual) ab und liest isLLDP nicht —
-            // deshalb hier ausschliessen, nicht ueber isLLDP. (Der Review-Fix,
-            // der isLLDP:false an die Buendel-Kante haengte, griff hier nie.)
-            // Inferred endpoint associations are not verified physical
-            // links. Keep them visible on the map, but exclude them
-            // from the physical link and LLDP KPI counters.
-            const kind = String(e.data('kind') || '');
-            if (e.data('_isGhostEdge') || e.data('_isInternetEdge')
-                    || e.data('_isBundleEdge')
-                    || kind === 'lldp_portid'
-                    || kind === 'fdb'
-                    || kind === 'pass_through'
-                    || kind === 'wifi') return;
-            edges++;
-            if (String(e.id()).indexOf('ml_') === 0) manual++;
-        });
-    }
+    const raw = (window._ntLastData || {}).edges || [];
+    const manualEdges = loadLinks().map(l => ({
+        id: 'ml_' + l.s + '_' + l.t, from: l.s, to: l.t
+    }));
+    const counts = countRelations(base, raw.concat(manualEdges));
 
     // Ghosts NICHT aus dem Graphen zaehlen: sie werden nur injiziert, wenn der
     // Toolbar-Toggle an ist (Default aus). Sonst stuende hier "0 Ghosts", waehrend
@@ -285,8 +267,8 @@ export function collect(nodes, cy) {
         // "Hosts" ist groesser als OK + Warn + Crit — eine Zeile, die sichtbar
         // nicht aufgeht, sieht kaputt aus, egal wie die Zahlen gemeint waren.
         hosts: base.length, ok: ok, warn: warn, crit: crit,
-        edges: edges, manual: manual, ghosts: ghosts,
-        lldp: Math.max(0, edges - manual),
+        edges: counts.total, manual: counts.manual, ghosts: ghosts,
+        verified: counts.verified, unconfirmed: counts.unconfirmed, stale: counts.stale,
         ghostsHidden: ghostsHidden
     };
 }
@@ -301,7 +283,12 @@ export function collect(nodes, cy) {
  */
 export function refreshKpi() {
     const d = window._ntLastData || {};
-    updateKpi(d.nodes || [], window._ntCy || null);
+    let nodes = d.nodes || [];
+    if (isFocusActive()) {
+        const focus = filterToFocus(nodes, d.edges || []);
+        if (focus.found) nodes = focus.nodes;
+    }
+    updateKpi(nodes, window._ntCy || null);
 }
 
 /** Schreibt die Zeile neu. nodes ist die rohe Hostliste aus dem Backend. */
@@ -309,7 +296,7 @@ export function updateKpi(nodes, cy) {
     const row = ensureKpiRow();
     if (!row) return;
 
-    const g = collect(nodes || [], cy || window._ntCy || null);
+    const g = collect(nodes || []);
 
     row.textContent = '';
     row.classList.toggle('nt-kpi--tiles', isWallboard());
@@ -329,7 +316,7 @@ export function updateKpi(nodes, cy) {
             problems ? col(g.crit ? 'crit' : 'warn') : col('ok'),
             t('kpi.problems.split', { crit: g.crit, warn: g.warn })));
         row.appendChild(tile(g.edges, t('kpi.edges'), col('link'),
-            t('kpi.edges.split', { lldp: g.lldp, manual: g.manual })));
+            t('kpi.edges.split', { verified: g.verified, unconfirmed: g.unconfirmed, manual: g.manual, stale: g.stale })));
         row.appendChild(tile(g.ghosts, t('kpi.unmonitored'), col('ghost'),
             ghostSub || t('kpi.unmonitored.sub')));
         return;
@@ -346,6 +333,6 @@ export function updateKpi(nodes, cy) {
     row.appendChild(chip(g.warn,  t('kpi.warn'),  col('warn'), '', flt('warn')));
     row.appendChild(chip(g.crit,  t('kpi.crit'),  col('crit'), '', flt('crit')));
     row.appendChild(chip(g.edges, t('kpi.edges'), col('link'),
-        g.manual ? t('kpi.edges.manual', { n: g.manual }) : ''));
+        t('kpi.edges.split', { verified: g.verified, unconfirmed: g.unconfirmed, manual: g.manual, stale: g.stale })));
     row.appendChild(chip(g.ghosts, t('kpi.ghosts'), col('ghost'), ghostSub));
 }
