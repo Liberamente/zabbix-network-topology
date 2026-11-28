@@ -56,9 +56,10 @@ class NetworkTopologyPortInventory extends NetworkTopologyController {
             return;
         }
         $items = API::Item()->get([
-            'output'=>['hostid','key_','type','status','state','lastvalue','lastclock','units'],
+            'output'=>['hostid','key_','type','status','state','lastvalue','lastclock','units','master_itemid','itemid'],
+            'selectPreprocessing'=>['type','params'],
             'hostids'=>[$hostid], 'monitored'=>true,
-            'filter'=>['type'=>[20]],
+            'filter'=>['type'=>[20,18]],
             'search'=>['key_'=>['net.if.','ifName','ifDescr','ifAlias']],
             'searchByAny'=>true, 'startSearch'=>true,
             'limit'=>self::MAX_ITEMS + 1
@@ -72,6 +73,39 @@ class NetworkTopologyPortInventory extends NetworkTopologyController {
             $this->jsonResponse(['error'=>'Interface inventory exceeds limit','truncated'=>true]);
             return;
         }
+        // A dependent item is accepted only with a visible, enabled,
+        // supported SNMP master on the same host. Nested/unknown masters
+        // are deliberately excluded until their complete chain is proven.
+        $masterIds = [];
+        foreach ($items as $item) {
+            if ((string) ($item['hostid'] ?? '') === $hostid
+                    && (string) ($item['type'] ?? '') === '18'
+                    && preg_match('/^[1-9][0-9]*$/D', (string) ($item['master_itemid'] ?? ''))) {
+                $masterIds[(string) $item['master_itemid']] = true;
+            }
+        }
+        $verified = [];
+        if ($masterIds) {
+            $masters = API::Item()->get([
+                'output'=>['itemid','hostid','type','status','state'],
+                'hostids'=>[$hostid], 'itemids'=>array_keys($masterIds),
+                'filter'=>['type'=>[20]], 'monitored'=>true
+            ]);
+            if (is_array($masters)) {
+                foreach ($masters as $master) {
+                    $id = (string) ($master['itemid'] ?? '');
+                    if (isset($masterIds[$id])
+                            && (string) ($master['hostid'] ?? '') === $hostid
+                            && (string) ($master['type'] ?? '') === '20'
+                            && (string) ($master['status'] ?? '') === '0'
+                            && (string) ($master['state'] ?? '') === '0') $verified[$id] = true;
+                }
+            }
+        }
+        foreach ($items as &$item) {
+            $item['snmp_master_verified'] = isset($verified[(string) ($item['master_itemid'] ?? '')]);
+        }
+        unset($item);
         $now = time();
         $this->jsonResponse([
             'api_version'=>self::API_VERSION,'hostid'=>$hostid,

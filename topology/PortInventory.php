@@ -16,7 +16,9 @@ final class PortInventory {
             if ((string) ($item['hostid'] ?? '') !== $hostid
                     || (string) ($item['status'] ?? '') !== '0'
                     || (string) ($item['state'] ?? '') !== '0'
-                    || (string) ($item['type'] ?? '') !== '20') continue;
+                    || !((string) ($item['type'] ?? '') === '20'
+                        || ((string) ($item['type'] ?? '') === '18'
+                            && ($item['snmp_master_verified'] ?? false) === true))) continue;
             $clock = (int) ($item['lastclock'] ?? 0);
             if ($clock <= 0 || $clock > $now + 60 || $now - $clock > $maxAge) continue;
             $key = (string) ($item['key_'] ?? '');
@@ -56,6 +58,15 @@ final class PortInventory {
                 $value = trim((string) $value);
             }
             if ($field === null) continue;
+            $units = (string) ($item['units'] ?? '');
+            if (in_array($field, ['in_bps','out_bps','speed_bps'], true)
+                    && $units !== 'bps') continue;
+            if (str_ends_with($field, '_ps')) {
+                // Zabbix preprocessing 10 = change per second. A raw
+                // cumulative counter must never be labelled as a rate.
+                $steps = $item['preprocessing'] ?? [];
+                if (count($steps) !== 1 || (string) ($steps[0]['type'] ?? '') !== '10') continue;
+            }
             if (!in_array($field, ['if_name','if_descr','if_alias'], true)) {
                 if (!is_numeric($value) || !is_finite((float) $value) || (float) $value < 0) continue;
                 $value = (float) $value;
