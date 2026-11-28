@@ -95,7 +95,7 @@ function hasArg(args, value) {
 try {
     const main = run();
     assert.equal(main.status, 0, main.stderr || String(main.error));
-    assert.match(main.stdout, /topo-changes: 1/);
+    assert.match(main.stdout, /topo-changes: 1/, `sender stdout missing; status=${main.status}; stderr=${main.stderr}; signal=${main.signal}`);
     const curlCalls = records(curlLog);
     assert.equal(curlCalls.length, 2);
     assert.ok(curlCalls.every(c => !hasArg(c, '-k')), 'TLS bypass is forbidden by default');
