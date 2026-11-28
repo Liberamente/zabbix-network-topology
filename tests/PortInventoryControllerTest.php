@@ -34,7 +34,7 @@ namespace {
         public function __construct(private string $kind) {}
         public function get(array $args) {
             API::$calls[] = [$this->kind, $args];
-            return API::$rows[$this->kind] ?? [];
+            return API::$rows[$this->kind === 'item' && isset($args['itemids']) ? 'master' : $this->kind] ?? [];
         }
     }
     require __DIR__ . '/../topology/PortInventory.php';
@@ -89,6 +89,29 @@ namespace {
     API::$rows['item'] = [$sample, array_replace($sample,['hostid'=>'999','key_'=>'net.if.type[18]'])];
     $probe->run();
     check(array_column($probe->response['ports'],'ifindex'),['17'],'unexpected item excluded');
+
+    $dependent = array_replace($sample,['type'=>'18','master_itemid'=>'200','key_'=>'net.if.type[19]']);
+    $master = ['itemid'=>'200','hostid'=>'100','type'=>'20','status'=>'0','state'=>'0'];
+    API::$rows['item'] = [$sample,$dependent];
+    API::$rows['master'] = [$master];
+    API::$calls = [];
+    $probe->run();
+    check(array_column($probe->response['ports'],'ifindex'),['17','19'],'verified SNMP master accepted');
+    check(API::$calls[3][1]['hostids'],['100'],'master query restricted to same host');
+    check(array_map('strval',API::$calls[3][1]['itemids']),['200'],'master query restricted to referenced IDs');
+    foreach ([
+        'foreign master'=>[array_replace($master,['hostid'=>'999'])],
+        'non-SNMP master'=>[array_replace($master,['type'=>'0'])],
+        'nested dependent master'=>[array_replace($master,['type'=>'18'])],
+        'disabled master'=>[array_replace($master,['status'=>'1'])],
+        'unsupported master'=>[array_replace($master,['state'=>'1'])],
+        'unexpected master ID'=>[array_replace($master,['itemid'=>'201'])],
+        'missing master'=>[]
+    ] as $label=>$masters) {
+        API::$rows['master'] = $masters;
+        $probe->run();
+        check(array_column($probe->response['ports'],'ifindex'),['17'],$label.' rejected');
+    }
 
     API::$calls = [];
     $probe->ajax = false;
